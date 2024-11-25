@@ -1,0 +1,18 @@
+[project]
+name = "actron-neo-api"
+version = "0.0.1"
+authors = [
+  { name="Kurt Chrisford", email="soft.year7030@fastmail.com" },
+]
+description = "Actron Neo API"
+readme = "README.md"
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+
+[project.urls]
+Homepage = "https://github.com/kclif9/actronneoapi"
+Issues = "https://github.com/kclif9/actronneoapi/issues"
