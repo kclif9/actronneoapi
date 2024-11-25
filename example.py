@@ -2,9 +2,9 @@ import asyncio
 from actronneoapi import ActronNeoAPI, ActronNeoAuthError, ActronNeoAPIError
 
 async def main():
-    username = ""
-    password = ""
-    device_name = "my_device"
+    username = "example@example.com"
+    password = "yourpassword"
+    device_name = "actron-api"
     device_unique_id = "unique_device_id"
 
     api = ActronNeoAPI(username, password)
