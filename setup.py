@@ -1,11 +1,11 @@
 from setuptools import setup, find_packages
 
 setup(
-    name="actronneoapi",
+    name="actron-neo-api",
     version="0.1.0",
     author="Kurt Chrisford",
     author_email="soft.year7030@fastmail.com",
-    description="Python API wrapper for the ActronNeoAPI.",
+    description="Python API wrapper for the Actron Neo API.",
     long_description=open("README.md").read(),
     long_description_content_type="text/markdown",
     url="https://github.com/kclif9/actronneoapi",
