@@ -4,7 +4,7 @@ setup(
     name="actronneoapi",
     version="0.1.0",
     author="Kurt Chrisford",
-    author_email="kclif9@gmail.com",
+    author_email="soft.year7030@fastmail.com",
     description="Python API wrapper for the ActronNeoAPI.",
     long_description=open("README.md").read(),
     long_description_content_type="text/markdown",
