@@ -187,3 +187,124 @@ class ActronNeoAPI:
             command["command"]["UserAirconSettings.Mode"] = mode
 
         return await self.send_command(serial_number, command)
+
+    async def get_status(self, serial_number: str):
+        """
+        Retrieve the status of the AC system, including zones and other components.
+        """
+        status = await self.get_ac_status(serial_number)
+        return status
+
+    async def get_zones(self, serial_number: str):
+        """
+        Extract zone information from the status.
+        """
+        status = await self.get_status(serial_number)
+        zones = status.get("RemoteZoneInfo", [])
+        return [
+            {
+                "zone_id": zone.get("ZonePosition"),
+                "name": zone.get("NV_Title"),
+                "temperature": zone.get("LiveTemp_oC"),
+                "humidity": zone.get("LiveHumidity_pc"),
+                "enabled": zone.get("CanOperate"),
+                "common_zone": zone.get("CommonZone", False),
+            }
+            for zone in zones if zone.get("NV_Exists", False)
+        ]
+
+    async def set_zone(self, serial_number: str, zone_number: int, is_enabled: bool):
+        """
+        Turn a specific zone ON/OFF.
+
+        :param serial_number: Serial number of the AC system.
+        :param zone_number: Zone number to control (starting from 0).
+        :param is_enabled: True to turn ON, False to turn OFF.
+        """
+        command = {
+            "command": {
+                f"UserAirconSettings.EnabledZones[{zone_number}]": is_enabled,
+                "type": "set-settings"
+            }
+        }
+        
+        return await self.send_command(serial_number, command)
+
+    async def set_multiple_zones(self, serial_number: str, zone_settings: dict):
+        """
+        Set multiple zones ON/OFF in a single command.
+
+        :param serial_number: Serial number of the AC system.
+        :param zone_settings: A dictionary where keys are zone numbers and values are True/False to enable/disable.
+        """
+        command = {
+            "command": {f"UserAirconSettings.EnabledZones[{zone}]": state for zone, state in zone_settings.items()},
+            "type": "set-settings"
+        }
+
+        return await self.send_command(serial_number, command)
+
+    async def set_fan_mode(self, serial_number: str, fan_mode: str, continuous: bool = False):
+        """
+        Set the fan mode of the AC system.
+
+        :param serial_number: Serial number of the AC system.
+        :param fan_mode: Fan mode to set. Options are: 'AUTO', 'LOW', 'MED', 'HIGH'.
+        :param continuous: If True, set the continuous fan mode (e.g., 'AUTO-CONT').
+        """
+        valid_modes = ['AUTO', 'LOW', 'MED', 'HIGH']
+        if fan_mode.upper() not in valid_modes:
+            raise ValueError(f"Invalid fan mode. Choose from {valid_modes}.")
+
+        # Append '-CONT' for continuous mode if specified
+        fan_mode_command = f"{fan_mode.upper()}{'-CONT' if continuous else ''}"
+        
+        command = {
+            "command": {
+                "UserAirconSettings.FanMode": fan_mode_command,
+                "type": "set-settings"
+            }
+        }
+
+        return await self.send_command(serial_number, command)
+    
+    async def set_temperature(self, serial_number: str, mode: str, temperature: float, zone: int = None):
+        """
+        Set the temperature for the system or a specific zone.
+
+        :param serial_number: Serial number of the AC system.
+        :param mode: The mode for which to set the temperature. Options: 'COOL', 'HEAT', 'AUTO'.
+        :param temperature: The temperature to set (floating point number).
+        :param zone: Zone number to set the temperature for. Default is None (common zone).
+        """
+        if mode.upper() not in ['COOL', 'HEAT', 'AUTO']:
+            raise ValueError("Invalid mode. Choose from 'COOL', 'HEAT', 'AUTO'.")
+
+        # Build the command based on mode and zone
+        command = {"command": {"type": "set-settings"}}
+
+        if zone is None:  # Common zone
+            if mode.upper() == 'COOL':
+                command["command"]["UserAirconSettings.TemperatureSetpoint_Cool_oC"] = temperature
+            elif mode.upper() == 'HEAT':
+                command["command"]["UserAirconSettings.TemperatureSetpoint_Heat_oC"] = temperature
+            elif mode.upper() == 'AUTO':
+                # Requires both heat and cool setpoints
+                if isinstance(temperature, dict) and "cool" in temperature and "heat" in temperature:
+                    command["command"]["UserAirconSettings.TemperatureSetpoint_Cool_oC"] = temperature["cool"]
+                    command["command"]["UserAirconSettings.TemperatureSetpoint_Heat_oC"] = temperature["heat"]
+                else:
+                    raise ValueError("For AUTO mode, provide a dict with 'cool' and 'heat' keys for temperature.")
+        else:  # Specific zone
+            if mode.upper() == 'COOL':
+                command["command"][f"RemoteZoneInfo[{zone}].TemperatureSetpoint_Cool_oC"] = temperature
+            elif mode.upper() == 'HEAT':
+                command["command"][f"RemoteZoneInfo[{zone}].TemperatureSetpoint_Heat_oC"] = temperature
+            elif mode.upper() == 'AUTO':
+                if isinstance(temperature, dict) and "cool" in temperature and "heat" in temperature:
+                    command["command"][f"RemoteZoneInfo[{zone}].TemperatureSetpoint_Cool_oC"] = temperature["cool"]
+                    command["command"][f"RemoteZoneInfo[{zone}].TemperatureSetpoint_Heat_oC"] = temperature["heat"]
+                else:
+                    raise ValueError("For AUTO mode, provide a dict with 'cool' and 'heat' keys for temperature.")
+
+        return await self.send_command(serial_number, command)
