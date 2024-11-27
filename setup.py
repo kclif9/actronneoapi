@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="actron-neo-api",
-    version="0.0.2",
+    version="0.0.3",
     author="Kurt Chrisford",
     author_email="soft.year7030@fastmail.com",
     description="Python API wrapper for the Actron Neo API.",
