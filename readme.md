@@ -10,7 +10,7 @@ Fetch system events, including latest, newer, or older events.
 Fully asynchronous, built using aiohttp.
 Installation
 Install the library via pip:
-pip install actron-neo-api
+`pip install actron-neo-api`
 
 ## Usage
 1. Authentication
