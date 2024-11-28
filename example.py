@@ -1,5 +1,5 @@
 import asyncio
-from actronneoapi import ActronNeoAPI, ActronNeoAuthError, ActronNeoAPIError
+from actron_neo_api import ActronNeoAPI, ActronNeoAuthError, ActronNeoAPIError
 
 async def main():
     username = "example@example.com"
