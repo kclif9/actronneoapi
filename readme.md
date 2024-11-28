@@ -27,7 +27,7 @@ Retrieve events for a specific AC system, including the latest, newer, or older 
 
 ## Example Code
     import asyncio
-    from actronneoapi import ActronNeoAPI, ActronNeoAuthError, ActronNeoAPIError
+    from actron_neo_api import ActronNeoAPI, ActronNeoAuthError, ActronNeoAPIError
 
     async def main():
         username = "your_email@example.com"
