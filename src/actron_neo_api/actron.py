@@ -197,6 +197,32 @@ class ActronNeoAPI:
             command["command"]["UserAirconSettings.Mode"] = mode
 
         return await self.send_command(serial_number, command)
+    
+    async def get_master_model(self, serial_number: str) -> str | None:
+        """Fetch the Master WC Model for the specified AC system."""
+        status = await self.get_ac_status(serial_number)
+        return status.get("lastKnownState", {}).get("AirconSystem", {}).get("MasterWCModel")
+
+    async def get_master_serial(self, serial_number: str):
+        """
+        Retrieve the master wall controller serial number.
+        """
+        status = await self.get_ac_status(serial_number)
+        return status.get("lastKnownState", {}).get("AirconSystem", {}).get("MasterSerial")
+
+    async def get_master_firmware(self, serial_number: str):
+        """
+        Retrieve the master wall controller firmware version.
+        """
+        status = await self.get_ac_status(serial_number)
+        return status.get("lastKnownState", {}).get("AirconSystem", {}).get("MasterWCFirmwareVersion")
+
+    async def get_outdoor_unit_model(self, serial_number: str):
+        """
+        Retrieve the outdoor unit model.
+        """
+        status = await self.get_ac_status(serial_number)
+        return status.get("lastKnownState", {}).get("AirconSystem", {}).get("OutdoorUnit", {}).get("ModelNumber")
 
     async def get_status(self, serial_number: str):
         """
@@ -206,22 +232,9 @@ class ActronNeoAPI:
         return status
 
     async def get_zones(self, serial_number: str):
-        """
-        Extract zone information from the status.
-        """
-        status = await self.get_status(serial_number)
-        zones = status.get("RemoteZoneInfo", [])
-        return [
-            {
-                "zone_id": zone.get("ZonePosition"),
-                "name": zone.get("NV_Title"),
-                "temperature": zone.get("LiveTemp_oC"),
-                "humidity": zone.get("LiveHumidity_pc"),
-                "enabled": zone.get("CanOperate"),
-                "common_zone": zone.get("CommonZone", False),
-            }
-            for zone in zones if zone.get("NV_Exists", False)
-        ]
+        """Retrieve zone information."""
+        status = await self.get_ac_status(serial_number)
+        return status.get("lastKnownState", {}).get("RemoteZoneInfo", [])
 
     async def set_zone(self, serial_number: str, zone_number: int, is_enabled: bool):
         """
@@ -258,25 +271,36 @@ class ActronNeoAPI:
         """
         Set the fan mode of the AC system.
 
-        :param serial_number: Serial number of the AC system.
-        :param fan_mode: Fan mode to set. Options are: 'AUTO', 'LOW', 'MED', 'HIGH'.
-        :param continuous: If True, set the continuous fan mode (e.g., 'AUTO-CONT').
+        Args:
+            serial_number (str): The serial number of the AC system.
+            fan_mode (str): The fan mode to set (e.g., "AUTO", "LOW", "MEDIUM", "HIGH").
+            continuous (bool): Whether to enable continuous fan mode.
         """
-        valid_modes = ['AUTO', 'LOW', 'MED', 'HIGH']
-        if fan_mode.upper() not in valid_modes:
-            raise ValueError(f"Invalid fan mode. Choose from {valid_modes}.")
+        if not self.access_token:
+            raise ActronNeoAuthError("Authentication required before sending commands.")
 
-        # Append '-CONT' for continuous mode if specified
-        fan_mode_command = f"{fan_mode.upper()}{'-CONT' if continuous else ''}"
-        
-        command = {
+        mode = fan_mode
+        if continuous:
+            mode = f"{fan_mode}-CONT"
+
+        url = f"{self.base_url}/api/v0/client/ac-systems/cmds/send?serial={serial_number}"
+        payload = {
             "command": {
-                "UserAirconSettings.FanMode": fan_mode_command,
-                "type": "set-settings"
+                "UserAirconSettings.FanMode": mode,
+                "type": "set-settings",
             }
         }
+        headers = {
+            "Authorization": f"Bearer {self.access_token}",
+            "Content-Type": "application/json",
+        }
 
-        return await self.send_command(serial_number, command)
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, json=payload, headers=headers) as response:
+                if response.status != 200:
+                    raise ActronNeoAPIError(
+                        f"Failed to set fan mode. Status: {response.status}, Response: {await response.text()}"
+                    )
     
     async def set_temperature(self, serial_number: str, mode: str, temperature: float, zone: int = None):
         """
