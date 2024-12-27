@@ -1,104 +1,193 @@
 # ActronNeoAPI
-ActronNeoAPI is a Python library for interacting with Actron Air Neo API. It allows you to manage and monitor your Actron Air systems programmatically, including retrieving AC system status, events, and more.  
+
+The `ActronNeoAPI` library provides an interface to communicate with Actron Air Neo systems, enabling integration with Home Assistant or other platforms. This Python library offers methods for authentication, token management, and interacting with AC systems, zones, and settings.
+
+---
 
 ## Features
-Authentication: Authenticate with the Actron Air API using your account credentials.  
-AC System Management:  
-List all AC systems in your account.  
-Retrieve detailed status for a specific AC system.  
-Fetch system events, including latest, newer, or older events.  
-Fully asynchronous, built using aiohttp.  
-Installation  
-Install the library via pip:  
-`pip install actron-neo-api`  
+
+- **Authentication**:
+  - Pairing token and bearer token support.
+  - Automatic token refresh handling.
+- **System Information**:
+  - Retrieve system details, statuses, and events.
+- **Control Features**:
+  - Set system modes (e.g., COOL, HEAT, AUTO).
+  - Enable/disable zones.
+  - Adjust fan modes and temperatures.
+
+---
+
+## Installation
+
+```bash
+pip install actron-neo-api
+```
+
+---
 
 ## Usage
-1. Authentication:  
-To authenticate with the Actron Air API, you need your username, password, a device name, and a unique device identifier.  
 
-2. Fetch AC Systems:  
-Retrieve the list of AC systems associated with your account.  
+### 1. Initialization
 
-3. Get AC System Status:  
-Get the full status of a specific AC system by its serial number.  
+You must provide either an access token or username/password combination for authentication.
 
-4. Get AC System Events:  
-Retrieve events for a specific AC system, including the latest, newer, or older events based on an event ID.  
+```python
+from actron_neo_api import ActronNeoAPI
 
-## Example Code
-    import asyncio
-    from actron_neo_api import ActronNeoAPI, ActronNeoAuthError, ActronNeoAPIError
+# Initialize with username and password
+api = ActronNeoAPI(username="your_username", password="your_password")
 
-    async def main():
-        username = "your_email@example.com"
-        password = "your_password"
-        device_name = "my_device"
-        device_unique_id = "unique_device_id"
+# Or initialize with an existing access token
+api = ActronNeoAPI(access_token="your_access_token")
+```
 
-        api = ActronNeoAPI(username, password)
+### 2. Authentication
 
-        try:
-            # Step 1: Authenticate
-            await api.request_pairing_token(device_name, device_unique_id)
-            await api.request_bearer_token()
+#### Request Pairing Token
 
-            # Step 2: Fetch AC systems
-            systems = await api.get_ac_systems()
-            print("AC Systems:", systems)
+Pairing tokens are used to generate bearer tokens.
 
-            # Get the serial number of the first system
-            if systems:
-                serial = systems[0].get("serial")
-                if serial:
-                    # Fetch system status
-                    status = await api.get_ac_status(serial)
-                    print(f"Status for {serial}:", status)
+```python
+await api.request_pairing_token(device_name="MyDevice", device_unique_id="123456789")
+```
 
-                    # Fetch latest events
-                    events = await api.get_ac_events(serial, event_type="latest")
-                    print(f"Latest events for {serial}:", events)
-        except ActronNeoAuthError as auth_error:
-            print(f"Authentication failed: {auth_error}")
-        except ActronNeoAPIError as api_error:
-            print(f"API error: {api_error}")
-        except Exception as e:
-            print(f"Unexpected error: {e}")
+#### Request Bearer Token
 
-    # Run the async example
-    asyncio.run(main())
+Use the pairing token to request a bearer token.
 
-## API Methods
-### Authentication
-request_pairing_token(device_name: str, device_unique_id: str)  
-Requests a pairing token using your Actron Neo credentials and device details.  
+```python
+await api.request_bearer_token()
+```
 
-request_bearer_token()  
-Exchanges the pairing token for a bearer token required for subsequent API calls.  
+#### Refresh Token
 
-### AC Systems
-get_ac_systems()  
-Retrieves a list of all AC systems associated with your account.  
+Automatically refresh tokens when they expire.
 
-### AC System Status
-get_ac_status(serial_number: str)  
-Retrieves the full status of a specific AC system, including temperature, humidity, zone details, and more.  
+```python
+await api.refresh_token()
+```
 
-### AC System Events
-get_ac_events(serial_number: str, event_type: str, event_id: str = None)  
-Fetches events for a specific AC system:  
-latest: Retrieves the latest events.  
-newer: Retrieves events newer than the provided event ID.  
-older: Retrieves events older than the provided event ID.  
+### 3. Retrieve System Information
 
-## Requirements
-Python 3.8 or higher  
-aiohttp  
+#### Get AC Systems
 
-## Installation Notes
-Ensure you have access to the Actron Neo API by using valid credentials from your Actron Air account.  
+```python
+systems = await api.get_ac_systems()
+```
+
+#### Get System Status
+
+```python
+status = await api.get_ac_status(serial_number="AC_SERIAL")
+```
+
+#### Get Events
+
+```python
+events = await api.get_ac_events(serial_number="AC_SERIAL", event_type="latest")
+```
+
+### 4. Control the System
+
+#### Set System Mode
+
+```python
+await api.set_system_mode(serial_number="AC_SERIAL", is_on=True, mode="COOL")
+```
+
+#### Set Fan Mode
+
+```python
+await api.set_fan_mode(serial_number="AC_SERIAL", fan_mode="HIGH", continuous=False)
+```
+
+#### Adjust Temperature
+
+```python
+await api.set_temperature(serial_number="AC_SERIAL", mode="COOL", temperature=24.0)
+```
+
+#### Manage Zones
+
+Enable or disable specific zones:
+
+```python
+await api.set_zone(serial_number="AC_SERIAL", zone_number=0, is_enabled=True)
+```
+
+Enable or disable multiple zones:
+
+```python
+zone_settings = {
+    0: True,  # Enable zone 0
+    1: False, # Disable zone 1
+}
+await api.set_multiple_zones(serial_number="AC_SERIAL", zone_settings=zone_settings)
+```
+
+---
+
+## Logging
+
+This library uses Python's built-in `logging` module for debug and error messages. Configure logging in your application to capture these logs:
+
+```python
+import logging
+
+logging.basicConfig(level=logging.DEBUG)
+```
+
+---
+
+## Error Handling
+
+The library defines custom exceptions for better error management:
+
+- `ActronNeoAuthError`: Raised for authentication-related issues.
+- `ActronNeoAPIError`: Raised for general API errors.
+
+Example:
+
+```python
+try:
+    systems = await api.get_ac_systems()
+except ActronNeoAuthError as e:
+    print(f"Authentication failed: {e}")
+except ActronNeoAPIError as e:
+    print(f"API error: {e}")
+```
+
+---
+
+## Advanced Features
+
+### Handle Token Expiration
+
+The library automatically refreshes expired tokens using `_handle_request`.
+
+### Proactive Token Refresh
+
+Tokens are refreshed before they expire if `expires_in` is provided by the API.
+
+---
+
+## Contributing
+
+Contributions are welcome! Please submit issues and pull requests on [GitHub](https://github.com/your-repo/actronneoapi).
+
+1. Fork the repository.
+2. Create a feature branch.
+3. Submit a pull request.
+
+---
 
 ## License
-This project is licensed under the MIT License. See the LICENSE file for details.  
+
+This project is licensed under the MIT License. See the `LICENSE` file for details.
+
+---
 
 ## Disclaimer
-This is an unofficial library for the Actron Air API. It is not affiliated, endorsed, or supported by Actron Air. Use at your own risk.
+
+This library is not affiliated with or endorsed by Actron Air. Use it at your own risk.
