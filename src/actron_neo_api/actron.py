@@ -11,7 +11,6 @@ class ActronNeoAPI:
         self,
         username: str = None,
         password: str = None,
-        access_token: str = None,
         pairing_token: str = None,
         base_url: str = "https://nimbus.actronair.com.au",
     ):
@@ -21,25 +20,19 @@ class ActronNeoAPI:
         Args:
             username (str): Username for Actron Neo account.
             password (str): Password for Actron Neo account.
-            access_token (str): Pre-existing access token for API authentication.
             pairing_token (str): Pre-existing pairing token for API authentication.
             base_url (str): Base URL for the Actron Neo API.
         """
         self.username = username
         self.password = password
-        self.access_token = access_token
-        # Allow pairing token to be set at initialization
         self.pairing_token = pairing_token
         self.base_url = base_url
+        self.access_token = None
 
         # Validate initialization parameters
-        if (
-            not self.access_token
-            and not self.pairing_token
-            and (not self.username or not self.password)
-        ):
+        if not self.pairing_token and (not self.username or not self.password):
             raise ValueError(
-                "Either access_token, pairing_token, or username/password must be provided."
+                "Either pairing_token, or username/password must be provided."
             )
 
     async def request_pairing_token(
@@ -68,35 +61,6 @@ class ActronNeoAPI:
                 else:
                     raise ActronNeoAuthError(
                         f"Failed to request pairing token. Status: {response.status}, Response: {await response.text()}"
-                    )
-
-    async def request_bearer_token(self):
-        """
-        Use the pairing token to request a bearer token.
-        """
-        if not self.pairing_token:
-            raise ActronNeoAuthError(
-                "Pairing token is required to request a bearer token."
-            )
-
-        url = f"{self.base_url}/api/v0/oauth/token"
-        payload = {
-            "grant_type": "refresh_token",
-            "refresh_token": self.pairing_token,
-            "client_id": "app",
-        }
-        headers = {"Content-Type": "application/x-www-form-urlencoded"}
-
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, data=payload, headers=headers) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    self.access_token = data.get("access_token")
-                    if not self.access_token:
-                        raise ActronNeoAuthError("Access token missing in response.")
-                else:
-                    raise ActronNeoAuthError(
-                        f"Failed to request bearer token. Status: {response.status}, Response: {await response.text()}"
                     )
 
     async def refresh_token(self):
@@ -536,7 +500,7 @@ class ActronNeoAPI:
         :param zone: Zone number to set the temperature for. Default is None (common zone).
         """
         return await self._handle_request(
-            self._set_fan_mode(serial_number, mode, temperature, zone)
+            self._set_temperature(serial_number, mode, temperature, zone)
         )
 
     async def _set_temperature(

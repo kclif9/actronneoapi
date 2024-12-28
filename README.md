@@ -38,31 +38,23 @@ from actron_neo_api import ActronNeoAPI
 # Initialize with username and password
 api = ActronNeoAPI(username="your_username", password="your_password")
 
-# Or initialize with an existing access token
-api = ActronNeoAPI(access_token="your_access_token")
+# Or initialize with a pairing token
+api = ActronNeoAPI(pairing_token="your_pairing_token")
 ```
 
 ### 2. Authentication
 
 #### Request Pairing Token
 
-Pairing tokens are used to generate bearer tokens.
+Pairing tokens are used to generate access tokens. Retain the api.pairing_token for initializing the API later.
 
 ```python
 await api.request_pairing_token(device_name="MyDevice", device_unique_id="123456789")
 ```
 
-#### Request Bearer Token
-
-Use the pairing token to request a bearer token.
-
-```python
-await api.request_bearer_token()
-```
-
 #### Refresh Token
 
-Automatically refresh tokens when they expire.
+Refresh the access token tokens at initialization, or when they expire.
 
 ```python
 await api.refresh_token()
