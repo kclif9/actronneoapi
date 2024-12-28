@@ -1,6 +1,10 @@
+[build-system]
+requires = ["setuptools>=64", "setuptools-scm>=8"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "actron-neo-api"
-version = "0.1.23"
+dynamic = ["version"]
 authors = [
   { name="Kurt Chrisford", email="soft.year7030@fastmail.com" },
 ]
@@ -19,3 +23,5 @@ dependencies = [
 [project.urls]
 Homepage = "https://github.com/kclif9/actronneoapi"
 Issues = "https://github.com/kclif9/actronneoapi/issues"
+
+[tool.setuptools_scm]
