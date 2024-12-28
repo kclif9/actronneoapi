@@ -12,7 +12,7 @@ The `ActronNeoAPI` library provides an interface to communicate with Actron Air 
 - **System Information**:
   - Retrieve system details, statuses, and events.
 - **Control Features**:
-  - Set system modes (e.g., COOL, HEAT, AUTO).
+  - Set system modes (e.g., COOL, HEAT, AUTO, FAN).
   - Enable/disable zones.
   - Adjust fan modes and temperatures.
 
