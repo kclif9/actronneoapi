@@ -10,7 +10,13 @@ permissions:
 
 jobs:
   build-and-publish:
+    name: Build and release to PyPI
     runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/actron-neo-api
+    permissions:
+      id-token: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
