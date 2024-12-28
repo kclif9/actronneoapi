@@ -1,6 +1,6 @@
 [project]
 name = "actron-neo-api"
-version = "0.1.16"
+version = "0.1.17"
 authors = [
   { name="Kurt Chrisford", email="soft.year7030@fastmail.com" },
 ]
