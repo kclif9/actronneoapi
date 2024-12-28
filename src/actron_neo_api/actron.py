@@ -170,7 +170,7 @@ class ActronNeoAPI:
                         f"Failed to fetch AC systems. Status: {response.status}, Response: {await response.text()}"
                     )
 
-    async def get_ac_systems(self, serial_number: str):
+    async def get_ac_status(self, serial_number: str):
         """
         Retrieve the full status of a specific AC system by serial number.
         """
