@@ -149,7 +149,7 @@ class ActronNeoAPI:
         """
         Retrieve the full status of a specific AC system by serial number.
         """
-        return await self._handle_request(self._get_ac_status(serial_number))
+        return await self._handle_request(self._get_ac_status, serial_number)
 
     async def _get_ac_status(self, serial_number: str):
         """
@@ -184,7 +184,7 @@ class ActronNeoAPI:
         :param event_id: The event ID for 'newer' or 'older' event queries.
         """
         return await self._handle_request(
-            self._get_ac_events(serial_number, event_type, event_id)
+            self._get_ac_events, serial_number, event_type, event_id
         )
 
     async def _get_ac_events(
@@ -232,7 +232,7 @@ class ActronNeoAPI:
         :param serial_number: Serial number of the AC system.
         :param command: Dictionary containing the command details.
         """
-        return await self._handle_request(self._send_command(serial_number, command))
+        return await self._handle_request(self._send_command, serial_number, command)
 
     async def _send_command(self, serial_number: str, command: dict):
         """
@@ -270,7 +270,7 @@ class ActronNeoAPI:
         :param mode: Mode to set when the system is on. Options are: 'AUTO', 'COOL', 'FAN', 'HEAT'. Default is None.
         """
         return await self._handle_request(
-            self._set_system_mode(serial_number, is_on, mode)
+            self._set_system_mode, serial_number, is_on, mode
         )
 
     async def _set_system_mode(self, serial_number: str, is_on: bool, mode: str = None):
@@ -294,7 +294,7 @@ class ActronNeoAPI:
         """
         Retrieve the master wall controller serial number.
         """
-        return await self._handle_request(self._get_master_model(serial_number))
+        return await self._handle_request(self._get_master_model, serial_number)
 
     async def _get_master_model(self, serial_number: str) -> str | None:
         """Fetch the Master WC Model for the specified AC system."""
@@ -309,7 +309,7 @@ class ActronNeoAPI:
         """
         Retrieve the master wall controller serial number.
         """
-        return await self._handle_request(self._get_master_serial(serial_number))
+        return await self._handle_request(self._get_master_serial, serial_number)
 
     async def _get_master_serial(self, serial_number: str):
         """
@@ -324,7 +324,7 @@ class ActronNeoAPI:
         """
         Retrieve the master wall controller firmware version.
         """
-        return await self._handle_request(self._get_master_firmware(serial_number))
+        return await self._handle_request(self._get_master_firmware, serial_number)
 
     async def _get_master_firmware(self, serial_number: str):
         """
@@ -341,7 +341,7 @@ class ActronNeoAPI:
         """
         Retrieve the outdoor unit model.
         """
-        return await self._handle_request(self._get_outdoor_unit_model(serial_number))
+        return await self._handle_request(self._get_outdoor_unit_model, serial_number)
 
     async def _get_outdoor_unit_model(self, serial_number: str):
         """
@@ -359,7 +359,7 @@ class ActronNeoAPI:
         """
         Retrieve the status of the AC system, including zones and other components.
         """
-        return await self._handle_request(self._get_status(serial_number))
+        return await self._handle_request(self._get_status, serial_number)
 
     async def _get_status(self, serial_number: str):
         """
@@ -370,7 +370,7 @@ class ActronNeoAPI:
 
     async def get_zones(self, serial_number: str):
         """Retrieve zone information."""
-        return await self._handle_request(self._get_zones(serial_number))
+        return await self._handle_request(self._get_zones, serial_number)
 
     async def _get_zones(self, serial_number: str):
         """Retrieve zone information."""
@@ -386,7 +386,7 @@ class ActronNeoAPI:
         :param is_enabled: True to turn ON, False to turn OFF.
         """
         return await self._handle_request(
-            self._set_zone(serial_number, zone_number, is_enabled)
+            self._set_zone, serial_number, zone_number, is_enabled
         )
 
     async def _set_zone(self, serial_number: str, zone_number: int, is_enabled: bool):
@@ -414,7 +414,7 @@ class ActronNeoAPI:
         :param zone_settings: A dictionary where keys are zone numbers and values are True/False to enable/disable.
         """
         return await self._handle_request(
-            self._set_multiple_zones(serial_number, zone_settings)
+            self._set_multiple_zones, serial_number, zone_settings
         )
 
     async def _set_multiple_zones(self, serial_number: str, zone_settings: dict):
@@ -446,7 +446,7 @@ class ActronNeoAPI:
             continuous (bool): Whether to enable continuous fan mode.
         """
         return await self._handle_request(
-            self._set_fan_mode(serial_number, fan_mode, continuous)
+            self._set_fan_mode, serial_number, fan_mode, continuous
         )
 
     async def _set_fan_mode(
@@ -500,7 +500,7 @@ class ActronNeoAPI:
         :param zone: Zone number to set the temperature for. Default is None (common zone).
         """
         return await self._handle_request(
-            self._set_temperature(serial_number, mode, temperature, zone)
+            self._set_temperature, serial_number, mode, temperature, zone
         )
 
     async def _set_temperature(
