@@ -36,7 +36,7 @@ jobs:
           TAG=${{ github.ref_name }}
           COMMIT_SHA=$(git rev-parse HEAD)
           git tag -fa $TAG $COMMIT_SHA -m "Tagging version $TAG"
-          git push origin $TAG
+          git push origin $TAG --force
   pypi-publish:
     name: Publish release to PyPI
     runs-on: ubuntu-latest
