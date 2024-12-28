@@ -7,7 +7,7 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class ActronNeoAPI:
-    def __init__(self, username: str = None, password: str = None, access_token: str = None, base_url: str = "https://nimbus.actronair.com.au"):
+    def __init__(self, username: str = None, password: str = None, access_token: str = None, pairing_token: str = None, base_url: str = "https://nimbus.actronair.com.au"):
         """
         Initialize the ActronNeoAPI client.
 
@@ -15,18 +15,21 @@ class ActronNeoAPI:
             username (str): Username for Actron Neo account.
             password (str): Password for Actron Neo account.
             access_token (str): Pre-existing access token for API authentication.
+            pairing_token (str): Pre-existing pairing token for API authentication.
             base_url (str): Base URL for the Actron Neo API.
         """
         self.username = username
         self.password = password
         self.access_token = access_token
+        # Allow pairing token to be set at initialization
+        self.pairing_token = pairing_token
         self.base_url = base_url
-        self.pairing_token = None  # Used if authenticating with username/password
 
         # Validate initialization parameters
-        if not self.access_token and (not self.username or not self.password):
+        if not self.access_token and not self.pairing_token and (not self.username or not self.password):
             raise ValueError(
-                "Either access_token or username/password must be provided.")
+                "Either access_token, pairing_token, or username/password must be provided."
+            )
 
     async def request_pairing_token(self, device_name: str, device_unique_id: str, client: str = "ios"):
         """
