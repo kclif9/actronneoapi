@@ -8,7 +8,7 @@ dynamic = ["version"]
 authors = [
   { name="Kurt Chrisford", email="soft.year7030@fastmail.com" },
 ]
-description = "Actron Neo API"
+description="Python API wrapper for the Actron Neo API."
 readme = "README.md"
 requires-python = ">=3.8"
 classifiers = [
