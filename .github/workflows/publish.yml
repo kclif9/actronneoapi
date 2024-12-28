@@ -11,6 +11,8 @@ permissions:
 jobs:
   update-version:
     runs-on: ubuntu-latest
+    outputs:
+      commit_sha: ${{ steps.new_commit.outputs.sha }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -33,7 +35,7 @@ jobs:
           git push origin HEAD:main
       - name: Get new commit SHA
         id: new_commit
-        run: echo "::set-output name=sha::$(git rev-parse HEAD)"
+        run: echo "commit_sha=$(git rev-parse HEAD)" >> $GITHUB_ENV
       - name: Update release with new commit SHA
         run: |
           curl -X PATCH \
@@ -55,7 +57,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
         with:
-          ref: ${{ needs.update-version.outputs.sha }}
+          ref: ${{ needs.update-version.outputs.commit_sha }}
           fetch-depth: 0
       - name: Set up Python
         uses: actions/setup-python@v4
