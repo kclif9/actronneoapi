@@ -23,6 +23,7 @@ jobs:
           sed -i "s/^version = \".*\"/version = \"$VERSION\"/" pyproject.toml
       - name: Commit changes
         run: |
+          TAG=${{ github.ref_name }}
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
           git add pyproject.toml
