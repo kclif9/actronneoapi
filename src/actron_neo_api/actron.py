@@ -57,7 +57,8 @@ class ActronNeoAPI:
                     data = await response.json()
                     self.pairing_token = data.get("pairingToken")
                     if not self.pairing_token:
-                        raise ActronNeoAuthError("Pairing token missing in response.")
+                        raise ActronNeoAuthError(
+                            "Pairing token missing in response.")
                 else:
                     raise ActronNeoAuthError(
                         f"Failed to request pairing token. Status: {response.status}, Response: {await response.text()}"
@@ -88,7 +89,8 @@ class ActronNeoAPI:
                     data = await response.json()
                     self.access_token = data.get("access_token")
                     if not self.access_token:
-                        raise ActronNeoAuthError("Access token missing in response.")
+                        raise ActronNeoAuthError(
+                            "Access token missing in response.")
                 else:
                     raise ActronNeoAuthError(
                         f"Failed to refresh access token. Status: {response.status}, Response: {await response.text()}"
@@ -242,7 +244,8 @@ class ActronNeoAPI:
         :param command: Dictionary containing the command details.
         """
         if not self.access_token:
-            raise ActronNeoAuthError("Authentication required before sending commands.")
+            raise ActronNeoAuthError(
+                "Authentication required before sending commands.")
 
         url = (
             f"{self.base_url}/api/v0/client/ac-systems/cmds/send?serial={serial_number}"
@@ -317,7 +320,8 @@ class ActronNeoAPI:
         """
         status = await self.get_ac_status(serial_number)
         return (
-            status.get("lastKnownState", {}).get("AirconSystem", {}).get("MasterSerial")
+            status.get("lastKnownState", {}).get(
+                "AirconSystem", {}).get("MasterSerial")
         )
 
     async def get_master_firmware(self, serial_number: str):
@@ -461,7 +465,8 @@ class ActronNeoAPI:
             continuous (bool): Whether to enable continuous fan mode.
         """
         if not self.access_token:
-            raise ActronNeoAuthError("Authentication required before sending commands.")
+            raise ActronNeoAuthError(
+                "Authentication required before sending commands.")
 
         mode = fan_mode
         if continuous:
@@ -515,7 +520,8 @@ class ActronNeoAPI:
         :param zone: Zone number to set the temperature for. Default is None (common zone).
         """
         if mode.upper() not in ["COOL", "HEAT", "AUTO"]:
-            raise ValueError("Invalid mode. Choose from 'COOL', 'HEAT', 'AUTO'.")
+            raise ValueError(
+                "Invalid mode. Choose from 'COOL', 'HEAT', 'AUTO'.")
 
         # Build the command based on mode and zone
         command = {"command": {"type": "set-settings"}}
@@ -571,5 +577,5 @@ class ActronNeoAPI:
                     raise ValueError(
                         "For AUTO mode, provide a dict with 'cool' and 'heat' keys for temperature."
                     )
-
+        _LOGGER.debug(f"Running {command} against {serial_number}")
         return await self.send_command(serial_number, command)
