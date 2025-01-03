@@ -381,6 +381,11 @@ class ActronNeoAPI:
         status = await self.get_ac_status(serial_number)
         return status.get("lastKnownState", {}).get("RemoteZoneInfo", [])
 
+    async def _get_zone_status(self, serial_number: str):
+        """Retrieve zone information."""
+        status = await self.get_ac_status(serial_number)
+        return status.get("UserAirconSettings", {}).get("EnabledZones", [])
+
     async def set_zone(self, serial_number: str, zone_number: int, is_enabled: bool):
         """
         Turn a specific zone ON/OFF.
