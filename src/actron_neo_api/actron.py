@@ -410,11 +410,16 @@ class ActronNeoAPI:
         :param zone_number: Zone number to control (starting from 0).
         :param is_enabled: True to turn ON, False to turn OFF.
         """
+        # Retrieve current zone status
+        current_status = await self.get_zone_status(serial_number)
+
+        # Update the specific zone
+        current_status[zone_number] = is_enabled
+
+        # Prepare the command
         command = {
             "command": {
-                "UserAirconSettings.EnabledZones": {
-                    zone_number: is_enabled
-                },
+                "UserAirconSettings.EnabledZones": current_status,
                 "type": "set-settings",
             }
         }
