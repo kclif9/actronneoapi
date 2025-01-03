@@ -381,8 +381,12 @@ class ActronNeoAPI:
         status = await self.get_ac_status(serial_number)
         return status.get("lastKnownState", {}).get("RemoteZoneInfo", [])
 
+    async def get_zone_status(self, serial_number: str):
+        """Retrieve zone status."""
+        return await self._handle_request(self._get_zone_status, serial_number)
+
     async def _get_zone_status(self, serial_number: str):
-        """Retrieve zone information."""
+        """Retrieve zone status."""
         status = await self.get_ac_status(serial_number)
         return status.get("UserAirconSettings", {}).get("EnabledZones", [])
 
