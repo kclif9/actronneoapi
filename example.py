@@ -1,6 +1,7 @@
 import asyncio
 from actron_neo_api import ActronNeoAPI, ActronNeoAuthError, ActronNeoAPIError
 
+
 async def main():
     username = "example@example.com"
     password = "yourpassword"
@@ -12,29 +13,21 @@ async def main():
     try:
         # Step 1: Authenticate
         await api.request_pairing_token(device_name, device_unique_id)
-        await api.request_bearer_token()
+        await api.refresh_token()
 
         # Step 2: Fetch AC systems
         systems = await api.get_ac_systems()
+        unit = systems["_embedded"]["ac-system"][0]
         print("AC Systems:", systems)
 
         # Parse systems data
-        if '_embedded' in systems and 'ac-system' in systems['_embedded']:
-            for system in systems['_embedded']['ac-system']:
-                serial = system.get('serial')
-                description = system.get('description')
-                print(f"System Found: Serial={serial}, Description={description}")
-
-                # Fetch system status
-                if serial:
-                    status = await api.get_ac_status(serial)
-                    print(f"Status for {serial}:", status)
-
-                    # Fetch latest events
-                    events = await api.get_ac_events(serial, event_type="latest")
-                    print(f"Latest events for {serial}:", events)
-        else:
-            print("No AC systems found in the response.")
+        print("Attempt to change temp")
+        await api.set_temperature(
+            unit['serial'],
+            mode="COOL",
+            temperature=22,
+            zone=1,
+        )
     except ActronNeoAuthError as auth_error:
         print(f"Authentication failed: {auth_error}")
     except ActronNeoAPIError as api_error:
