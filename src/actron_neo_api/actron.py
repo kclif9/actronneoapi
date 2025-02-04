@@ -28,10 +28,8 @@ class ActronNeoAPI:
         self.pairing_token = pairing_token
         self.base_url = base_url
         self.access_token = None
-        self.local_state = {
-            "full_update": None,
-            "last_event_id": None
-        }
+        self.status = None
+        self.latest_event_id = None
 
         # Validate initialization parameters
         if not self.pairing_token and (not self.username or not self.password):
@@ -614,10 +612,10 @@ class ActronNeoAPI:
             events = await self.get_ac_events(serial_number, event_type="latest")
             if events is None:
                 _LOGGER.error("Failed to fetch events: get_ac_events returned None")
-                return self.local_state["full_update"]
+                return self.status
         except (TimeoutError, aiohttp.ClientError) as e:
             _LOGGER.error("Error fetching full update: %s", e)
-            return self.local_state["full_update"]
+            return self.status
 
         for event in events["events"]:
             event_data = event["data"]
@@ -626,11 +624,11 @@ class ActronNeoAPI:
 
             if event_type == "full-status-broadcast":
                 _LOGGER.debug("Received full-status-broadcast, updating full state")
-                self.local_state["full_update"] = event_data
-                self.local_state["last_event_id"] = event_id
-                return self.local_state["full_update"]
+                self.status = event_data
+                self.latest_event_id = event_id
+                return self.status
 
-        return self.local_state["full_update"]
+        return self.status
 
     async def _fetch_incremental_updates(self, serial_number: str):
         """Fetch incremental updates since the last event."""
@@ -639,14 +637,14 @@ class ActronNeoAPI:
             events = await self.get_ac_events(
                 serial_number,
                 event_type="newer",
-                event_id=self.local_state["last_event_id"],
+                event_id=self.latest_event_id,
             )
             if events is None:
                 _LOGGER.error("Failed to fetch events: get_ac_events returned None")
-                return self.local_state["full_update"]
+                return self.status
         except (TimeoutError, aiohttp.ClientError) as e:
             _LOGGER.error("Error fetching incremental updates: %s", e)
-            return self.local_state["full_update"]
+            return self.status
 
         for event in reversed(events["events"]):
             event_data = event["data"]
@@ -655,16 +653,16 @@ class ActronNeoAPI:
 
             if event_type == "full-status-broadcast":
                 _LOGGER.debug("Received full-status-broadcast, updating full state")
-                self.local_state["full_update"] = event_data
-                self.local_state["last_event_id"] = event_id
-                return self.local_state["full_update"]
+                self.status = event_data
+                self.latest_event_id = event_id
+                return self.status
 
             if event_type == "status-change-broadcast":
                 _LOGGER.debug("Merging status-change-broadcast into full state")
-                self._merge_incremental_update(self.local_state["full_update"], event["data"])
+                self._merge_incremental_update(self.status, event["data"])
 
-            self.local_state["last_event_id"] = event_id
-        return self.local_state["full_update"]
+            self.latest_event_id = event_id
+        return self.status
 
     def _merge_incremental_update(self, full_state, incremental_data):
         """Merge incremental updates into the full state."""
