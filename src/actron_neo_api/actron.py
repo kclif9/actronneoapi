@@ -600,7 +600,7 @@ class ActronNeoAPI:
 
     async def get_updated_status(self, serial_number: str):
         """Get the updated status of the AC system."""
-        if not self.local_state.get("last_event_id"):
+        if not self.latest_event_id:
             return await self._handle_request(self._fetch_full_update, serial_number)
         else:
             return await self._handle_request(self._fetch_incremental_updates, serial_number)
