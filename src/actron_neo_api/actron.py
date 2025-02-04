@@ -28,6 +28,10 @@ class ActronNeoAPI:
         self.pairing_token = pairing_token
         self.base_url = base_url
         self.access_token = None
+        self.local_state = {
+            "full_update": None,
+            "last_event_id": None
+        }
 
         # Validate initialization parameters
         if not self.pairing_token and (not self.username or not self.password):
@@ -595,3 +599,123 @@ class ActronNeoAPI:
                     )
         _LOGGER.debug(f"Running {command} against {serial_number}")
         return await self.send_command(serial_number, command)
+
+    async def get_updated_status(self, serial_number: str):
+        """Get the updated status of the AC system."""
+        if not self.local_state.get("last_event_id"):
+            return await self._handle_request(self._fetch_full_update, serial_number)
+        else:
+            return await self._handle_request(self._fetch_incremental_updates, serial_number)
+
+    async def _fetch_full_update(self, serial_number: str):
+        """Fetch the full update."""
+        _LOGGER.debug("Fetching full-status-broadcast")
+        try:
+            events = await self.get_ac_events(serial_number, event_type="latest")
+            if events is None:
+                _LOGGER.error("Failed to fetch events: get_ac_events returned None")
+                return self.local_state["full_update"]
+        except (TimeoutError, aiohttp.ClientError) as e:
+            _LOGGER.error("Error fetching full update: %s", e)
+            return self.local_state["full_update"]
+
+        for event in events["events"]:
+            event_data = event["data"]
+            event_id = event["id"]
+            event_type = event["type"]
+
+            if event_type == "full-status-broadcast":
+                _LOGGER.debug("Received full-status-broadcast, updating full state")
+                self.local_state["full_update"] = event_data
+                self.local_state["last_event_id"] = event_id
+                if self.local_state["full_update"] is not None:
+                    self.async_set_updated_data(self.local_state["full_update"])
+                return self.local_state["full_update"]
+
+        return self.local_state["full_update"]
+
+    async def _fetch_incremental_updates(self, serial_number: str):
+        """Fetch incremental updates since the last event."""
+        _LOGGER.debug("Fetching incremental updates")
+        try:
+            events = await self.get_ac_events(
+                serial_number,
+                event_type="newer",
+                event_id=self.local_state["last_event_id"],
+            )
+            if events is None:
+                _LOGGER.error("Failed to fetch events: get_ac_events returned None")
+                return self.local_state["full_update"]
+        except (TimeoutError, aiohttp.ClientError) as e:
+            _LOGGER.error("Error fetching incremental updates: %s", e)
+            return self.local_state["full_update"]
+
+        for event in reversed(events["events"]):
+            event_data = event["data"]
+            event_id = event["id"]
+            event_type = event["type"]
+
+            if event_type == "full-status-broadcast":
+                _LOGGER.debug("Received full-status-broadcast, updating full state")
+                self.local_state["full_update"] = event_data
+                self.local_state["last_event_id"] = event_id
+                if self.local_state["full_update"] is not None:
+                    self.async_set_updated_data(self.local_state["full_update"])
+                return self.local_state["full_update"]
+
+            if event_type == "status-change-broadcast":
+                _LOGGER.debug("Merging status-change-broadcast into full state")
+                self._merge_incremental_update(self.local_state["full_update"], event["data"])
+
+            self.local_state["last_event_id"] = event_id
+
+        if self.local_state["full_update"] is not None:
+            self.async_set_updated_data(self.local_state["full_update"])
+            _LOGGER.debug("Coordinator data updated with the latest state")
+        return self.local_state["full_update"]
+
+    def _merge_incremental_update(self, full_state, incremental_data):
+        """Merge incremental updates into the full state."""
+        for key, value in incremental_data.items():
+            if key.startswith("@"):
+                continue
+
+            keys = key.split(".")
+            current = full_state
+
+            for part in keys[:-1]:
+                match = re.match(r"(.+)\[(\d+)\]$", part)
+                if match:
+                    array_key, index = match.groups()
+                    index = int(index)
+
+                    if array_key not in current:
+                        current[array_key] = []
+
+                    while len(current[array_key]) <= index:
+                        current[array_key].append({})
+
+                    current = current[array_key][index]
+                else:
+                    if part not in current:
+                        current[part] = {}
+                    current = current[part]
+
+            final_key = keys[-1]
+            match = re.match(r"(.+)\[(\d+)\]$", final_key)
+            if match:
+                array_key, index = match.groups()
+                index = int(index)
+
+                if array_key not in current:
+                    current[array_key] = []
+
+                while len(current[array_key]) <= index:
+                    current[array_key].append({})
+
+                if isinstance(current[array_key][index], dict) and isinstance(value, dict):
+                    current[array_key][index].update(value)
+                else:
+                    current[array_key][index] = value
+            else:
+                current[final_key] = value
