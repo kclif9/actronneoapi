@@ -628,8 +628,6 @@ class ActronNeoAPI:
                 _LOGGER.debug("Received full-status-broadcast, updating full state")
                 self.local_state["full_update"] = event_data
                 self.local_state["last_event_id"] = event_id
-                if self.local_state["full_update"] is not None:
-                    self.async_set_updated_data(self.local_state["full_update"])
                 return self.local_state["full_update"]
 
         return self.local_state["full_update"]
@@ -659,8 +657,6 @@ class ActronNeoAPI:
                 _LOGGER.debug("Received full-status-broadcast, updating full state")
                 self.local_state["full_update"] = event_data
                 self.local_state["last_event_id"] = event_id
-                if self.local_state["full_update"] is not None:
-                    self.async_set_updated_data(self.local_state["full_update"])
                 return self.local_state["full_update"]
 
             if event_type == "status-change-broadcast":
@@ -668,10 +664,6 @@ class ActronNeoAPI:
                 self._merge_incremental_update(self.local_state["full_update"], event["data"])
 
             self.local_state["last_event_id"] = event_id
-
-        if self.local_state["full_update"] is not None:
-            self.async_set_updated_data(self.local_state["full_update"])
-            _LOGGER.debug("Coordinator data updated with the latest state")
         return self.local_state["full_update"]
 
     def _merge_incremental_update(self, full_state, incremental_data):
