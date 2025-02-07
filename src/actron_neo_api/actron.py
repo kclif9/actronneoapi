@@ -602,14 +602,28 @@ class ActronNeoAPI:
 
     async def update_status(self):
         """Get the updated status of the AC system."""
-
         systems_response = await self.get_ac_systems()
         systems = systems_response['_embedded']['ac-system']
+
         for system in systems:
-            if not self.latest_event_id[system["serial"]]:
-                return await self._handle_request(self._fetch_full_update, system["serial"])
+            serial = system.get("serial")
+
+            if self.latest_event_id is None:
+                self.latest_event_id = {}
+
+            if serial not in self.latest_event_id:
+                self.latest_event_id[serial] = None
+
+            if self.status is None:
+                self.status = {}
+
+            if serial not in self.status:
+                self.status[serial] = {}
+
+            if not self.latest_event_id[serial]:
+                return await self._handle_request(self._fetch_full_update, serial)
             else:
-                return await self._handle_request(self._fetch_incremental_updates, system["serial"])
+                return await self._handle_request(self._fetch_incremental_updates, serial)
 
     async def _fetch_full_update(self, serial_number: str):
         """Fetch the full update."""
