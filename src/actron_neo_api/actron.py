@@ -600,12 +600,14 @@ class ActronNeoAPI:
         _LOGGER.debug(f"Running {command} against {serial_number}")
         return await self.send_command(serial_number, command)
 
-    async def get_updated_status(self, serial_number: str):
+    async def update_status(self):
         """Get the updated status of the AC system."""
-        if not self.latest_event_id:
-            return await self._handle_request(self._fetch_full_update, serial_number)
-        else:
-            return await self._handle_request(self._fetch_incremental_updates, serial_number)
+
+        for system in await self.get_ac_systems():
+            if not self.latest_event_id[system["serial"]]:
+                return await self._handle_request(self._fetch_full_update, system["serial"])
+            else:
+                return await self._handle_request(self._fetch_incremental_updates, system["serial"])
 
     async def _fetch_full_update(self, serial_number: str):
         """Fetch the full update."""
@@ -614,10 +616,10 @@ class ActronNeoAPI:
             events = await self.get_ac_events(serial_number, event_type="latest")
             if events is None:
                 _LOGGER.error("Failed to fetch events: get_ac_events returned None")
-                return self.status
+                return self.status[serial_number]
         except (TimeoutError, aiohttp.ClientError) as e:
             _LOGGER.error("Error fetching full update: %s", e)
-            return self.status
+            return self.status[serial_number]
 
         for event in events["events"]:
             event_data = event["data"]
@@ -626,11 +628,11 @@ class ActronNeoAPI:
 
             if event_type == "full-status-broadcast":
                 _LOGGER.debug("Received full-status-broadcast, updating full state")
-                self.status = event_data
-                self.latest_event_id = event_id
-                return self.status
+                self.status[serial_number] = event_data
+                self.latest_event_id[serial_number] = event_id
+                return self.status[serial_number]
 
-        return self.status
+        return self.status[serial_number]
 
     async def _fetch_incremental_updates(self, serial_number: str):
         """Fetch incremental updates since the last event."""
@@ -639,14 +641,14 @@ class ActronNeoAPI:
             events = await self.get_ac_events(
                 serial_number,
                 event_type="newer",
-                event_id=self.latest_event_id,
+                event_id=self.latest_event_id[serial_number],
             )
             if events is None:
                 _LOGGER.error("Failed to fetch events: get_ac_events returned None")
-                return self.status
+                return self.status[serial_number]
         except (TimeoutError, aiohttp.ClientError) as e:
             _LOGGER.error("Error fetching incremental updates: %s", e)
-            return self.status
+            return self.status[serial_number]
 
         for event in reversed(events["events"]):
             event_data = event["data"]
@@ -655,16 +657,16 @@ class ActronNeoAPI:
 
             if event_type == "full-status-broadcast":
                 _LOGGER.debug("Received full-status-broadcast, updating full state")
-                self.status = event_data
-                self.latest_event_id = event_id
-                return self.status
+                self.status[serial_number] = event_data
+                self.latest_event_id[serial_number] = event_id
+                return self.status[serial_number]
 
             if event_type == "status-change-broadcast":
                 _LOGGER.debug("Merging status-change-broadcast into full state")
-                self._merge_incremental_update(self.status, event["data"])
+                self._merge_incremental_update(self.status[serial_number], event["data"])
 
-            self.latest_event_id = event_id
-        return self.status
+            self.latest_event_id[serial_number] = event_id
+        return self.status[serial_number]
 
     def _merge_incremental_update(self, full_state, incremental_data):
         """Merge incremental updates into the full state."""
