@@ -513,6 +513,153 @@ class ActronNeoAPI:
                         f"Failed to set fan mode. Status: {response.status}, Response: {await response.text()}"
                     )
 
+    async def set_away_mode(
+        self, serial_number: str, mode: bool = False
+    ):
+        """
+        Set the away mode of the AC system.
+
+        Args:
+            serial_number (str): The serial number of the AC system.
+            mode (bool): Whether to enable away mode.
+        """
+        return await self._handle_request(
+            self._set_away_mode, serial_number, mode
+        )
+
+    async def _set_away_mode(
+        self, serial_number: str, mode: bool = False
+    ):
+        """
+        Set the away mode of the AC system.
+
+        Args:
+            serial_number (str): The serial number of the AC system.
+            mode (bool): Whether to enable away mode.
+        """
+        if not self.access_token:
+            raise ActronNeoAuthError(
+                "Authentication required before sending commands.")
+
+        url = (
+            f"{self.base_url}/api/v0/client/ac-systems/cmds/send?serial={serial_number}"
+        )
+        payload = {
+            "command": {
+                "UserAirconSettings.AwayMode": mode,
+                "type": "set-settings",
+            }
+        }
+        headers = {
+            "Authorization": f"Bearer {self.access_token}",
+            "Content-Type": "application/json",
+        }
+
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, json=payload, headers=headers) as response:
+                if response.status != 200:
+                    raise ActronNeoAPIError(
+                        f"Failed to set away mode. Status: {response.status}, Response: {await response.text()}"
+                    )
+
+    async def set_quiet_mode(
+        self, serial_number: str, mode: bool = False
+    ):
+        """
+        Set the quiet mode of the AC system.
+
+        Args:
+            serial_number (str): The serial number of the AC system.
+            mode (bool): Whether to enable quiet mode.
+        """
+        return await self._handle_request(
+            self._set_quiet_mode, serial_number, mode
+        )
+
+    async def _set_quiet_mode(
+        self, serial_number: str, mode: bool = False
+    ):
+        """
+        Set the quiet mode of the AC system.
+
+        Args:
+            serial_number (str): The serial number of the AC system.
+            mode (bool): Whether to enable quiet mode.
+        """
+        if not self.access_token:
+            raise ActronNeoAuthError(
+                "Authentication required before sending commands.")
+
+        url = (
+            f"{self.base_url}/api/v0/client/ac-systems/cmds/send?serial={serial_number}"
+        )
+        payload = {
+            "command": {
+                "UserAirconSettings.QuietModeEnabled": mode,
+                "type": "set-settings",
+            }
+        }
+        headers = {
+            "Authorization": f"Bearer {self.access_token}",
+            "Content-Type": "application/json",
+        }
+
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, json=payload, headers=headers) as response:
+                if response.status != 200:
+                    raise ActronNeoAPIError(
+                        f"Failed to set quiet mode. Status: {response.status}, Response: {await response.text()}"
+                    )
+
+    async def set_turbo_mode(
+        self, serial_number: str, mode: bool = False
+    ):
+        """
+        Set the turbo mode of the AC system.
+
+        Args:
+            serial_number (str): The serial number of the AC system.
+            mode (bool): Whether to enable turbo mode.
+        """
+        return await self._handle_request(
+            self._set_turbo_mode, serial_number, mode
+        )
+
+    async def _set_turbo_mode(
+        self, serial_number: str, mode: bool = False
+    ):
+        """
+        Set the turbo mode of the AC system.
+
+        Args:
+            serial_number (str): The serial number of the AC system.
+            mode (bool): Whether to enable turbo mode.
+        """
+        if not self.access_token:
+            raise ActronNeoAuthError(
+                "Authentication required before sending commands.")
+
+        url = (
+            f"{self.base_url}/api/v0/client/ac-systems/cmds/send?serial={serial_number}"
+        )
+        payload = {
+            "command": {
+                "UserAirconSettings.TurboMode.Enabled": mode,
+                "type": "set-settings",
+            }
+        }
+        headers = {
+            "Authorization": f"Bearer {self.access_token}",
+            "Content-Type": "application/json",
+        }
+
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, json=payload, headers=headers) as response:
+                if response.status != 200:
+                    raise ActronNeoAPIError(
+                        f"Failed to set turbo mode. Status: {response.status}, Response: {await response.text()}"
+                    )
+
     async def set_temperature(
         self, serial_number: str, mode: str, temperature: float, zone: int = None
     ):
