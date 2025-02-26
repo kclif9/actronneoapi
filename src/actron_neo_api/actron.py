@@ -424,7 +424,6 @@ class ActronNeoAPI:
         command = {
             "command": {
                 "UserAirconSettings.EnabledZones": current_status,
-                "type": "set-settings",
             }
         }
 
