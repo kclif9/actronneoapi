@@ -509,7 +509,7 @@ class ActronNeoAPI:
         async with aiohttp.ClientSession() as session:
             async with session.post(url, json=payload, headers=headers) as response:
                 if response.status == 200:
-                    self.status[serial_number]["lastKnownState"]["UserAirconSettings"]["FanMode"] = mode
+                    self.status[serial_number]["UserAirconSettings"]["FanMode"] = mode
                 else:
                     raise ActronNeoAPIError(
                         f"Failed to set fan mode. Status: {response.status}, Response: {await response.text()}"
