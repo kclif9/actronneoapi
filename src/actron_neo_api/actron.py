@@ -64,13 +64,6 @@ class ActronNeoAPI:
                         raise ActronNeoAuthError(
                             "Pairing token missing in response.")
                     self.pairing_token = pairing_token
-                    await self.refresh_token()
-                    self.systems = await self.get_ac_systems()
-                    # Initial full status update
-                    await self.update_status()
-                    # Merge incrementals since full status update
-                    await self.update_status()
-                    return "Pairing token requested successfully."
                 else:
                     raise ActronNeoAuthError(
                         f"Failed to request pairing token. Status: {response.status}, Response: {await response.text()}"
@@ -103,6 +96,12 @@ class ActronNeoAPI:
                     if not self.access_token:
                         raise ActronNeoAuthError(
                             "Access token missing in response.")
+                    await self.refresh_token()
+                    self.systems = await self.get_ac_systems()
+                    # Initial full status update
+                    await self.update_status()
+                    # Merge incrementals since full status update
+                    await self.update_status()
                 else:
                     raise ActronNeoAuthError(
                         f"Failed to refresh access token. Status: {response.status}, Response: {await response.text()}"
@@ -717,8 +716,7 @@ class ActronNeoAPI:
 
     async def update_status(self):
         """Get the updated status of the AC system."""
-        systems = self.systems
-        for system in systems:
+        for system in self.systems:
             serial = system.get("serial")
 
             if self.latest_event_id is None:
