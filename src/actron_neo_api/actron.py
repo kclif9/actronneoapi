@@ -96,7 +96,6 @@ class ActronNeoAPI:
                     if not self.access_token:
                         raise ActronNeoAuthError(
                             "Access token missing in response.")
-                    await self.refresh_token()
                     self.systems = await self.get_ac_systems()
                     # Initial full status update
                     await self.update_status()
