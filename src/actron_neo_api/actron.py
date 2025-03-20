@@ -40,13 +40,6 @@ class ActronNeoAPI:
                 "Either pairing_token, or username/password must be provided."
             )
 
-        self.api.refresh_token()
-        self.systems = self.api.get_ac_systems()
-        # Initial full status update
-        self.api.update_status()
-        # Merge incrementals since full status update
-        self.api.update_status()
-
     async def request_pairing_token(
         self, device_name: str, device_unique_id: str, client: str = "ios"
     ):
@@ -62,15 +55,22 @@ class ActronNeoAPI:
             "deviceUniqueIdentifier": device_unique_id,
         }
         headers = {"Content-Type": "application/x-www-form-urlencoded"}
-
         async with aiohttp.ClientSession() as session:
             async with session.post(url, data=payload, headers=headers) as response:
                 if response.status == 200:
                     data = await response.json()
-                    self.pairing_token = data.get("pairingToken")
-                    if not self.pairing_token:
+                    pairing_token = data.get("pairingToken")
+                    if not pairing_token:
                         raise ActronNeoAuthError(
                             "Pairing token missing in response.")
+                    self.pairing_token = pairing_token
+                    await self.refresh_token()
+                    self.systems = await self.get_ac_systems()
+                    # Initial full status update
+                    await self.update_status()
+                    # Merge incrementals since full status update
+                    await self.update_status()
+                    return "Pairing token requested successfully."
                 else:
                     raise ActronNeoAuthError(
                         f"Failed to request pairing token. Status: {response.status}, Response: {await response.text()}"
@@ -153,7 +153,7 @@ class ActronNeoAPI:
             async with session.get(url, headers=headers) as response:
                 if response.status == 200:
                     systems = await response.json()
-                    return systems
+                    return systems["_embedded"]["ac-system"]
                 else:
                     raise ActronNeoAPIError(
                         f"Failed to fetch AC systems. Status: {response.status}, Response: {await response.text()}"
@@ -718,7 +718,6 @@ class ActronNeoAPI:
     async def update_status(self):
         """Get the updated status of the AC system."""
         systems = self.systems
-
         for system in systems:
             serial = system.get("serial")
 
