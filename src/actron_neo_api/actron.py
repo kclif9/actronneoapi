@@ -512,7 +512,11 @@ class ActronNeoAPI:
         }
 
         response = await self.send_command(serial_number, command)
+        current_fan_mode = self.status[serial_number]["UserAirconSettings"]["FanMode"]
+        _LOGGER.debug(f"Updating cache for {serial_number} FanMode {current_fan_mode} -> {mode}")
         self.status[serial_number]["UserAirconSettings"]["FanMode"] = mode
+        current_fan_mode = self.status[serial_number]["UserAirconSettings"]["FanMode"]
+        _LOGGER.debug(f"Resulting cache for {serial_number} FanMode = {current_fan_mode}")
         return response
 
     async def set_away_mode(
