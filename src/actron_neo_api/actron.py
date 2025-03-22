@@ -305,8 +305,6 @@ class ActronNeoAPI:
             command["command"]["UserAirconSettings.Mode"] = mode
 
         response = await self.send_command(serial_number, command)
-        self.status[serial_number]["UserAirconSettings"]["isOn"] = is_on
-        self.status[serial_number]["UserAirconSettings"]["Mode"] = mode
         return response
 
     async def get_master_model(self, serial_number: str):
@@ -441,7 +439,6 @@ class ActronNeoAPI:
         }
 
         response = await self.send_command(serial_number, command)
-        self.status[serial_number]["UserAirconSettings"]["EnabledZones"] = current_status
         return response
 
     async def set_multiple_zones(self, serial_number: str, zone_settings: dict):
@@ -512,11 +509,6 @@ class ActronNeoAPI:
         }
 
         response = await self.send_command(serial_number, command)
-        current_fan_mode = self.status[serial_number]["UserAirconSettings"]["FanMode"]
-        _LOGGER.debug(f"Updating cache for {serial_number} FanMode {current_fan_mode} -> {mode}")
-        self.status[serial_number]["UserAirconSettings"]["FanMode"] = mode
-        current_fan_mode = self.status[serial_number]["UserAirconSettings"]["FanMode"]
-        _LOGGER.debug(f"Resulting cache for {serial_number} FanMode = {current_fan_mode}")
         return response
 
     async def set_away_mode(
@@ -552,7 +544,6 @@ class ActronNeoAPI:
         }
 
         response = await self.send_command(serial_number, command)
-        self.status[serial_number]["UserAirconSettings"]["AwayMode"] = mode
         return response
 
     async def set_quiet_mode(
@@ -588,7 +579,6 @@ class ActronNeoAPI:
         }
 
         response = await self.send_command(serial_number, command)
-        self.status[serial_number]["UserAirconSettings"]["QuietModeEnabled"] = mode
         return response
 
     async def set_turbo_mode(
@@ -627,7 +617,6 @@ class ActronNeoAPI:
         }
 
         response = await self.send_command(serial_number, command)
-        self.status[serial_number]["UserAirconSettings"]["TurboMode"]["Enabled"] = mode
         return response
 
     async def set_temperature(
