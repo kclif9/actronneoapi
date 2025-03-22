@@ -237,6 +237,36 @@ class ActronNeoAPI:
                         f"Failed to fetch events for AC system {serial_number}. Status: {response.status}, Response: {await response.text()}"
                     )
 
+    async def get_user(self):
+        """
+        Get user data from the API.
+        """
+        return await self._handle_request(
+            self._get_user
+        )
+
+    async def _get_user(self):
+        """
+        Get user data from the API.
+        """
+        if not self.access_token:
+            raise ActronNeoAuthError(
+                "Authentication required before fetching AC system events."
+            )
+
+        url = f"{self.base_url}/api/v0/client/account"
+        headers = {"Authorization": f"Bearer {self.access_token}"}
+
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, headers=headers) as response:
+                if response.status == 200:
+                    user = await response.json()
+                    return user
+                else:
+                    raise ActronNeoAPIError(
+                        f"Failed to fetch user data. Status: {response.status}, Response: {await response.text()}"
+                    )
+
     async def send_command(self, serial_number: str, command: dict):
         """
         Send a command to the specified AC system.
