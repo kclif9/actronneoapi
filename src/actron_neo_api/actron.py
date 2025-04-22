@@ -1,5 +1,6 @@
 import logging
 import re
+import time
 import aiohttp
 from .exceptions import ActronNeoAuthError, ActronNeoAPIError
 
@@ -28,6 +29,8 @@ class ActronNeoAPI:
         self.pairing_token = pairing_token
         self.base_url = base_url
         self.access_token = None
+        self.token_type = None
+        self.token_expiry = None
         self.status = None
         self.latest_event_id = None
         self.systems = None
@@ -70,6 +73,11 @@ class ActronNeoAPI:
     async def refresh_token(self):
         """
         Refresh the access token using the pairing token.
+
+        The response includes:
+        - access_token: The new access token to use for API calls
+        - token_type: The type of token (bearer)
+        - expires_in: Token lifetime in seconds
         """
         if not self.pairing_token:
             raise ActronNeoAuthError(
@@ -91,9 +99,14 @@ class ActronNeoAPI:
                 if response.status == 200:
                     data = await response.json()
                     self.access_token = data.get("access_token")
+                    self.token_type = data.get("token_type", "bearer")
+                    expires_in = data.get("expires_in", 3600)
+
+                    self.token_expiry = time.time() + expires_in
+
                     if not self.access_token:
-                        raise ActronNeoAuthError(
-                            "Access token missing in response.")
+                        raise ActronNeoAuthError("Access token missing in response.")
+
                     self.systems = await self.get_ac_systems()
                     # Initial full status update
                     await self.update_status()
@@ -107,7 +120,15 @@ class ActronNeoAPI:
     async def _handle_request(self, request_func, *args, **kwargs):
         """
         Handle API requests, retrying if the token is expired.
+
+        Proactively refreshes the token before it expires to prevent
+        token expiration errors during requests.
         """
+        # Check if token is about to expire (within 15 mins) and proactively refresh
+        if self.token_expiry and time.time() > (self.token_expiry - 900):
+            _LOGGER.info("Access token is about to expire. Proactively refreshing.")
+            await self.refresh_token()
+
         try:
             return await request_func(*args, **kwargs)
         except ActronNeoAuthError as e:
