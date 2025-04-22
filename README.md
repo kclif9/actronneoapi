@@ -8,13 +8,19 @@ The `ActronNeoAPI` library provides an interface to communicate with Actron Air 
 
 - **Authentication**:
   - Pairing token and bearer token support.
-  - Automatic token refresh handling.
+  - Automatic and proactive token refresh.
+  - Token expiration tracking.
 - **System Information**:
   - Retrieve system details, statuses, and events.
+  - Strongly-typed data models with Pydantic.
 - **Control Features**:
   - Set system modes (e.g., COOL, HEAT, AUTO, FAN).
   - Enable/disable zones.
   - Adjust fan modes and temperatures.
+- **Advanced State Management**:
+  - Efficient incremental state updates.
+  - Event-based state tracking.
+  - Type-safe access to device properties.
 
 ---
 
@@ -28,59 +34,77 @@ pip install actron-neo-api
 
 ## Usage
 
-### 1. Initialization
+### Recommended Approach: Using Context Manager
 
-You must provide either an access token or username/password combination for authentication.
+For proper resource management and to leverage the full power of the API, use the async context manager pattern:
 
 ```python
 from actron_neo_api import ActronNeoAPI
 
-# Initialize with username and password
-api = ActronNeoAPI(username="your_username", password="your_password")
+async with ActronNeoAPI(username="your_username", password="your_password") as api:
+    # Authenticate
+    await api.request_pairing_token(device_name="MyDevice", device_unique_id="123456789")
+    await api.refresh_token()
 
-# Or initialize with a pairing token
-api = ActronNeoAPI(pairing_token="your_pairing_token")
+    # API operations
+    systems = await api.get_ac_systems()
+    # Resources automatically cleaned up when leaving this block
 ```
 
-### 2. Authentication
+### Authentication
 
 #### Request Pairing Token
 
-Pairing tokens are used to generate access tokens. Retain the api.pairing_token for initializing the API later.
+Pairing tokens are used to generate access tokens. Store this token for future sessions.
 
 ```python
 await api.request_pairing_token(device_name="MyDevice", device_unique_id="123456789")
+print(f"Save this pairing token for future use: {api.pairing_token}")
 ```
 
 #### Refresh Token
 
-Refresh the access token tokens at initialization, or when they expire.
+The library handles token management automatically, but you can manually refresh when needed:
 
 ```python
 await api.refresh_token()
 ```
 
-### 3. Retrieve System Information
+### System Information
 
 #### Get AC Systems
 
 ```python
 systems = await api.get_ac_systems()
+for system in systems:
+    print(f"System: {system.get('name')} (Serial: {system.get('serial')})")
 ```
 
-#### Get System Status
+#### Update Status
+
+Update the local state cache for all systems:
 
 ```python
-status = await api.get_ac_status(serial_number="AC_SERIAL")
+await api.update_status()
 ```
 
-#### Get Events
+#### Access System Status
 
 ```python
-events = await api.get_ac_events(serial_number="AC_SERIAL", event_type="latest")
+serial_number = "AC_SERIAL"
+
+# Retrieve updated status
+status = api.state_manager.get_status(serial_number)
+
+# Access typed properties
+if status and status.user_aircon_settings:
+    print(f"Power: {'ON' if status.user_aircon_settings.is_on else 'OFF'}")
+    print(f"Mode: {status.user_aircon_settings.mode}")
+    print(f"Fan Mode: {status.user_aircon_settings.fan_mode}")
+    print(f"Cool Setpoint: {status.user_aircon_settings.temperature_setpoint_cool_c}°C")
 ```
 
-### 4. Control the System
+### Control Systems
 
 #### Set System Mode
 
@@ -118,55 +142,92 @@ zone_settings = {
 await api.set_multiple_zones(serial_number="AC_SERIAL", zone_settings=zone_settings)
 ```
 
+### Advanced: Working with Typed Models
+
+```python
+# Update status to get the latest data
+await api.update_status()
+
+# Access typed status for a system
+serial = "AC_SERIAL"
+status = api.state_manager.get_status(serial)
+
+if status:
+    # Access user settings with type information
+    if status.user_aircon_settings:
+        cool_temp = status.user_aircon_settings.temperature_setpoint_cool_c
+        print(f"Cooling setpoint: {cool_temp}°C")
+
+    # Iterate through zones with typed access
+    for i, zone in enumerate(status.remote_zone_info):
+        if zone.exists:
+            print(f"Zone {i}: {zone.title}")
+            print(f"  Temperature: {zone.live_temp_c}°C")
+            print(f"  Humidity: {zone.live_humidity_pc}%")
+```
+
+### Advanced: Command Building
+
+For more control, you can build commands directly:
+
+```python
+from actron_neo_api.commands import CommandBuilder
+
+# Create a temperature command
+command = CommandBuilder.set_temperature(
+    mode="COOL",
+    temperature=23.5,
+    zone=1  # For a specific zone
+)
+
+# Send the command manually
+await api.send_command(serial_number, command)
+```
+
 ---
 
 ## Logging
 
-This library uses Python's built-in `logging` module for debug and error messages. Configure logging in your application to capture these logs:
+Configure logging to monitor the API operations:
 
 ```python
 import logging
+logging.basicConfig(level=logging.INFO)
 
-logging.basicConfig(level=logging.DEBUG)
+# For more detailed logging during development
+logging.getLogger("actron_neo_api").setLevel(logging.DEBUG)
 ```
 
 ---
 
 ## Error Handling
 
-The library defines custom exceptions for better error management:
-
-- `ActronNeoAuthError`: Raised for authentication-related issues.
-- `ActronNeoAPIError`: Raised for general API errors.
-
-Example:
-
 ```python
+from actron_neo_api import ActronNeoAPI, ActronNeoAuthError, ActronNeoAPIError
+
 try:
-    systems = await api.get_ac_systems()
+    async with ActronNeoAPI(username="user", password="pass") as api:
+        await api.refresh_token()
+        # API operations...
 except ActronNeoAuthError as e:
-    print(f"Authentication failed: {e}")
+    print(f"Authentication error: {e}")
 except ActronNeoAPIError as e:
     print(f"API error: {e}")
+except Exception as e:
+    print(f"Unexpected error: {e}")
 ```
 
 ---
 
-## Advanced Features
+## Legacy Code Support
 
-### Handle Token Expiration
-
-The library automatically refreshes expired tokens using `_handle_request`.
-
-### Proactive Token Refresh
-
-Tokens are refreshed before they expire if `expires_in` is provided by the API.
+> **Note**: While the library maintains backward compatibility with the original API design, we recommend using the updated approach shown above. The legacy patterns are deprecated and may be removed in future versions.
 
 ---
 
 ## Contributing
 
-Contributions are welcome! Please submit issues and pull requests on [GitHub](https://github.com/your-repo/actronneoapi).
+Contributions are welcome! Please submit issues and pull requests on [GitHub](https://github.com/kclif9/actronneoapi).
 
 1. Fork the repository.
 2. Create a feature branch.
