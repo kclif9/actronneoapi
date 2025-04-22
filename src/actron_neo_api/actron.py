@@ -31,8 +31,8 @@ class ActronNeoAPI:
         self.access_token = None
         self.token_type = None
         self.token_expiry = None
-        self.status = None
-        self.latest_event_id = None
+        self.status = {}
+        self.latest_event_id = {}
         self.systems = None
 
         # Validate initialization parameters
