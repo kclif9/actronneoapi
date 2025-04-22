@@ -46,6 +46,9 @@ class ActronNeoAPI:
             self.token_manager.pairing_token = pairing_token
 
         self.state_manager = StateManager()
+        # Set the API reference in the state manager for command execution
+        self.state_manager.set_api(self)
+
         self.systems = None
 
         # Validate parameters

@@ -5,7 +5,6 @@ import os
 from datetime import datetime
 
 from actron_neo_api import ActronNeoAPI, ActronNeoAuthError, ActronNeoAPIError
-from actron_neo_api.commands import CommandBuilder
 
 # Set up logging
 logging.basicConfig(
@@ -16,19 +15,19 @@ logger = logging.getLogger(__name__)
 
 async def example_modern_approach():
     """
-    Example of using the ActronNeoAPI with the recommended approach.
+    Example of using the ActronNeoAPI with the recommended object-oriented approach.
 
     This demonstrates:
     - Async context manager for proper resource management
     - Strongly-typed data access
-    - Command builder pattern
+    - Object-oriented command methods for intuitive control
     - Leveraging the new architectural improvements
     """
     print("\n=== RECOMMENDED API USAGE ===\n")
 
     # Replace with your actual credentials
-    username = ""
-    password = ""
+    username = os.environ.get("ACTRON_USERNAME")
+    password = os.environ.get("ACTRON_PASSWORD")
     device_name = "neo-example"
     device_unique_id = f"example-{datetime.now().strftime('%Y%m%d%H%M%S')}"
 
@@ -92,43 +91,42 @@ async def example_modern_approach():
                         print(f"  Temperature: {zone.live_temp_c}°C")
                         print(f"  Humidity: {zone.humidity}%")
 
-            # Using the command builder directly
-            print("\nDemonstrating the command builder:")
+            # Object-oriented approach using commands directly on models
+            print("\nDemonstrating the object-oriented API:")
 
-            # Example 1: Building a temperature command
+            # Setting temperature directly from the settings object
             print("Setting temperature to 23°C in COOL mode...")
-            temp_command = CommandBuilder.set_temperature(
-                mode="COOL",
-                temperature=23.0
-            )
-            await api.send_command(serial, temp_command)
+            await status.user_aircon_settings.set_temperature(mode="COOL", temperature=23.0)
 
-            # Example 2: Enabling quiet mode
+            # Turn on the system and set mode
+            print("Turning on the system and setting to COOL mode...")
+            await status.user_aircon_settings.set_system_mode(is_on=True, mode="COOL")
+
+            # Setting fan mode directly
+            print("Setting fan mode to HIGH...")
+            await status.user_aircon_settings.set_fan_mode(fan_mode="HIGH")
+
+            # Enable/disable features
             print("Enabling quiet mode...")
-            quiet_command = CommandBuilder.set_feature_mode("QuietModeEnabled", True)
-            await api.send_command(serial, quiet_command)
+            await status.user_aircon_settings.set_quiet_mode(enabled=True)
 
-            # Using convenience methods (which use the command builder internally)
-            print("\nUsing convenience methods:")
+            print("Disabling turbo mode...")
+            await status.user_aircon_settings.set_turbo_mode(enabled=False)
 
-            # Set system mode
-            print("Setting system to HEAT mode...")
-            await api.set_system_mode(serial, is_on=True, mode="HEAT")
-
-            # Set fan mode
-            print("Setting fan to LOW mode with continuous operation...")
-            await api.set_fan_mode(serial, fan_mode="LOW", continuous=True)
-
-            # Set zone
+            # Working with zones directly
             if status and status.remote_zone_info:
-                print("Enabling all zones...")
+                # Enable all zones
+                print("\nManaging zones:")
                 for i, zone in enumerate(status.remote_zone_info):
                     if zone.exists:
-                        await api.set_zone(serial, zone_number=i, is_enabled=True)
+                        print(f"Enabling zone '{zone.title}'...")
+                        await zone.enable(is_enabled=True)
 
-            # Get events (only if needed)
-            print("\nFetching recent events...")
-            events = await api.get_ac_events(serial, event_type="latest")
+                # Set temperature for first zone
+                if status.remote_zone_info[0].exists:
+                    zone = status.remote_zone_info[0]
+                    print(f"Setting temperature for zone '{zone.title}' to 22°C...")
+                    await zone.set_temperature(mode="COOL", temperature=22.0)
 
             # Update status again to see our changes
             print("\nUpdating status to see changes...")
@@ -142,6 +140,18 @@ async def example_modern_approach():
                 print(f"System power: {'ON' if settings.is_on else 'OFF'}")
                 print(f"Mode: {settings.mode}")
                 print(f"Fan mode: {settings.fan_mode}")
+                print(f"Cool setpoint: {settings.temperature_setpoint_cool_c}°C")
+                print(f"Quiet mode: {'Enabled' if settings.quiet_mode_enabled else 'Disabled'}")
+                print(f"Turbo mode: {'Enabled' if settings.turbo_enabled else 'Disabled'}")
+
+                # Show zone information after updates
+                print("\nFinal zone information:")
+                for i, zone in enumerate(updated_status.remote_zone_info):
+                    if zone.exists:
+                        is_active = "ACTIVE" if zone.is_active(settings.enabled_zones, i) else "INACTIVE"
+                        print(f"Zone {i}: {zone.title} - {is_active}")
+                        print(f"  Temperature: {zone.live_temp_c}°C")
+                        print(f"  Cool setpoint: {zone.temperature_setpoint_cool_c}°C")
 
     except ActronNeoAuthError as auth_error:
         print(f"Authentication failed: {auth_error}")
@@ -155,9 +165,8 @@ async def main():
     print("\nACTRON NEO API USAGE EXAMPLES")
     print("===========================\n")
 
-    print("This example demonstrates the recommended way to use the ActronNeoAPI.")
+    print("This example demonstrates the recommended object-oriented way to use the ActronNeoAPI.")
     print("To run the example with your credentials, update the username and password in the code.")
-    print("Then uncomment the example_modern_approach() call in the main() function.")
 
     await example_modern_approach()
 

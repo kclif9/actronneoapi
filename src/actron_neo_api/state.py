@@ -15,6 +15,20 @@ class StateManager:
         self.status: Dict[str, ActronStatus] = {}
         self.latest_event_id: Dict[str, str] = {}
         self._observers: List[Callable[[str, Dict[str, Any]], None]] = []
+        self._api: Optional[Any] = None
+
+    def set_api(self, api: Any) -> None:
+        """
+        Set the API reference to be passed to status objects.
+
+        Args:
+            api: Reference to the ActronNeoAPI instance
+        """
+        self._api = api
+
+        # Update existing status objects with the API reference
+        for status in self.status.values():
+            status.set_api(api)
 
     def add_observer(self, observer: Callable[[str, Dict[str, Any]], None]) -> None:
         """Add an observer to be notified of state changes."""
@@ -28,6 +42,11 @@ class StateManager:
         """Process a full status update for a system."""
         status = ActronStatus.model_validate(status_data)
         status.parse_nested_components()
+
+        # Set serial number and API reference
+        status.serial_number = serial_number
+        if self._api:
+            status.set_api(self._api)
 
         # Extract zone-specific humidity from peripherals
         self._map_peripheral_humidity_to_zones(status)
@@ -60,6 +79,10 @@ class StateManager:
                 else:
                     status = ActronStatus(isOnline=True, lastKnownState=event.data)
                     status.parse_nested_components()
+                    # Set serial number and API reference
+                    status.serial_number = serial_number
+                    if self._api:
+                        status.set_api(self._api)
                     self.status[serial_number] = status
 
                 # Extract zone-specific humidity from peripherals
