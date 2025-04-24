@@ -146,6 +146,112 @@ class ActronAirNeoStatus(BaseModel):
 
         return None
 
+    def get_value_by_path(self, path: List[str], attribute_name: str, default: Any = None) -> Any:
+        """
+        Get a value from the nested structure by following a path of keys.
+
+        Args:
+            path: A list of keys to follow in the hierarchy
+            attribute_name: The name of the attribute to retrieve at the end of the path
+            default: Default value to return if the path or attribute doesn't exist
+
+        Returns:
+            The value at the specified path, or the default if not found
+        """
+        if not path:
+            return self.last_known_state.get(attribute_name, default)
+
+        # Map the top-level path to the corresponding attribute
+        current = None
+        if path[0] == "LiveAircon":
+            current = self.live_aircon
+        elif path[0] == "UserAirconSettings":
+            current = self.user_aircon_settings
+        elif path[0] == "MasterInfo":
+            current = self.master_info
+        elif path[0] == "Alerts":
+            # Alerts are typically in the top level of last_known_state
+            current = self.last_known_state.get("Alerts", {})
+
+        # If we couldn't find the top-level object, return the default
+        if current is None and path[0] != "Alerts":
+            return default
+
+        # Follow the rest of the path
+        for i, key in enumerate(path[1:], 1):
+            if current is None:
+                return default
+
+            # Handle nested dictionaries vs objects
+            if isinstance(current, dict):
+                current = current.get(key, None)
+            else:
+                # For objects, try to get the attribute
+                try:
+                    current = getattr(current, key, None)
+                except (AttributeError, TypeError):
+                    return default
+
+        # Get the final attribute
+        if isinstance(current, dict):
+            return current.get(attribute_name, default)
+        else:
+            try:
+                return getattr(current, attribute_name, default)
+            except (AttributeError, TypeError):
+                return default
+
+    # Properties for sensor values
+    @property
+    def clean_filter(self) -> Optional[str]:
+        """Status of the clean filter alert."""
+        return self.get_value_by_path(["Alerts"], "CleanFilter")
+
+    @property
+    def defrost_mode(self) -> Optional[bool]:
+        """Whether the system is in defrost mode."""
+        return self.get_value_by_path(["Alerts"], "Defrosting")
+
+    @property
+    def compressor_chasing_temperature(self) -> Optional[float]:
+        """The target temperature of the compressor."""
+        return self.get_value_by_path(["LiveAircon"], "CompressorChasingTemperature")
+
+    @property
+    def compressor_live_temperature(self) -> Optional[float]:
+        """The current temperature of the compressor."""
+        return self.get_value_by_path(["LiveAircon"], "CompressorLiveTemperature")
+
+    @property
+    def compressor_mode(self) -> Optional[str]:
+        """The current mode of the compressor."""
+        return self.get_value_by_path(["LiveAircon"], "CompressorMode")
+
+    @property
+    def system_on(self) -> Optional[bool]:
+        """Whether the system is currently on."""
+        return self.get_value_by_path(["UserAirconSettings"], "isOn")
+
+    @property
+    def compressor_speed(self) -> Optional[float]:
+        """The current speed of the compressor."""
+        return self.get_value_by_path(["LiveAircon", "OutdoorUnit"], "CompSpeed")
+
+    @property
+    def compressor_power(self) -> Optional[float]:
+        """The current power consumption of the compressor in watts."""
+        return self.get_value_by_path(["LiveAircon", "OutdoorUnit"], "CompPower")
+
+    @property
+    def outdoor_temperature(self) -> Optional[float]:
+        """The current outdoor temperature in Celsius."""
+        return self.get_value_by_path(["MasterInfo"], "LiveOutdoorTemp_oC")
+
+    @property
+    def humidity(self) -> Optional[float]:
+        """The current humidity percentage."""
+        return self.get_value_by_path(["MasterInfo"], "LiveHumidity_pc")
+
 
 class ActronAirNeoEventType(BaseModel):
     id: str
