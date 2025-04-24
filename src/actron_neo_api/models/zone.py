@@ -15,13 +15,31 @@ class ActronAirNeoZoneSensor(BaseModel):
 
 class ActronAirNeoPeripheral(BaseModel):
     """Peripheral device that provides sensor data for zones"""
-    peripheral_id: str = Field("", alias="PeripheralId")
-    peripheral_type: str = Field("", alias="NV_PeripheralType")
+    logical_address: int = Field(0, alias="LogicalAddress")
+    device_type: str = Field("", alias="DeviceType")
     zone_assignments: List[int] = Field([], alias="ZoneAssignment")
     serial_number: str = Field("", alias="SerialNumber")
     battery_level: Optional[float] = Field(None, alias="RemainingBatteryCapacity_pc")
     temperature: Optional[float] = None
     humidity: Optional[float] = None
+    _parent_status: Optional["ActronStatus"] = None
+
+    @property
+    def zones(self) -> List["ActronAirNeoZone"]:
+        """
+        Get the actual zone objects assigned to this peripheral.
+
+        Returns:
+            List of zone objects this peripheral is assigned to
+        """
+        if not self._parent_status or not self._parent_status.remote_zone_info:
+            return []
+
+        result = []
+        for zone_idx in self.zone_assignments:
+            if 0 <= zone_idx < len(self._parent_status.remote_zone_info):
+                result.append(self._parent_status.remote_zone_info[zone_idx])
+        return result
 
     @classmethod
     def from_peripheral_data(cls, peripheral_data: Dict[str, Any]) -> "ActronAirNeoPeripheral":
@@ -37,6 +55,10 @@ class ActronAirNeoPeripheral(BaseModel):
                 if "RelativeHumidity_pc" in shtc1:
                     peripheral.humidity = float(shtc1["RelativeHumidity_pc"])
         return peripheral
+
+    def set_parent_status(self, parent: "ActronStatus") -> None:
+        """Set reference to parent ActronStatus object"""
+        self._parent_status = parent
 
 
 class ActronAirNeoZone(BaseModel):

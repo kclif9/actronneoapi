@@ -164,6 +164,8 @@ class ActronAirNeoStatus(BaseModel):
 
             peripheral = ActronAirNeoPeripheral.from_peripheral_data(peripheral_data)
             if peripheral:
+                # Set parent reference so zones property can work
+                peripheral.set_parent_status(self)
                 self.peripherals.append(peripheral)
 
         # Map peripheral sensor data to zones
