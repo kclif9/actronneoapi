@@ -19,7 +19,7 @@ class ActronAirNeoPeripheral(BaseModel):
     peripheral_type: str = Field("", alias="NV_PeripheralType")
     zone_assignments: List[int] = Field([], alias="ZoneAssignment")
     serial_number: str = Field("", alias="SerialNumber")
-    battery_level: Optional[float] = None
+    battery_level: Optional[float] = Field(None, alias="RemainingBatteryCapacity_pc")
     temperature: Optional[float] = None
     humidity: Optional[float] = None
 
@@ -28,21 +28,14 @@ class ActronAirNeoPeripheral(BaseModel):
         """Create a peripheral instance from raw peripheral data"""
         peripheral = cls.model_validate(peripheral_data)
 
-        # Extract sensor values from SensorInputs if available
         sensor_inputs = peripheral_data.get("SensorInputs", {})
         if sensor_inputs:
-            # Extract data from SHTC1 sensor if available
             shtc1 = sensor_inputs.get("SHTC1", {})
             if shtc1:
                 if "Temperature_oC" in shtc1:
                     peripheral.temperature = float(shtc1["Temperature_oC"])
                 if "RelativeHumidity_pc" in shtc1:
                     peripheral.humidity = float(shtc1["RelativeHumidity_pc"])
-
-            # Extract battery level if available
-            if "Battery" in sensor_inputs and "Level_pc" in sensor_inputs["Battery"]:
-                peripheral.battery_level = float(sensor_inputs["Battery"]["Level_pc"])
-
         return peripheral
 
 
