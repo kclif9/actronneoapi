@@ -1,6 +1,6 @@
 from .actron import ActronNeoAPI
 from .exceptions import ActronNeoAuthError, ActronNeoAPIError
-from .models.zone import ActronAirNeoZone, ActronAirNeoZoneSensor
+from .models.zone import ActronAirNeoZone, ActronAirNeoZoneSensor, ActronAirNeoPeripheral
 from .models.system import ActronAirNeoACSystem, ActronAirNeoLiveAircon, ActronAirNeoMasterInfo
 from .models.settings import ActronAirNeoUserAirconSettings
 from .models.status import ActronAirNeoStatus, ActronAirNeoEventType, ActronAirNeoEventsResponse
@@ -14,6 +14,7 @@ __all__ = [
     # Model Classes
     "ActronAirNeoZone",
     "ActronAirNeoZoneSensor",
+    'ActronAirNeoPeripheral',
     "ActronAirNeoACSystem",
     "ActronAirNeoLiveAircon",
     "ActronAirNeoMasterInfo",
