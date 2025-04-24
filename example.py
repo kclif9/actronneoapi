@@ -97,8 +97,8 @@ async def example_modern_approach():
             print("\nDemonstrating the object-oriented API:")
 
             # Setting temperature directly from the settings object
-            print("Setting temperature to 23°C in COOL mode...")
-            await status.user_aircon_settings.set_temperature(mode="COOL", temperature=23.0)
+            print("Setting temperature to 23°C...")
+            await status.user_aircon_settings.set_temperature(23.0)
 
             # Turn on the system and set mode
             print("Turning on the system and setting to COOL mode...")
@@ -128,7 +128,7 @@ async def example_modern_approach():
                 if status.remote_zone_info[0].exists:
                     zone = status.remote_zone_info[0]
                     print(f"Setting temperature for zone '{zone.title}' to 22°C...")
-                    await zone.set_temperature(mode="COOL", temperature=22.0)
+                    await zone.set_temperature(22.0)
 
             # Update status again to see our changes
             print("\nUpdating status to see changes...")

@@ -75,27 +75,37 @@ class UserAirconSettings(BaseModel):
             }
         }
 
-    def set_temperature_command(self, mode: str, temperature: Union[float, Dict[str, float]]) -> Dict[str, Any]:
+    def set_temperature_command(self, temperature: float) -> Dict[str, Any]:
         """
-        Create a command to set temperature for the main system.
+        Create a command to set temperature for the system based on the current AC mode.
 
         Args:
-            mode: The mode ('COOL', 'HEAT', 'AUTO')
-            temperature: The temperature to set (float or dict with 'cool' and 'heat' keys)
+            temperature: The temperature to set
 
         Returns:
             Command dictionary
         """
+        if not self.mode:
+            raise ValueError("No mode available in settings")
+
+        mode = self.mode.upper()
         command = {"command": {"type": "set-settings"}}
 
-        if mode.upper() == "COOL":
+        if mode == "COOL":
             command["command"]["UserAirconSettings.TemperatureSetpoint_Cool_oC"] = temperature
-        elif mode.upper() == "HEAT":
+        elif mode == "HEAT":
             command["command"]["UserAirconSettings.TemperatureSetpoint_Heat_oC"] = temperature
-        elif mode.upper() == "AUTO":
-            if isinstance(temperature, dict) and "cool" in temperature and "heat" in temperature:
-                command["command"]["UserAirconSettings.TemperatureSetpoint_Cool_oC"] = temperature["cool"]
-                command["command"]["UserAirconSettings.TemperatureSetpoint_Heat_oC"] = temperature["heat"]
+        elif mode == "AUTO":
+            # When in AUTO mode, we maintain the temperature differential between cooling and heating
+            differential = self.temperature_setpoint_cool_c - self.temperature_setpoint_heat_c
+
+            # Apply the same differential to the new temperature
+            # For AUTO mode, we assume the provided temperature is for cooling
+            cool_setpoint = temperature
+            heat_setpoint = max(10.0, temperature - differential)  # Ensure we don't go below a reasonable minimum
+
+            command["command"]["UserAirconSettings.TemperatureSetpoint_Cool_oC"] = cool_setpoint
+            command["command"]["UserAirconSettings.TemperatureSetpoint_Heat_oC"] = heat_setpoint
 
         return command
 
@@ -225,18 +235,30 @@ class UserAirconSettings(BaseModel):
             return await self._parent_status._api.send_command(self._parent_status.serial_number, command)
         raise ValueError("No API reference available to send command")
 
-    async def set_temperature(self, mode: str, temperature: Union[float, Dict[str, float]]) -> Dict[str, Any]:
+    async def set_temperature(self, temperature: float) -> Dict[str, Any]:
         """
-        Set temperature for the main system and send the command.
+        Set temperature for the system based on the current AC mode and send the command.
 
         Args:
-            mode: The mode ('COOL', 'HEAT', 'AUTO')
-            temperature: The temperature to set (float or dict with 'cool' and 'heat' keys)
+            temperature: The temperature to set
 
         Returns:
             API response dictionary
         """
-        command = self.set_temperature_command(mode, temperature)
+        # Apply limits if they are available
+        if self._parent_status and self._parent_status.last_known_state:
+            limits = self._parent_status.last_known_state.get("NV_Limits", {}).get("UserSetpoint_oC", {})
+
+            if self.mode.upper() == "COOL":
+                min_temp = limits.get("setCool_Min", 16.0)
+                max_temp = limits.get("setCool_Max", 30.0)
+                temperature = max(min_temp, min(max_temp, temperature))
+            elif self.mode.upper() == "HEAT":
+                min_temp = limits.get("setHeat_Min", 16.0)
+                max_temp = limits.get("setHeat_Max", 30.0)
+                temperature = max(min_temp, min(max_temp, temperature))
+
+        command = self.set_temperature_command(temperature)
         if self._parent_status and self._parent_status._api and hasattr(self._parent_status, "serial_number"):
             return await self._parent_status._api.send_command(self._parent_status.serial_number, command)
         raise ValueError("No API reference available to send command")

@@ -76,55 +76,74 @@ class Zone(BaseModel):
         return target_setpoint - temp_variance
 
     # Command generation methods
-    def set_temperature_command(self, mode: str, temperature: Union[float, Dict[str, float]],
-                               zone_index: int) -> Dict[str, Any]:
+    def set_temperature_command(self, temperature: float) -> Dict[str, Any]:
         """
-        Create a command to set temperature for this zone.
+        Create a command to set temperature for this zone based on the current AC mode.
 
         Args:
-            mode: The mode ('COOL', 'HEAT', 'AUTO')
-            temperature: The temperature to set (float or dict with 'cool' and 'heat' keys)
-            zone_index: The index of this zone in the system
+            temperature: The temperature to set
 
         Returns:
             Command dictionary
         """
+        if self._zone_index is None:
+            raise ValueError("Zone index not set")
+
+        if not self._parent_status or not self._parent_status.user_aircon_settings:
+            raise ValueError("No parent AC status available to determine mode")
+
+        mode = self._parent_status.user_aircon_settings.mode.upper()
         command = {"command": {"type": "set-settings"}}
 
-        if mode.upper() == "COOL":
-            command["command"][f"RemoteZoneInfo[{zone_index}].TemperatureSetpoint_Cool_oC"] = temperature
-        elif mode.upper() == "HEAT":
-            command["command"][f"RemoteZoneInfo[{zone_index}].TemperatureSetpoint_Heat_oC"] = temperature
-        elif mode.upper() == "AUTO":
-            if isinstance(temperature, dict) and "cool" in temperature and "heat" in temperature:
-                command["command"][f"RemoteZoneInfo[{zone_index}].TemperatureSetpoint_Cool_oC"] = temperature["cool"]
-                command["command"][f"RemoteZoneInfo[{zone_index}].TemperatureSetpoint_Heat_oC"] = temperature["heat"]
+        if mode == "COOL":
+            command["command"][f"RemoteZoneInfo[{self._zone_index}].TemperatureSetpoint_Cool_oC"] = temperature
+        elif mode == "HEAT":
+            command["command"][f"RemoteZoneInfo[{self._zone_index}].TemperatureSetpoint_Heat_oC"] = temperature
+        elif mode == "AUTO":
+            # When in AUTO mode, we maintain the temperature differential between cooling and heating
+            # Get the current differential from parent settings
+            cool_temp = self._parent_status.user_aircon_settings.temperature_setpoint_cool_c
+            heat_temp = self._parent_status.user_aircon_settings.temperature_setpoint_heat_c
+            differential = cool_temp - heat_temp
+
+            # Apply the same differential to the new temperature
+            # For AUTO mode, we assume the provided temperature is for cooling
+            cool_setpoint = temperature
+            heat_setpoint = max(10.0, temperature - differential)  # Ensure we don't go below a reasonable minimum
+
+            command["command"][f"RemoteZoneInfo[{self._zone_index}].TemperatureSetpoint_Cool_oC"] = cool_setpoint
+            command["command"][f"RemoteZoneInfo[{self._zone_index}].TemperatureSetpoint_Heat_oC"] = heat_setpoint
 
         return command
 
-    def set_enable_command(self, zone_index: int, is_enabled: bool,
-                          current_zones: List[bool]) -> Dict[str, Any]:
+    def set_enable_command(self, is_enabled: bool) -> Dict[str, Any]:
         """
         Create a command to enable or disable this zone.
 
         Args:
-            zone_index: The index of this zone in the system
             is_enabled: True to enable, False to disable
-            current_zones: Current state of all zones
 
         Returns:
             Command dictionary
         """
-        # Create a copy of the current zones
-        updated_zones = current_zones.copy()
+        if self._zone_index is None:
+            raise ValueError("Zone index not set")
+
+        if not self._parent_status or not self._parent_status.user_aircon_settings:
+            raise ValueError("No parent AC status available to determine current zones")
+
+        # Get current zones from parent
+        current_zones = self._parent_status.user_aircon_settings.enabled_zones.copy()
 
         # Update the specific zone
-        if zone_index < len(updated_zones):
-            updated_zones[zone_index] = is_enabled
+        if self._zone_index < len(current_zones):
+            current_zones[self._zone_index] = is_enabled
+        else:
+            raise ValueError(f"Zone index {self._zone_index} out of range for zones list")
 
         return {
             "command": {
-                "UserAirconSettings.EnabledZones": updated_zones,
+                "UserAirconSettings.EnabledZones": current_zones,
                 "type": "set-settings",
             }
         }
@@ -134,13 +153,12 @@ class Zone(BaseModel):
         self._parent_status = parent
         self._zone_index = zone_index
 
-    async def set_temperature(self, mode: str, temperature: Union[float, Dict[str, float]]) -> Dict[str, Any]:
+    async def set_temperature(self, temperature: float) -> Dict[str, Any]:
         """
-        Set temperature for this zone and send the command.
+        Set temperature for this zone based on the current AC mode and send the command.
 
         Args:
-            mode: The mode ('COOL', 'HEAT', 'AUTO')
-            temperature: The temperature to set (float or dict with 'cool' and 'heat' keys)
+            temperature: The temperature to set
 
         Returns:
             API response dictionary
@@ -148,7 +166,10 @@ class Zone(BaseModel):
         if self._zone_index is None:
             raise ValueError("Zone index not set")
 
-        command = self.set_temperature_command(mode, temperature, self._zone_index)
+        # Ensure temperature is within valid range
+        temperature = max(self.min_temp, min(self.max_temp, temperature))
+
+        command = self.set_temperature_command(temperature)
         if self._parent_status and self._parent_status._api and hasattr(self._parent_status, "serial_number"):
             return await self._parent_status._api.send_command(self._parent_status.serial_number, command)
         raise ValueError("No API reference available to send command")
@@ -163,15 +184,7 @@ class Zone(BaseModel):
         Returns:
             API response dictionary
         """
-        if self._zone_index is None:
-            raise ValueError("Zone index not set")
-
-        if self._parent_status and self._parent_status.user_aircon_settings:
-            command = self.set_enable_command(
-                self._zone_index,
-                is_enabled,
-                self._parent_status.user_aircon_settings.enabled_zones
-            )
-            if self._parent_status._api and hasattr(self._parent_status, "serial_number"):
-                return await self._parent_status._api.send_command(self._parent_status.serial_number, command)
+        command = self.set_enable_command(is_enabled)
+        if self._parent_status and self._parent_status._api and hasattr(self._parent_status, "serial_number"):
+            return await self._parent_status._api.send_command(self._parent_status.serial_number, command)
         raise ValueError("No API reference available to send command")

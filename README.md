@@ -58,12 +58,12 @@ async def main():
 
         # Control your AC using object-oriented methods
         await status.user_aircon_settings.set_system_mode(is_on=True, mode="COOL")
-        await status.user_aircon_settings.set_temperature(mode="COOL", temperature=23.0)
+        await status.user_aircon_settings.set_temperature(23.0)  # Mode inferred automatically
 
         # Control zones directly
         zone = status.remote_zone_info[0]
         await zone.enable(is_enabled=True)
-        await zone.set_temperature(mode="COOL", temperature=22.0)
+        await zone.set_temperature(22.0)  # Mode inferred from parent AC unit
 
 if __name__ == "__main__":
     asyncio.run(main())
@@ -123,8 +123,8 @@ status = api.state_manager.get_status("AC_SERIAL")
 # Turn the system on/off and set mode
 await status.user_aircon_settings.set_system_mode(is_on=True, mode="COOL")
 
-# Set temperature
-await status.user_aircon_settings.set_temperature(mode="COOL", temperature=23.0)
+# Set temperature (mode is automatically inferred from current system mode)
+await status.user_aircon_settings.set_temperature(23.0)
 
 # Set fan mode
 await status.user_aircon_settings.set_fan_mode(fan_mode="HIGH", continuous=False)
@@ -144,6 +144,9 @@ status = api.state_manager.get_status("AC_SERIAL")
 # Enable/disable a zone directly
 zone = status.remote_zone_info[0]  # First zone
 await zone.enable(is_enabled=True)
+
+# Set zone temperature (mode is automatically inferred from the parent AC unit)
+await zone.set_temperature(22.0)
 
 # Check zone temperature limits
 print(f"Zone min temp: {zone.min_temp}°C")
@@ -167,7 +170,7 @@ While the object-oriented approach is recommended, you can also use these method
 await api.set_system_mode(serial_number="AC_SERIAL", is_on=True, mode="COOL")
 
 # Set temperature
-await api.set_temperature(serial_number="AC_SERIAL", mode="COOL", temperature=24.0)
+await api.set_temperature(serial_number="AC_SERIAL", temperature=24.0)
 
 # Set fan mode
 await api.set_fan_mode(serial_number="AC_SERIAL", fan_mode="HIGH", continuous=False)
