@@ -8,7 +8,7 @@ from .auth import TokenManager
 from .commands import CommandBuilder
 from .state import StateManager
 from .exceptions import ActronNeoAPIError, ActronNeoAuthError
-from .models import ActronStatus, Zone, UserAirconSettings
+from .models import ActronAirNeoStatus
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -622,7 +622,7 @@ class ActronNeoAPI:
 
         return results
 
-    async def _fetch_full_update(self, serial_number: str) -> Optional[ActronStatus]:
+    async def _fetch_full_update(self, serial_number: str) -> Optional[ActronAirNeoStatus]:
         """Fetch the full update for a system."""
         _LOGGER.debug("Fetching full-status-broadcast")
         try:
@@ -636,7 +636,7 @@ class ActronNeoAPI:
             _LOGGER.error("Error fetching full update: %s", e)
             return None
 
-    async def _fetch_incremental_updates(self, serial_number: str) -> Optional[ActronStatus]:
+    async def _fetch_incremental_updates(self, serial_number: str) -> Optional[ActronAirNeoStatus]:
         """Fetch incremental updates since the last event."""
         _LOGGER.debug("Fetching incremental updates")
         try:
