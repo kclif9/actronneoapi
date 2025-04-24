@@ -8,6 +8,41 @@ class ActronAirNeoZoneSensor(BaseModel):
     kind: str = Field("", alias="NV_Kind")
     is_paired: bool = Field(False, alias="NV_isPaired")
     signal_strength: str = Field("NA", alias="Signal_of3")
+    temperature: Optional[float] = Field(None, alias="Temperature_oC")
+    humidity: Optional[float] = Field(None, alias="RelativeHumidity_pc")
+    battery_level: Optional[float] = Field(None, alias="BatteryLevel_pc")
+
+
+class ActronAirNeoPeripheral(BaseModel):
+    """Peripheral device that provides sensor data for zones"""
+    peripheral_id: str = Field("", alias="PeripheralId")
+    peripheral_type: str = Field("", alias="NV_PeripheralType")
+    zone_assignments: List[int] = Field([], alias="ZoneAssignment")
+    battery_level: Optional[float] = None
+    temperature: Optional[float] = None
+    humidity: Optional[float] = None
+
+    @classmethod
+    def from_peripheral_data(cls, peripheral_data: Dict[str, Any]) -> "ActronAirNeoPeripheral":
+        """Create a peripheral instance from raw peripheral data"""
+        peripheral = cls.model_validate(peripheral_data)
+
+        # Extract sensor values from SensorInputs if available
+        sensor_inputs = peripheral_data.get("SensorInputs", {})
+        if sensor_inputs:
+            # Extract data from SHTC1 sensor if available
+            shtc1 = sensor_inputs.get("SHTC1", {})
+            if shtc1:
+                if "Temperature_oC" in shtc1:
+                    peripheral.temperature = float(shtc1["Temperature_oC"])
+                if "RelativeHumidity_pc" in shtc1:
+                    peripheral.humidity = float(shtc1["RelativeHumidity_pc"])
+
+            # Extract battery level if available
+            if "Battery" in sensor_inputs and "Level_pc" in sensor_inputs["Battery"]:
+                peripheral.battery_level = float(sensor_inputs["Battery"]["Level_pc"])
+
+        return peripheral
 
 
 class ActronAirNeoZone(BaseModel):
@@ -66,6 +101,57 @@ class ActronAirNeoZone(BaseModel):
         if self.actual_humidity_pc is not None:
             return self.actual_humidity_pc
         return self.live_humidity_pc
+
+    @property
+    def battery_level(self) -> Optional[float]:
+        """Get the battery level of the peripheral sensor assigned to this zone.
+
+        Returns:
+            Battery level as a percentage or None if no peripheral sensor is assigned
+        """
+        if not self._parent_status:
+            return None
+
+        peripheral = self._parent_status.get_peripheral_for_zone(self.zone_id)
+        return peripheral.battery_level if peripheral else None
+
+    @property
+    def peripheral_temperature(self) -> Optional[float]:
+        """Get the temperature reading from the peripheral sensor assigned to this zone.
+
+        Returns:
+            Temperature in degrees Celsius or None if no peripheral sensor is assigned
+        """
+        if not self._parent_status:
+            return None
+
+        peripheral = self._parent_status.get_peripheral_for_zone(self.zone_id)
+        return peripheral.temperature if peripheral else None
+
+    @property
+    def peripheral_humidity(self) -> Optional[float]:
+        """Get the humidity reading from the peripheral sensor assigned to this zone.
+
+        Returns:
+            Relative humidity as a percentage or None if no peripheral sensor is assigned
+        """
+        if not self._parent_status:
+            return None
+
+        peripheral = self._parent_status.get_peripheral_for_zone(self.zone_id)
+        return peripheral.humidity if peripheral else None
+
+    @property
+    def peripheral(self) -> Optional["ActronAirNeoPeripheral"]:
+        """Get the peripheral device assigned to this zone.
+
+        Returns:
+            The peripheral device or None if no peripheral is assigned
+        """
+        if not self._parent_status or self.zone_id is None:
+            return None
+
+        return self._parent_status.get_peripheral_for_zone(self.zone_id)
 
     @property
     def max_temp(self) -> float:

@@ -3,7 +3,7 @@ from typing import Dict, List, Optional, Union, Any
 from pydantic import BaseModel, Field
 
 # Forward references for imports from other modules
-from .zone import ActronAirNeoZone
+from .zone import ActronAirNeoZone, ActronAirNeoPeripheral
 from .system import ActronAirNeoACSystem, ActronAirNeoLiveAircon, ActronAirNeoMasterInfo
 from .settings import ActronAirNeoUserAirconSettings
 
@@ -16,6 +16,7 @@ class ActronAirNeoStatus(BaseModel):
     master_info: Optional[ActronAirNeoMasterInfo] = None
     live_aircon: Optional[ActronAirNeoLiveAircon] = None
     remote_zone_info: List[ActronAirNeoZone] = Field([], alias="RemoteZoneInfo")
+    peripherals: List[ActronAirNeoPeripheral] = []
     _api: Optional[Any] = None  # Reference to the API instance
     serial_number: Optional[str] = None  # Serial number of the AC system
 
@@ -36,6 +37,9 @@ class ActronAirNeoStatus(BaseModel):
             # Set parent reference for ACSystem
             if self.ac_system:
                 self.ac_system.set_parent_status(self)
+
+            # Process peripherals if available
+            self._process_peripherals()
 
         if "UserAirconSettings" in self.last_known_state:
             self.user_aircon_settings = ActronAirNeoUserAirconSettings.model_validate(self.last_known_state["UserAirconSettings"])
@@ -81,6 +85,66 @@ class ActronAirNeoStatus(BaseModel):
             .get("UserSetpoint_oC", {})
             .get("setCool_Max", 32.0)
         )
+
+    def _process_peripherals(self) -> None:
+        """Process peripheral devices from the last_known_state and extract their sensor data"""
+        if not self.last_known_state.get("AirconSystem", {}).get("Peripherals"):
+            return
+
+        peripherals_data = self.last_known_state["AirconSystem"]["Peripherals"]
+        self.peripherals = []
+
+        for peripheral_data in peripherals_data:
+            if not peripheral_data:
+                continue
+
+            peripheral = ActronAirNeoPeripheral.from_peripheral_data(peripheral_data)
+            if peripheral:
+                self.peripherals.append(peripheral)
+
+        # Map peripheral sensor data to zones
+        self._map_peripheral_data_to_zones()
+
+    def _map_peripheral_data_to_zones(self) -> None:
+        """Map peripheral sensor data to their assigned zones"""
+        if not self.peripherals or not self.remote_zone_info:
+            return
+
+        # Create mapping of zone index to peripheral
+        zone_peripheral_map = {}
+
+        for peripheral in self.peripherals:
+            for zone_index in peripheral.zone_assignments:
+                if isinstance(zone_index, int) and 0 <= zone_index < len(self.remote_zone_info):
+                    zone_peripheral_map[zone_index] = peripheral
+
+        # Update zones with peripheral data
+        for i, zone in enumerate(self.remote_zone_info):
+            if i in zone_peripheral_map:
+                peripheral = zone_peripheral_map[i]
+                # Update zone with peripheral sensor data
+                if peripheral.humidity is not None:
+                    zone.actual_humidity_pc = peripheral.humidity
+                # The temperature will be automatically used through the existing properties
+
+    def get_peripheral_for_zone(self, zone_index: int) -> Optional[ActronAirNeoPeripheral]:
+        """
+        Get the peripheral device assigned to a specific zone
+
+        Args:
+            zone_index: The index of the zone
+
+        Returns:
+            The peripheral device assigned to the zone, or None if not found
+        """
+        if not self.peripherals:
+            return None
+
+        for peripheral in self.peripherals:
+            if zone_index in peripheral.zone_assignments:
+                return peripheral
+
+        return None
 
 
 class ActronAirNeoEventType(BaseModel):
