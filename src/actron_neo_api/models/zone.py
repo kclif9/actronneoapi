@@ -3,14 +3,14 @@ from typing import Dict, List, Optional, Union, Any
 from pydantic import BaseModel, Field
 
 
-class ZoneSensor(BaseModel):
+class ActronAirNeoZoneSensor(BaseModel):
     connected: bool = Field(False, alias="Connected")
     kind: str = Field("", alias="NV_Kind")
     is_paired: bool = Field(False, alias="NV_isPaired")
     signal_strength: str = Field("NA", alias="Signal_of3")
 
 
-class Zone(BaseModel):
+class ActronAirNeoZone(BaseModel):
     can_operate: bool = Field(False, alias="CanOperate")
     common_zone: bool = Field(False, alias="CommonZone")
     live_humidity_pc: float = Field(0.0, alias="LiveHumidity_pc")
@@ -19,7 +19,7 @@ class Zone(BaseModel):
     exists: bool = Field(False, alias="NV_Exists")
     temperature_setpoint_cool_c: float = Field(0.0, alias="TemperatureSetpoint_Cool_oC")
     temperature_setpoint_heat_c: float = Field(0.0, alias="TemperatureSetpoint_Heat_oC")
-    sensors: Dict[str, ZoneSensor] = Field({}, alias="Sensors")
+    sensors: Dict[str, ActronAirNeoZoneSensor] = Field({}, alias="Sensors")
     actual_humidity_pc: Optional[float] = None
     _parent_status: Optional["ActronStatus"] = None
     _zone_index: Optional[int] = None

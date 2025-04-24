@@ -16,10 +16,10 @@ The `ActronNeoAPI` library provides an interface to communicate with Actron Air 
 - **Control Features**:
   - Set system modes (e.g., COOL, HEAT, AUTO, FAN).
   - Enable/disable zones.
-  - Adjust fan modes and temperatures.
+  - Adjust fan modes, continuous mode, and temperatures.
 - **Object-Oriented API**:
   - Call control methods directly on model objects.
-  - Intuitive interface for settings and zone management.
+  - Intuitive interface for AC system, settings and zone management.
   - More natural integration with object-oriented code.
 - **Advanced State Management**:
   - Efficient incremental state updates.
@@ -56,9 +56,13 @@ async def main():
         serial = systems[0].get("serial")
         status = api.state_manager.get_status(serial)
 
-        # Control your AC using object-oriented methods
-        await status.user_aircon_settings.set_system_mode(is_on=True, mode="COOL")
+        # Control your AC system using object-oriented methods
+        # Through the AC system object
+        await status.ac_system.set_system_mode(mode="COOL")
+
+        # Through the settings object
         await status.user_aircon_settings.set_temperature(23.0)  # Mode inferred automatically
+        await status.user_aircon_settings.set_fan_mode("HIGH")
 
         # Control zones directly
         zone = status.remote_zone_info[0]
@@ -114,25 +118,62 @@ if status and status.user_aircon_settings:
 
 The object-oriented API allows you to call methods directly on the model objects for a more intuitive developer experience:
 
+### AC System Control
+
+```python
+# Get the status object
+status = api.state_manager.get_status("AC_SERIAL")
+
+# Direct AC system control
+ac_system = status.ac_system
+
+# Change system name
+await ac_system.set_name("Living Room AC")
+
+# Turn the system on and set mode
+await ac_system.set_system_mode(mode="COOL")
+
+# Get system information
+firmware_version = await ac_system.get_firmware_version()
+outdoor_unit_model = await ac_system.get_outdoor_unit_model()
+
+# Reboot the system when needed
+await ac_system.reboot()
+
+# Force status update for this specific system
+updated_status = await ac_system.update_status()
+```
+
 ### System Settings Control
 
 ```python
 # Get the status object
 status = api.state_manager.get_status("AC_SERIAL")
 
+# Settings control
+settings = status.user_aircon_settings
+
 # Turn the system on/off and set mode
-await status.user_aircon_settings.set_system_mode(is_on=True, mode="COOL")
+await settings.set_system_mode(mode="COOL")
 
 # Set temperature (mode is automatically inferred from current system mode)
-await status.user_aircon_settings.set_temperature(23.0)
+await settings.set_temperature(23.0)
 
-# Set fan mode
-await status.user_aircon_settings.set_fan_mode(fan_mode="HIGH", continuous=False)
+# Fan control
+# Check continuous mode status
+is_continuous = settings.continuous_fan_enabled
+base_mode = settings.base_fan_mode
+
+# Set fan mode (preserves current continuous mode setting)
+await settings.set_fan_mode("HIGH")
+
+# Enable/disable continuous fan mode
+await settings.set_continuous_mode(enabled=True)
 
 # Enable/disable features
-await status.user_aircon_settings.set_quiet_mode(enabled=True)
-await status.user_aircon_settings.set_turbo_mode(enabled=False)
-await status.user_aircon_settings.set_away_mode(enabled=False)
+await settings.set_quiet_mode(enabled=True)
+await settings.set_turbo_mode(enabled=False)
+await settings.set_away_mode(enabled=False)
 ```
 
 ### Zone Control
@@ -161,27 +202,6 @@ for i, zone in enumerate(zones):
         await zone.enable(is_enabled=False)
 ```
 
-## Alternative Control Method
-
-While the object-oriented approach is recommended, you can also use these methods:
-
-```python
-# Set system mode
-await api.set_system_mode(serial_number="AC_SERIAL", is_on=True, mode="COOL")
-
-# Set temperature
-await api.set_temperature(serial_number="AC_SERIAL", temperature=24.0)
-
-# Set fan mode
-await api.set_fan_mode(serial_number="AC_SERIAL", fan_mode="HIGH", continuous=False)
-
-# Enable/disable a zone
-await api.set_zone(serial_number="AC_SERIAL", zone_number=0, is_enabled=True)
-
-# Enable/disable multiple zones
-zone_settings = {0: True, 1: False}
-await api.set_multiple_zones(serial_number="AC_SERIAL", zone_settings=zone_settings)
-```
 
 ---
 

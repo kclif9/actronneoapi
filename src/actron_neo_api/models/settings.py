@@ -3,7 +3,7 @@ from typing import Dict, List, Optional, Union, Any
 from pydantic import BaseModel, Field
 
 
-class UserAirconSettings(BaseModel):
+class ActronAirNeoUserAirconSettings(BaseModel):
     is_on: bool = Field(False, alias="isOn")
     mode: str = Field("", alias="Mode")
     fan_mode: str = Field("", alias="FanMode")
@@ -29,18 +29,33 @@ class UserAirconSettings(BaseModel):
             return self.turbo_mode_enabled.get("Enabled", False)
         return self.turbo_mode_enabled
 
+    @property
+    def continuous_fan_enabled(self) -> bool:
+        """Check if continuous fan mode is currently enabled"""
+        return "-CONT" in self.fan_mode
+
+    @property
+    def base_fan_mode(self) -> str:
+        """Get the base fan mode without the continuous mode suffix"""
+        if self.continuous_fan_enabled:
+            return self.fan_mode.split("-CONT")[0]
+        return self.fan_mode
+
     # Command generation methods
-    def set_system_mode_command(self, is_on: bool, mode: Optional[str] = None) -> Dict[str, Any]:
+    def set_system_mode_command(self, mode: str) -> Dict[str, Any]:
         """
         Create a command to set the AC system mode.
 
         Args:
-            is_on: Boolean to turn the system on or off
-            mode: Mode to set when the system is on ('AUTO', 'COOL', 'FAN', 'HEAT')
+            mode: Mode to set ('AUTO', 'COOL', 'FAN', 'HEAT', 'OFF')
+                 Use 'OFF' to turn the system off.
 
         Returns:
             Command dictionary
         """
+        # Determine if system should be on or off based on mode
+        is_on = mode.upper() != "OFF"
+
         command = {
             "command": {
                 "UserAirconSettings.isOn": is_on,
@@ -48,25 +63,46 @@ class UserAirconSettings(BaseModel):
             }
         }
 
-        if is_on and mode:
+        if is_on:
             command["command"]["UserAirconSettings.Mode"] = mode
 
         return command
 
-    def set_fan_mode_command(self, fan_mode: str, continuous: bool = False) -> Dict[str, Any]:
+
+    def set_fan_mode_command(self, fan_mode: str) -> Dict[str, Any]:
         """
-        Create a command to set the fan mode.
+        Create a command to set the fan mode, preserving continuous mode setting.
 
         Args:
             fan_mode: The fan mode (e.g., "AUTO", "LOW", "MEDIUM", "HIGH")
-            continuous: Whether to enable continuous fan mode
 
         Returns:
             Command dictionary
         """
+        # Preserve the continuous mode setting
         mode = fan_mode
-        if continuous:
+        if self.continuous_fan_enabled:
             mode = f"{fan_mode}-CONT"
+
+        return {
+            "command": {
+                "UserAirconSettings.FanMode": mode,
+                "type": "set-settings",
+            }
+        }
+
+    def set_continuous_mode_command(self, enabled: bool) -> Dict[str, Any]:
+        """
+        Create a command to enable/disable continuous fan mode.
+
+        Args:
+            enabled: True to enable continuous mode, False to disable
+
+        Returns:
+            Command dictionary
+        """
+        base_mode = self.base_fan_mode
+        mode = f"{base_mode}-CONT" if enabled else base_mode
 
         return {
             "command": {
@@ -160,77 +196,48 @@ class UserAirconSettings(BaseModel):
             }
         }
 
-    def set_zone_command(self, zone_number: int, is_enabled: bool) -> Dict[str, Any]:
-        """
-        Create a command to set a specific zone.
-
-        Args:
-            zone_number: Zone number to control (starting from 0)
-            is_enabled: True to turn ON, False to turn OFF
-
-        Returns:
-            Command dictionary
-        """
-        # Create a copy of the current zones
-        updated_zones = self.enabled_zones.copy()
-
-        # Update the specific zone
-        if zone_number < len(updated_zones):
-            updated_zones[zone_number] = is_enabled
-
-        return {
-            "command": {
-                "UserAirconSettings.EnabledZones": updated_zones,
-                "type": "set-settings",
-            }
-        }
-
-    def set_multiple_zones_command(self, zone_settings: Dict[int, bool]) -> Dict[str, Any]:
-        """
-        Create a command to set multiple zones at once.
-
-        Args:
-            zone_settings: Dictionary where keys are zone numbers and values are True/False
-
-        Returns:
-            Command dictionary
-        """
-        return {
-            "command": {
-                **{f"UserAirconSettings.EnabledZones[{zone}]": state
-                   for zone, state in zone_settings.items()},
-                "type": "set-settings",
-            }
-        }
-
-    async def set_system_mode(self, is_on: bool, mode: Optional[str] = None) -> Dict[str, Any]:
+    async def set_system_mode(self, mode: str) -> Dict[str, Any]:
         """
         Set the AC system mode and send the command.
 
         Args:
-            is_on: Boolean to turn the system on or off
-            mode: Mode to set when the system is on ('AUTO', 'COOL', 'FAN', 'HEAT')
+            mode: Mode to set ('AUTO', 'COOL', 'FAN', 'HEAT', 'OFF')
+                 Use 'OFF' to turn the system off.
 
         Returns:
             API response dictionary
         """
-        command = self.set_system_mode_command(is_on, mode)
+        command = self.set_system_mode_command(mode)
         if self._parent_status and self._parent_status._api and hasattr(self._parent_status, "serial_number"):
             return await self._parent_status._api.send_command(self._parent_status.serial_number, command)
         raise ValueError("No API reference available to send command")
 
-    async def set_fan_mode(self, fan_mode: str, continuous: bool = False) -> Dict[str, Any]:
+    async def set_fan_mode(self, fan_mode: str) -> Dict[str, Any]:
         """
-        Set the fan mode and send the command.
+        Set the fan mode and send the command. Preserves current continuous mode setting.
 
         Args:
             fan_mode: The fan mode (e.g., "AUTO", "LOW", "MEDIUM", "HIGH")
-            continuous: Whether to enable continuous fan mode
 
         Returns:
             API response dictionary
         """
-        command = self.set_fan_mode_command(fan_mode, continuous)
+        command = self.set_fan_mode_command(fan_mode)
+        if self._parent_status and self._parent_status._api and hasattr(self._parent_status, "serial_number"):
+            return await self._parent_status._api.send_command(self._parent_status.serial_number, command)
+        raise ValueError("No API reference available to send command")
+
+    async def set_continuous_mode(self, enabled: bool) -> Dict[str, Any]:
+        """
+        Enable or disable continuous fan mode and send the command.
+
+        Args:
+            enabled: True to enable continuous mode, False to disable
+
+        Returns:
+            API response dictionary
+        """
+        command = self.set_continuous_mode_command(enabled)
         if self._parent_status and self._parent_status._api and hasattr(self._parent_status, "serial_number"):
             return await self._parent_status._api.send_command(self._parent_status.serial_number, command)
         raise ValueError("No API reference available to send command")
@@ -304,37 +311,6 @@ class UserAirconSettings(BaseModel):
             API response dictionary
         """
         command = self.set_turbo_mode_command(enabled)
-        if self._parent_status and self._parent_status._api and hasattr(self._parent_status, "serial_number"):
-            return await self._parent_status._api.send_command(self._parent_status.serial_number, command)
-        raise ValueError("No API reference available to send command")
-
-    async def set_zone(self, zone_number: int, is_enabled: bool) -> Dict[str, Any]:
-        """
-        Set a specific zone and send the command.
-
-        Args:
-            zone_number: Zone number to control (starting from 0)
-            is_enabled: True to turn ON, False to turn OFF
-
-        Returns:
-            API response dictionary
-        """
-        command = self.set_zone_command(zone_number, is_enabled)
-        if self._parent_status and self._parent_status._api and hasattr(self._parent_status, "serial_number"):
-            return await self._parent_status._api.send_command(self._parent_status.serial_number, command)
-        raise ValueError("No API reference available to send command")
-
-    async def set_multiple_zones(self, zone_settings: Dict[int, bool]) -> Dict[str, Any]:
-        """
-        Set multiple zones at once and send the command.
-
-        Args:
-            zone_settings: Dictionary where keys are zone numbers and values are True/False
-
-        Returns:
-            API response dictionary
-        """
-        command = self.set_multiple_zones_command(zone_settings)
         if self._parent_status and self._parent_status._api and hasattr(self._parent_status, "serial_number"):
             return await self._parent_status._api.send_command(self._parent_status.serial_number, command)
         raise ValueError("No API reference available to send command")
