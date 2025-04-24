@@ -3,9 +3,9 @@ from typing import Dict, List, Optional, Union, Any
 from pydantic import BaseModel, Field
 
 # Forward references for imports from other modules
-from .zone import Zone, ActronAirNeoZone
-from .system import ACSystem, ActronAirNeoACSystem, LiveAircon, ActronAirNeoLiveAircon, MasterInfo, ActronAirNeoMasterInfo
-from .settings import UserAirconSettings, ActronAirNeoUserAirconSettings
+from .zone import ActronAirNeoZone
+from .system import ActronAirNeoACSystem, ActronAirNeoLiveAircon, ActronAirNeoMasterInfo
+from .settings import ActronAirNeoUserAirconSettings
 
 
 class ActronAirNeoStatus(BaseModel):
