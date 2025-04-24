@@ -21,8 +21,8 @@ class ActronAirNeoZone(BaseModel):
     temperature_setpoint_heat_c: float = Field(0.0, alias="TemperatureSetpoint_Heat_oC")
     sensors: Dict[str, ActronAirNeoZoneSensor] = Field({}, alias="Sensors")
     actual_humidity_pc: Optional[float] = None
+    zone_id: Optional[int] = None
     _parent_status: Optional["ActronStatus"] = None
-    _zone_index: Optional[int] = None
 
     @property
     def is_active(self) -> bool:
@@ -31,9 +31,9 @@ class ActronAirNeoZone(BaseModel):
 
         if not self.can_operate:
             return False
-        if self._zone_index >= len(enabled_zones):
+        if self.zone_id >= len(enabled_zones):
             return False
-        return enabled_zones[self._zone_index]
+        return enabled_zones[self.zone_id]
 
     @property
     def hvac_mode(self) -> str:
@@ -111,7 +111,7 @@ class ActronAirNeoZone(BaseModel):
         Returns:
             Command dictionary
         """
-        if self._zone_index is None:
+        if self.zone_id is None:
             raise ValueError("Zone index not set")
 
         if not self._parent_status or not self._parent_status.user_aircon_settings:
@@ -121,9 +121,9 @@ class ActronAirNeoZone(BaseModel):
         command = {"command": {"type": "set-settings"}}
 
         if mode == "COOL":
-            command["command"][f"RemoteZoneInfo[{self._zone_index}].TemperatureSetpoint_Cool_oC"] = temperature
+            command["command"][f"RemoteZoneInfo[{self.zone_id}].TemperatureSetpoint_Cool_oC"] = temperature
         elif mode == "HEAT":
-            command["command"][f"RemoteZoneInfo[{self._zone_index}].TemperatureSetpoint_Heat_oC"] = temperature
+            command["command"][f"RemoteZoneInfo[{self.zone_id}].TemperatureSetpoint_Heat_oC"] = temperature
         elif mode == "AUTO":
             # When in AUTO mode, we maintain the temperature differential between cooling and heating
             # Get the current differential from parent settings
@@ -136,8 +136,8 @@ class ActronAirNeoZone(BaseModel):
             cool_setpoint = temperature
             heat_setpoint = max(10.0, temperature - differential)  # Ensure we don't go below a reasonable minimum
 
-            command["command"][f"RemoteZoneInfo[{self._zone_index}].TemperatureSetpoint_Cool_oC"] = cool_setpoint
-            command["command"][f"RemoteZoneInfo[{self._zone_index}].TemperatureSetpoint_Heat_oC"] = heat_setpoint
+            command["command"][f"RemoteZoneInfo[{self.zone_id}].TemperatureSetpoint_Cool_oC"] = cool_setpoint
+            command["command"][f"RemoteZoneInfo[{self.zone_id}].TemperatureSetpoint_Heat_oC"] = heat_setpoint
 
         return command
 
@@ -151,7 +151,7 @@ class ActronAirNeoZone(BaseModel):
         Returns:
             Command dictionary
         """
-        if self._zone_index is None:
+        if self.zone_id is None:
             raise ValueError("Zone index not set")
 
         if not self._parent_status or not self._parent_status.user_aircon_settings:
@@ -161,10 +161,10 @@ class ActronAirNeoZone(BaseModel):
         current_zones = self._parent_status.user_aircon_settings.enabled_zones.copy()
 
         # Update the specific zone
-        if self._zone_index < len(current_zones):
-            current_zones[self._zone_index] = is_enabled
+        if self.zone_id < len(current_zones):
+            current_zones[self.zone_id] = is_enabled
         else:
-            raise ValueError(f"Zone index {self._zone_index} out of range for zones list")
+            raise ValueError(f"Zone index {self.zone_id} out of range for zones list")
 
         return {
             "command": {
@@ -176,7 +176,7 @@ class ActronAirNeoZone(BaseModel):
     def set_parent_status(self, parent: "ActronStatus", zone_index: int) -> None:
         """Set reference to parent ActronStatus object and this zone's index"""
         self._parent_status = parent
-        self._zone_index = zone_index
+        self.zone_id = zone_index
 
     async def set_temperature(self, temperature: float) -> Dict[str, Any]:
         """
@@ -188,7 +188,7 @@ class ActronAirNeoZone(BaseModel):
         Returns:
             API response dictionary
         """
-        if self._zone_index is None:
+        if self.zone_id is None:
             raise ValueError("Zone index not set")
 
         # Ensure temperature is within valid range
