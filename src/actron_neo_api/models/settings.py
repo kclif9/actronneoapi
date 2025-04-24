@@ -47,7 +47,7 @@ class ActronAirNeoUserAirconSettings(BaseModel):
         return self.fan_mode
 
     # Command generation methods
-    def set_system_mode_command(self, mode: str) -> Dict[str, Any]:
+    def _set_system_mode_command(self, mode: str) -> Dict[str, Any]:
         """
         Create a command to set the AC system mode.
 
@@ -74,7 +74,7 @@ class ActronAirNeoUserAirconSettings(BaseModel):
         return command
 
 
-    def set_fan_mode_command(self, fan_mode: str) -> Dict[str, Any]:
+    def _set_fan_mode_command(self, fan_mode: str) -> Dict[str, Any]:
         """
         Create a command to set the fan mode, preserving continuous mode setting.
 
@@ -96,7 +96,7 @@ class ActronAirNeoUserAirconSettings(BaseModel):
             }
         }
 
-    def set_continuous_mode_command(self, enabled: bool) -> Dict[str, Any]:
+    def _set_continuous_mode_command(self, enabled: bool) -> Dict[str, Any]:
         """
         Create a command to enable/disable continuous fan mode.
 
@@ -116,7 +116,7 @@ class ActronAirNeoUserAirconSettings(BaseModel):
             }
         }
 
-    def set_temperature_command(self, temperature: float) -> Dict[str, Any]:
+    def _set_temperature_command(self, temperature: float) -> Dict[str, Any]:
         """
         Create a command to set temperature for the system based on the current AC mode.
 
@@ -150,7 +150,7 @@ class ActronAirNeoUserAirconSettings(BaseModel):
 
         return command
 
-    def set_away_mode_command(self, enabled: bool = False) -> Dict[str, Any]:
+    def _set_away_mode_command(self, enabled: bool = False) -> Dict[str, Any]:
         """
         Create a command to enable/disable away mode.
 
@@ -167,7 +167,7 @@ class ActronAirNeoUserAirconSettings(BaseModel):
             }
         }
 
-    def set_quiet_mode_command(self, enabled: bool = False) -> Dict[str, Any]:
+    def _set_quiet_mode_command(self, enabled: bool = False) -> Dict[str, Any]:
         """
         Create a command to enable/disable quiet mode.
 
@@ -184,7 +184,7 @@ class ActronAirNeoUserAirconSettings(BaseModel):
             }
         }
 
-    def set_turbo_mode_command(self, enabled: bool = False) -> Dict[str, Any]:
+    def _set_turbo_mode_command(self, enabled: bool = False) -> Dict[str, Any]:
         """
         Create a command to enable/disable turbo mode.
 
@@ -212,7 +212,7 @@ class ActronAirNeoUserAirconSettings(BaseModel):
         Returns:
             API response dictionary
         """
-        command = self.set_system_mode_command(mode)
+        command = self._set_system_mode_command(mode)
         if self._parent_status and self._parent_status._api and hasattr(self._parent_status, "serial_number"):
             return await self._parent_status._api.send_command(self._parent_status.serial_number, command)
         raise ValueError("No API reference available to send command")
@@ -227,7 +227,7 @@ class ActronAirNeoUserAirconSettings(BaseModel):
         Returns:
             API response dictionary
         """
-        command = self.set_fan_mode_command(fan_mode)
+        command = self._set_fan_mode_command(fan_mode)
         if self._parent_status and self._parent_status._api and hasattr(self._parent_status, "serial_number"):
             return await self._parent_status._api.send_command(self._parent_status.serial_number, command)
         raise ValueError("No API reference available to send command")
@@ -242,7 +242,7 @@ class ActronAirNeoUserAirconSettings(BaseModel):
         Returns:
             API response dictionary
         """
-        command = self.set_continuous_mode_command(enabled)
+        command = self._set_continuous_mode_command(enabled)
         if self._parent_status and self._parent_status._api and hasattr(self._parent_status, "serial_number"):
             return await self._parent_status._api.send_command(self._parent_status.serial_number, command)
         raise ValueError("No API reference available to send command")
@@ -270,7 +270,7 @@ class ActronAirNeoUserAirconSettings(BaseModel):
                 max_temp = limits.get("setHeat_Max", 30.0)
                 temperature = max(min_temp, min(max_temp, temperature))
 
-        command = self.set_temperature_command(temperature)
+        command = self._set_temperature_command(temperature)
         if self._parent_status and self._parent_status._api and hasattr(self._parent_status, "serial_number"):
             return await self._parent_status._api.send_command(self._parent_status.serial_number, command)
         raise ValueError("No API reference available to send command")
@@ -285,7 +285,7 @@ class ActronAirNeoUserAirconSettings(BaseModel):
         Returns:
             API response dictionary
         """
-        command = self.set_away_mode_command(enabled)
+        command = self._set_away_mode_command(enabled)
         if self._parent_status and self._parent_status._api and hasattr(self._parent_status, "serial_number"):
             return await self._parent_status._api.send_command(self._parent_status.serial_number, command)
         raise ValueError("No API reference available to send command")
@@ -300,7 +300,7 @@ class ActronAirNeoUserAirconSettings(BaseModel):
         Returns:
             API response dictionary
         """
-        command = self.set_quiet_mode_command(enabled)
+        command = self._set_quiet_mode_command(enabled)
         if self._parent_status and self._parent_status._api and hasattr(self._parent_status, "serial_number"):
             return await self._parent_status._api.send_command(self._parent_status.serial_number, command)
         raise ValueError("No API reference available to send command")
@@ -315,7 +315,7 @@ class ActronAirNeoUserAirconSettings(BaseModel):
         Returns:
             API response dictionary
         """
-        command = self.set_turbo_mode_command(enabled)
+        command = self._set_turbo_mode_command(enabled)
         if self._parent_status and self._parent_status._api and hasattr(self._parent_status, "serial_number"):
             return await self._parent_status._api.send_command(self._parent_status.serial_number, command)
         raise ValueError("No API reference available to send command")
