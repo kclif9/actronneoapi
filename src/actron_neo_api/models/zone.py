@@ -10,7 +10,7 @@ class ActronAirNeoZoneSensor(BaseModel):
     signal_strength: str = Field("NA", alias="Signal_of3")
     temperature: Optional[float] = Field(None, alias="Temperature_oC")
     humidity: Optional[float] = Field(None, alias="RelativeHumidity_pc")
-    battery_level: Optional[float] = Field(None, alias="BatteryLevel_pc")
+    battery_level: Optional[float] = Field(None, alias="RemainingBatteryCapacity_pc")
 
 
 class ActronAirNeoPeripheral(BaseModel):
