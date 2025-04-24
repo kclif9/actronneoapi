@@ -22,6 +22,7 @@ async def example_modern_approach():
     - Strongly-typed data access
     - Object-oriented command methods for intuitive control
     - Leveraging the new architectural improvements
+    - Accessing sensor properties directly
     """
     print("\n=== RECOMMENDED API USAGE ===\n")
 
@@ -105,6 +106,23 @@ async def example_modern_approach():
                         print(f"  Humidity: {zone.humidity}%")
                         print(f"  Min Temp: {zone.min_temp}°C")
                         print(f"  Max Temp: {zone.max_temp}°C")
+
+            # NEW SECTION: Sensor Properties
+            print("\n=== Sensor Properties Access ===")
+            print(f"System Power (via property): {'ON' if status.system_on else 'OFF'}")
+            print(f"Outdoor Temperature: {status.outdoor_temperature}°C")
+            print(f"Indoor Humidity: {status.humidity}%")
+            print(f"Compressor Mode: {status.compressor_mode}")
+            print(f"Compressor Live Temperature: {status.compressor_live_temperature}°C")
+            print(f"Compressor Speed: {status.compressor_speed}")
+            print(f"Compressor Power: {status.compressor_power} W")
+            print(f"Clean Filter Alert: {status.clean_filter}")
+            print(f"Defrost Mode: {'Active' if status.defrost_mode else 'Inactive'}")
+
+            # Example of using get_value_by_path for custom attributes
+            print("\nCustom attribute access with get_value_by_path:")
+            fan_rpm = status.get_value_by_path(["LiveAircon"], "FanRPM")
+            print(f"Fan RPM: {fan_rpm}")
 
             # Object-oriented approach using commands directly on models
             print("\nDemonstrating the object-oriented API:")

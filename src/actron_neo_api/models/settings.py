@@ -37,13 +37,16 @@ class ActronAirNeoUserAirconSettings(BaseModel):
     @property
     def continuous_fan_enabled(self) -> bool:
         """Check if continuous fan mode is currently enabled"""
-        return "-CONT" in self.fan_mode
+        return "CONT" in self.fan_mode
 
     @property
     def base_fan_mode(self) -> str:
         """Get the base fan mode without the continuous mode suffix"""
         if self.continuous_fan_enabled:
-            return self.fan_mode.split("-CONT")[0]
+            if "+CONT" in self.fan_mode:
+                return self.fan_mode.split("+CONT")[0]
+            elif "-CONT" in self.fan_mode:
+                return self.fan_mode.split("-CONT")[0]
         return self.fan_mode
 
     # Command generation methods
