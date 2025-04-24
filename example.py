@@ -99,7 +99,7 @@ async def example_modern_approach():
                 print("\nZone information:")
                 for i, zone in enumerate(status.remote_zone_info):
                     if zone.exists:
-                        is_active = "ACTIVE" if zone.is_active(settings.enabled_zones, i) else "INACTIVE"
+                        is_active = "ACTIVE" if zone.is_active else "INACTIVE"
                         print(f"Zone {i}: {zone.title} - {is_active}")
                         print(f"  Temperature: {zone.live_temp_c}°C")
                         print(f"  Humidity: {zone.humidity}%")
@@ -197,7 +197,7 @@ async def example_modern_approach():
                 print("\nFinal zone information:")
                 for i, zone in enumerate(updated_status.remote_zone_info):
                     if zone.exists:
-                        is_active = "ACTIVE" if zone.is_active(settings.enabled_zones, i) else "INACTIVE"
+                        is_active = "ACTIVE" if zone.is_active else "INACTIVE"
                         print(f"Zone {i}: {zone.title} - {is_active}")
                         print(f"  Temperature: {zone.live_temp_c}°C")
                         print(f"  Cool setpoint: {zone.temperature_setpoint_cool_c}°C")

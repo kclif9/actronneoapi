@@ -24,13 +24,38 @@ class ActronAirNeoZone(BaseModel):
     _parent_status: Optional["ActronStatus"] = None
     _zone_index: Optional[int] = None
 
-    def is_active(self, enabled_zones: List[bool], position: int) -> bool:
+    @property
+    def is_active(self) -> bool:
         """Check if this zone is currently active"""
+        enabled_zones = self._parent_status.user_aircon_settings.enabled_zones
+
         if not self.can_operate:
             return False
-        if position >= len(enabled_zones):
+        if self._zone_index >= len(enabled_zones):
             return False
-        return enabled_zones[position]
+        return enabled_zones[self._zone_index]
+
+    @property
+    def hvac_mode(self) -> str:
+        """
+        Get the current HVAC mode for this zone, accounting for zone and system state.
+
+        Returns:
+            String representing the mode ("OFF", "COOL", "HEAT", "AUTO", "FAN")
+            "OFF" is returned if the system is off or the zone is inactive
+        """
+        if not self._parent_status or not self._parent_status.user_aircon_settings:
+            return "OFF"
+
+        settings = self._parent_status.user_aircon_settings
+
+        if not settings.is_on:
+            return "OFF"
+
+        if not self.is_active:
+            return "OFF"
+
+        return settings.mode
 
     @property
     def humidity(self) -> float:
