@@ -23,6 +23,11 @@ class ActronAirNeoUserAirconSettings(BaseModel):
         self._parent_status = parent
 
     @property
+    def turbo_supported(self) -> bool:
+        """Check if turbo mode is supported, handling both the boolean and object representation"""
+        return self.turbo_mode_enabled.get("Supported", False)
+
+    @property
     def turbo_enabled(self) -> bool:
         """Get the turbo mode status, handling both the boolean and object representation"""
         if isinstance(self.turbo_mode_enabled, dict):
