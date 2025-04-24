@@ -90,6 +90,8 @@ async def example_modern_approach():
                         print(f"Zone {i}: {zone.title} - {is_active}")
                         print(f"  Temperature: {zone.live_temp_c}°C")
                         print(f"  Humidity: {zone.humidity}%")
+                        print(f"  Min Temp: {zone.min_temp}°C")
+                        print(f"  Max Temp: {zone.max_temp}°C")
 
             # Object-oriented approach using commands directly on models
             print("\nDemonstrating the object-oriented API:")

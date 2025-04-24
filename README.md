@@ -145,8 +145,9 @@ status = api.state_manager.get_status("AC_SERIAL")
 zone = status.remote_zone_info[0]  # First zone
 await zone.enable(is_enabled=True)
 
-# Set zone temperature
-await zone.set_temperature(mode="COOL", temperature=22.0)
+# Check zone temperature limits
+print(f"Zone min temp: {zone.min_temp}°C")
+print(f"Zone max temp: {zone.max_temp}°C")
 
 # Enable/disable multiple zones
 zones = status.remote_zone_info
