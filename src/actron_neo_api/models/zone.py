@@ -18,6 +18,7 @@ class ActronAirNeoPeripheral(BaseModel):
     peripheral_id: str = Field("", alias="PeripheralId")
     peripheral_type: str = Field("", alias="NV_PeripheralType")
     zone_assignments: List[int] = Field([], alias="ZoneAssignment")
+    serial_number: str = Field("", alias="SerialNumber")
     battery_level: Optional[float] = None
     temperature: Optional[float] = None
     humidity: Optional[float] = None
