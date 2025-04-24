@@ -4,16 +4,13 @@ from pydantic import BaseModel, Field
 
 # Forward references for imports from other modules
 from .zone import ActronAirNeoZone, ActronAirNeoPeripheral
-from .system import ActronAirNeoACSystem, ActronAirNeoLiveAircon, ActronAirNeoMasterInfo
+from .system import (
+    ActronAirNeoACSystem,
+    ActronAirNeoLiveAircon,
+    ActronAirNeoMasterInfo,
+    ActronAirNeoAlerts
+)
 from .settings import ActronAirNeoUserAirconSettings
-
-
-class SensorDefinition:
-    """Define a sensor with its path and attribute name"""
-    def __init__(self, path: List[str], attribute: str, default: Any = None):
-        self.path = path
-        self.attribute = attribute
-        self.default = default
 
 
 class ActronAirNeoStatus(BaseModel):
@@ -23,24 +20,66 @@ class ActronAirNeoStatus(BaseModel):
     user_aircon_settings: Optional[ActronAirNeoUserAirconSettings] = None
     master_info: Optional[ActronAirNeoMasterInfo] = None
     live_aircon: Optional[ActronAirNeoLiveAircon] = None
+    alerts: Optional[ActronAirNeoAlerts] = None
     remote_zone_info: List[ActronAirNeoZone] = Field([], alias="RemoteZoneInfo")
     peripherals: List[ActronAirNeoPeripheral] = []
     _api: Optional[Any] = None  # Reference to the API instance
     serial_number: Optional[str] = None  # Serial number of the AC system
 
-    # Define all sensors in a single place for easier maintenance
-    _sensors = {
-        "clean_filter": SensorDefinition(["Alerts"], "CleanFilter", False),
-        "defrost_mode": SensorDefinition(["Alerts"], "Defrosting", False),
-        "compressor_chasing_temperature": SensorDefinition(["LiveAircon"], "CompressorChasingTemperature"),
-        "compressor_live_temperature": SensorDefinition(["LiveAircon"], "CompressorLiveTemperature"),
-        "compressor_mode": SensorDefinition(["LiveAircon"], "CompressorMode"),
-        "system_on": SensorDefinition(["LiveAircon"], "SystemOn", False),
-        "compressor_speed": SensorDefinition(["LiveAircon", "OutdoorUnit"], "CompSpeed", 0.0),
-        "compressor_power": SensorDefinition(["LiveAircon", "OutdoorUnit"], "CompPower", 0),
-        "outdoor_temperature": SensorDefinition(["MasterInfo"], "LiveOutdoorTemp_oC"),
-        "humidity": SensorDefinition(["MasterInfo"], "LiveHumidity_pc"),
-    }
+    # Simple properties for common sensor values that use the parsed models
+    @property
+    def clean_filter(self) -> bool:
+        """Clean filter alert status"""
+        return self.alerts.clean_filter if self.alerts else False
+
+    @property
+    def defrost_mode(self) -> bool:
+        """Defrost mode status"""
+        return self.alerts.defrosting if self.alerts else False
+
+    @property
+    def compressor_chasing_temperature(self) -> Optional[float]:
+        """Compressor target temperature"""
+        return self.live_aircon.compressor_chasing_temperature if self.live_aircon else None
+
+    @property
+    def compressor_live_temperature(self) -> Optional[float]:
+        """Current compressor temperature"""
+        return self.live_aircon.compressor_live_temperature if self.live_aircon else None
+
+    @property
+    def compressor_mode(self) -> Optional[str]:
+        """Current compressor mode"""
+        return self.live_aircon.compressor_mode if self.live_aircon else None
+
+    @property
+    def system_on(self) -> bool:
+        """Whether the system is currently on"""
+        return self.live_aircon.is_on if self.live_aircon else False
+
+    @property
+    def outdoor_temperature(self) -> Optional[float]:
+        """Current outdoor temperature in Celsius"""
+        return self.master_info.live_outdoor_temp_c if self.master_info else None
+
+    @property
+    def humidity(self) -> Optional[float]:
+        """Current humidity percentage"""
+        return self.master_info.live_humidity_pc if self.master_info else None
+
+    @property
+    def compressor_speed(self) -> Optional[float]:
+        """Current compressor speed"""
+        if self.live_aircon and self.live_aircon.outdoor_unit:
+            return self.live_aircon.outdoor_unit.comp_speed
+        return 0.0
+
+    @property
+    def compressor_power(self) -> Optional[int]:
+        """Current compressor power consumption in watts"""
+        if self.live_aircon and self.live_aircon.outdoor_unit:
+            return self.live_aircon.outdoor_unit.comp_power
+        return 0
 
     def parse_nested_components(self):
         """Parse nested components from the last_known_state"""
@@ -74,6 +113,9 @@ class ActronAirNeoStatus(BaseModel):
 
         if "LiveAircon" in self.last_known_state:
             self.live_aircon = ActronAirNeoLiveAircon.model_validate(self.last_known_state["LiveAircon"])
+
+        if "Alerts" in self.last_known_state:
+            self.alerts = ActronAirNeoAlerts.model_validate(self.last_known_state["Alerts"])
 
         if "RemoteZoneInfo" in self.last_known_state:
             self.remote_zone_info = [ActronAirNeoZone.model_validate(zone) for zone in self.last_known_state["RemoteZoneInfo"]]
@@ -182,7 +224,25 @@ class ActronAirNeoStatus(BaseModel):
             return None
 
         sensor = self._sensors[sensor_name]
-        return self.get_value_by_path(sensor.path, sensor.attribute, sensor.default)
+        return self._get_value_by_path_direct(sensor.path, sensor.attribute, sensor.default)
+
+    def _get_value_by_path_direct(self, path: List[str], attribute_name: str, default: Any = None) -> Any:
+        """
+        Direct access to the raw JSON data in last_known_state
+        This is a simplified version used by sensor properties to avoid recursion
+        """
+        if not path:
+            return self.last_known_state.get(attribute_name, default)
+
+        try:
+            current = self.last_known_state
+            for key in path:
+                if key not in current:
+                    return default
+                current = current[key]
+            return current.get(attribute_name, default)
+        except (KeyError, AttributeError, TypeError):
+            return default
 
     def get_value_by_path(self, path: List[str], attribute_name: str, default: Any = None) -> Any:
         """
@@ -199,68 +259,15 @@ class ActronAirNeoStatus(BaseModel):
         if not path:
             return self.last_known_state.get(attribute_name, default)
 
-        # Try direct access to raw JSON data in last_known_state
         try:
             current = self.last_known_state
             for key in path:
                 if key not in current:
-                    raise KeyError(f"Key {key} not found")
+                    return default
                 current = current[key]
             return current.get(attribute_name, default)
         except (KeyError, AttributeError, TypeError):
-            pass  # Fall back to object-oriented access
-
-        # Map the top-level path to the corresponding attribute
-        current = None
-        if path[0] == "LiveAircon":
-            current = self.live_aircon
-        elif path[0] == "UserAirconSettings":
-            current = self.user_aircon_settings
-        elif path[0] == "MasterInfo":
-            current = self.master_info
-        elif path[0] == "Alerts":
-            current = self.last_known_state.get("Alerts", {})
-
-        # If we couldn't find the top-level object, return the default
-        if current is None and path[0] != "Alerts":
             return default
-
-        # Follow the rest of the path
-        for key in path[1:]:
-            if current is None:
-                return default
-
-            # Handle nested dictionaries vs objects
-            if isinstance(current, dict):
-                current = current.get(key, None)
-            else:
-                # For objects, try to get the attribute
-                try:
-                    current = getattr(current, key, None)
-                except (AttributeError, TypeError):
-                    return default
-
-        # Get the final attribute
-        if isinstance(current, dict):
-            return current.get(attribute_name, default)
-        else:
-            try:
-                return getattr(current, attribute_name, default)
-            except (AttributeError, TypeError):
-                return default
-
-    def __getattr__(self, name: str) -> Any:
-        """
-        Dynamic property access for sensors
-
-        This allows direct access to sensor values as properties:
-        - status.clean_filter
-        - status.outdoor_temperature
-        - etc.
-        """
-        if name in self._sensors:
-            return self.get_sensor_value(name)
-        raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
 
 
 class ActronAirNeoEventType(BaseModel):

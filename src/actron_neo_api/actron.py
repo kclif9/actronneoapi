@@ -536,12 +536,14 @@ class ActronNeoAPI:
     async def _get_outdoor_unit_model(self, serial_number: str) -> Optional[str]:
         """Fetch the outdoor unit model for the specified AC system."""
         status = await self.get_ac_status(serial_number)
-        return (
-            status.get("lastKnownState", {})
-            .get("AirconSystem", {})
-            .get("OutdoorUnit", {})
-            .get("ModelNumber")
-        )
+        aircon_system = status.get("lastKnownState", {}).get("AirconSystem", {})
+        outdoor_unit = aircon_system.get("OutdoorUnit")
+
+        # Handle the case where OutdoorUnit might be None
+        if outdoor_unit is None:
+            return None
+
+        return outdoor_unit.get("ModelNumber")
 
     async def get_status(self, serial_number: str) -> Dict[str, Any]:
         """

@@ -3,12 +3,28 @@ from typing import Dict, List, Optional, Union, Any
 from pydantic import BaseModel, Field
 
 
+class ActronAirNeoOutdoorUnit(BaseModel):
+    """Model for outdoor unit data in the AC system"""
+    model_number: Optional[str] = Field(None, alias="ModelNumber")
+    serial_number: Optional[str] = Field(None, alias="SerialNumber")
+    software_version: Optional[str] = Field(None, alias="SoftwareVersion")
+    comp_speed: Optional[float] = Field(None, alias="CompSpeed")
+    comp_power: Optional[int] = Field(None, alias="CompPower")
+    comp_running_pwm: Optional[int] = Field(None, alias="CompRunningPWM")
+    compressor_on: Optional[bool] = Field(None, alias="CompressorOn")
+    amb_temp: Optional[float] = Field(None, alias="AmbTemp")
+    family: Optional[str] = Field(None, alias="Family")
+
+
 class ActronAirNeoLiveAircon(BaseModel):
     is_on: bool = Field(False, alias="SystemOn")
     compressor_mode: str = Field("", alias="CompressorMode")
     compressor_capacity: int = Field(0, alias="CompressorCapacity")
     fan_rpm: int = Field(0, alias="FanRPM")
     defrost: bool = Field(False, alias="Defrost")
+    compressor_chasing_temperature: Optional[float] = Field(None, alias="CompressorChasingTemperature")
+    compressor_live_temperature: Optional[float] = Field(None, alias="CompressorLiveTemperature")
+    outdoor_unit: Optional[ActronAirNeoOutdoorUnit] = Field(None, alias="OutdoorUnit")
 
 
 class ActronAirNeoMasterInfo(BaseModel):
@@ -17,11 +33,18 @@ class ActronAirNeoMasterInfo(BaseModel):
     live_outdoor_temp_c: float = Field(0.0, alias="LiveOutdoorTemp_oC")
 
 
+class ActronAirNeoAlerts(BaseModel):
+    """Model for AC system alerts"""
+    clean_filter: bool = Field(False, alias="CleanFilter")
+    defrosting: bool = Field(False, alias="Defrosting")
+
+
 class ActronAirNeoACSystem(BaseModel):
     master_wc_model: str = Field("", alias="MasterWCModel")
     master_serial: str = Field("", alias="MasterSerial")
     master_wc_firmware_version: str = Field("", alias="MasterWCFirmwareVersion")
     system_name: str = Field("", alias="SystemName")
+    outdoor_unit: Optional[ActronAirNeoOutdoorUnit] = Field(None, alias="OutdoorUnit")
     _parent_status: Optional["ActronStatus"] = None
 
     def set_parent_status(self, parent: "ActronStatus") -> None:
@@ -35,10 +58,18 @@ class ActronAirNeoACSystem(BaseModel):
         Returns:
             The outdoor unit model or None if not available
         """
-        if not self._parent_status or not self._parent_status._api:
-            raise ValueError("No API reference available")
+        # First check if we already have the data in our model
+        if self.outdoor_unit and self.outdoor_unit.model_number:
+            return self.outdoor_unit.model_number
 
-        return await self._parent_status._api.get_outdoor_unit_model(self.master_serial)
+        # If not, try to get it from the API
+        if not self._parent_status or not self._parent_status._api:
+            return None
+
+        try:
+            return await self._parent_status._api.get_outdoor_unit_model(self.master_serial)
+        except Exception:
+            return None
 
     async def get_firmware_version(self) -> Optional[str]:
         """
