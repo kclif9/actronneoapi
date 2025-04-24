@@ -15,6 +15,7 @@ class ActronAirNeoZone(BaseModel):
     common_zone: bool = Field(False, alias="CommonZone")
     live_humidity_pc: float = Field(0.0, alias="LiveHumidity_pc")
     live_temp_c: float = Field(0.0, alias="LiveTemp_oC")
+    zone_position: float = Field(0.0, alias="ZonePosition")
     title: str = Field("", alias="NV_Title")
     exists: bool = Field(False, alias="NV_Exists")
     temperature_setpoint_cool_c: float = Field(0.0, alias="TemperatureSetpoint_Cool_oC")
