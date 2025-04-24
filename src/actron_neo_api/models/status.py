@@ -64,6 +64,24 @@ class ActronAirNeoStatus(BaseModel):
         """
         self._api = api
 
+    @property
+    def min_temp(self) -> float:
+        """Return the minimum temperature that can be set."""
+        return (
+            self.last_known_state.get("NV_Limits", {})
+            .get("UserSetpoint_oC", {})
+            .get("setCool_Min", 16.0)
+        )
+
+    @property
+    def max_temp(self) -> float:
+        """Return the maximum temperature that can be set."""
+        return (
+            self.last_known_state.get("NV_Limits", {})
+            .get("UserSetpoint_oC", {})
+            .get("setCool_Max", 32.0)
+        )
+
 
 class ActronAirNeoEventType(BaseModel):
     id: str
