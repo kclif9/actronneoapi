@@ -37,8 +37,9 @@ class ActronAirNeoPeripheral(BaseModel):
 
         result = []
         for zone_idx in self.zone_assignments:
-            if 0 <= zone_idx < len(self._parent_status.remote_zone_info):
-                result.append(self._parent_status.remote_zone_info[zone_idx])
+            adjusted_idx = zone_idx - 1
+            if 0 <= adjusted_idx < len(self._parent_status.remote_zone_info):
+                result.append(self._parent_status.remote_zone_info[adjusted_idx])
         return result
 
     @classmethod
