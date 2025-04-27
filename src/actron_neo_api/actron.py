@@ -317,6 +317,7 @@ class ActronNeoAPI:
 
     async def _send_command(self, serial_number: str, command: Dict[str, Any]) -> Dict[str, Any]:
         """Internal method to perform the actual API call."""
+        serial_number = serial_number.lower()
         return await self._make_request(
             "post",
             "api/v0/client/ac-systems/cmds/send",

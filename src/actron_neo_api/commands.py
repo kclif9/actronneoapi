@@ -44,7 +44,7 @@ class CommandBuilder:
         """
         mode = fan_mode
         if continuous:
-            mode = f"{fan_mode}-CONT"
+            mode = f"{fan_mode}+CONT"
 
         return {
             "command": {

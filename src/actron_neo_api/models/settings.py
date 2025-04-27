@@ -90,7 +90,7 @@ class ActronAirNeoUserAirconSettings(BaseModel):
         # Preserve the continuous mode setting
         mode = fan_mode
         if self.continuous_fan_enabled:
-            mode = f"{fan_mode}-CONT"
+            mode = f"{fan_mode}+CONT"
 
         return {
             "command": {
@@ -110,7 +110,7 @@ class ActronAirNeoUserAirconSettings(BaseModel):
             Command dictionary
         """
         base_mode = self.base_fan_mode
-        mode = f"{base_mode}-CONT" if enabled else base_mode
+        mode = f"{base_mode}+CONT" if enabled else base_mode
 
         return {
             "command": {
