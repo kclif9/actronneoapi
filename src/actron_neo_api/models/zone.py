@@ -222,12 +222,12 @@ class ActronAirNeoZone(BaseModel):
             raise ValueError("No parent AC status available to determine mode")
 
         mode = self._parent_status.user_aircon_settings.mode.upper()
-        command = {"command": {"type": "set-settings"}}
+        command = {"type": "set-settings"}
 
         if mode == "COOL":
-            command["command"][f"RemoteZoneInfo[{self.zone_id}].TemperatureSetpoint_Cool_oC"] = temperature
+            command[f"RemoteZoneInfo[{self.zone_id}].TemperatureSetpoint_Cool_oC"] = temperature
         elif mode == "HEAT":
-            command["command"][f"RemoteZoneInfo[{self.zone_id}].TemperatureSetpoint_Heat_oC"] = temperature
+            command[f"RemoteZoneInfo[{self.zone_id}].TemperatureSetpoint_Heat_oC"] = temperature
         elif mode == "AUTO":
             # When in AUTO mode, we maintain the temperature differential between cooling and heating
             # Get the current differential from parent settings
@@ -240,10 +240,10 @@ class ActronAirNeoZone(BaseModel):
             cool_setpoint = temperature
             heat_setpoint = max(10.0, temperature - differential)  # Ensure we don't go below a reasonable minimum
 
-            command["command"][f"RemoteZoneInfo[{self.zone_id}].TemperatureSetpoint_Cool_oC"] = cool_setpoint
-            command["command"][f"RemoteZoneInfo[{self.zone_id}].TemperatureSetpoint_Heat_oC"] = heat_setpoint
+            command[f"RemoteZoneInfo[{self.zone_id}].TemperatureSetpoint_Cool_oC"] = cool_setpoint
+            command[f"RemoteZoneInfo[{self.zone_id}].TemperatureSetpoint_Heat_oC"] = heat_setpoint
 
-        return command
+        return {"command": command}
 
     def set_enable_command(self, is_enabled: bool) -> Dict[str, Any]:
         """
@@ -272,8 +272,8 @@ class ActronAirNeoZone(BaseModel):
 
         return {
             "command": {
-                "UserAirconSettings.EnabledZones": current_zones,
                 "type": "set-settings",
+                "UserAirconSettings.EnabledZones": current_zones
             }
         }
 
