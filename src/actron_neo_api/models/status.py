@@ -23,10 +23,19 @@ class ActronAirNeoStatus(BaseModel):
     alerts: Optional[ActronAirNeoAlerts] = None
     remote_zone_info: List[ActronAirNeoZone] = Field([], alias="RemoteZoneInfo")
     peripherals: List[ActronAirNeoPeripheral] = []
-    _api: Optional[Any] = None  # Reference to the API instance
-    serial_number: Optional[str] = None  # Serial number of the AC system
+    _api: Optional[Any] = None
+    serial_number: Optional[str] = None
 
-    # Simple properties for common sensor values that use the parsed models
+    @property
+    def zones(self) -> Dict[int, ActronAirNeoZone]:
+        """
+        Return zones as a dictionary with their ID as keys.
+
+        Returns:
+            Dictionary mapping zone IDs (integers) to zone objects
+        """
+        return dict(enumerate(self.remote_zone_info))
+
     @property
     def clean_filter(self) -> bool:
         """Clean filter alert status"""
