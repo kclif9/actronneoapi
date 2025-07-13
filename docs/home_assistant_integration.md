@@ -19,7 +19,7 @@ from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers import config_entry_oauth2_flow
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from actron_neo_api import ActronNeoAPI, ActronNeoAuthError, generate_qr_code, is_qr_code_available
+from actron_neo_api import ActronNeoAPI, ActronNeoAuthError
 
 from .const import DOMAIN
 
@@ -51,23 +51,18 @@ class ActronAirConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         # Start OAuth2 device code flow
         try:
-            self.api = ActronNeoAPI(use_oauth2=True)
-            
+            self.api = ActronNeoAPI()
+
             # Request device code
             device_code_response = await self.api.request_device_code()
-            
+
             self.device_code = device_code_response["device_code"]
             self.user_code = device_code_response["user_code"]
             self.verification_uri = device_code_response["verification_uri"]
             self.verification_uri_complete = device_code_response["verification_uri_complete"]
             self.expires_in = device_code_response["expires_in"]
             self.interval = device_code_response["interval"]
-            
-            # Generate QR code if available
-            qr_code_data_url = None
-            if is_qr_code_available():
-                qr_code_data_url = generate_qr_code(self.verification_uri_complete)
-            
+
             # Show authorization form
             return self.async_show_form(
                 step_id="user",
@@ -75,11 +70,10 @@ class ActronAirConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     "user_code": self.user_code,
                     "verification_uri": self.verification_uri,
                     "verification_uri_complete": self.verification_uri_complete,
-                    "qr_code": qr_code_data_url or "",
                     "expires_minutes": str(self.expires_in // 60),
                 },
             )
-            
+
         except ActronNeoAuthError as err:
             _LOGGER.error("Failed to start OAuth2 flow: %s", err)
             return self.async_abort(reason="oauth2_error")
@@ -92,7 +86,7 @@ class ActronAirConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         try:
             # Poll for token
             token_data = await self.api.poll_for_token(self.device_code)
-            
+
             if token_data is None:
                 # Still waiting for authorization
                 return self.async_show_form(
@@ -105,15 +99,15 @@ class ActronAirConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         "expires_minutes": str(self.expires_in // 60),
                     },
                 )
-            
+
             # Authorization successful, get user info
             user_info = await self.api.get_user_info()
             user_id = user_info.get("id")
-            
+
             if user_id:
                 await self.async_set_unique_id(user_id)
                 self._abort_if_unique_id_configured()
-            
+
             # Create config entry
             return self.async_create_entry(
                 title="ActronAir",
@@ -124,7 +118,7 @@ class ActronAirConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     "user_id": user_id,
                 },
             )
-            
+
         except ActronNeoAuthError as err:
             _LOGGER.error("Authorization failed: %s", err)
             return self.async_abort(reason="authorization_failed")
@@ -145,7 +139,7 @@ class ActronAirConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     "step": {
       "user": {
         "title": "ActronAir OAuth2 Authorization",
-        "description": "To connect your ActronAir account:\n\n1. Go to: {verification_uri}\n2. Enter code: **{user_code}**\n3. Or scan the QR code below\n4. Complete authorization within {expires_minutes} minutes\n\n{qr_code}\n\nClick **Submit** after completing authorization.",
+        "description": "To connect your ActronAir account:\n\n1. Go to: {verification_uri}\n2. Enter code: **{user_code}**\n3. Or use the direct link: {verification_uri_complete}\n4. Complete authorization within {expires_minutes} minutes\n\nClick **Submit** after completing authorization.",
         "data": {}
       }
     },
@@ -188,34 +182,34 @@ PLATFORMS = ["climate", "sensor", "switch"]
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up ActronAir from a config entry."""
-    
+
     # Initialize API with OAuth2 and restored tokens
-    api = ActronNeoAPI(use_oauth2=True)
-    
+    api = ActronNeoAPI()
+
     # Restore saved tokens
     api.set_oauth2_tokens(
         access_token=entry.data["access_token"],
         refresh_token=entry.data["refresh_token"],
         expires_in=3600  # Will be automatically refreshed as needed
     )
-    
+
     try:
         # Test the connection
         systems = await api.get_ac_systems()
         await api.update_status()
-        
+
         # Store API instance
         hass.data.setdefault(DOMAIN, {})
         hass.data[DOMAIN][entry.entry_id] = {
             "api": api,
             "systems": systems,
         }
-        
+
         # Set up platforms
         await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-        
+
         return True
-        
+
     except ActronNeoAuthError as err:
         _LOGGER.error("Authentication failed: %s", err)
         # Trigger reauth flow
@@ -238,16 +232,16 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         # Close API connection
         api_data = hass.data[DOMAIN].pop(entry.entry_id)
         await api_data["api"].close()
-    
+
     return unload_ok
 
 
 async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
     """Migrate old entry."""
     _LOGGER.debug("Migrating from version %s", config_entry.version)
-    
+
     # Migration logic here if needed
-    
+
     return True
 ```
 
@@ -259,23 +253,20 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) ->
 
 3. **Automatic Token Management**: The library handles token refresh automatically.
 
-4. **QR Code Support**: Built-in QR code generation for better user experience.
+4. **Proper Error Handling**: Clear error messages and proper flow control.
 
-5. **Proper Error Handling**: Clear error messages and proper flow control.
-
-6. **Reauth Support**: Built-in support for reauthorization when tokens expire.
+5. **Reauth Support**: Built-in support for reauthorization when tokens expire.
 
 ## Installation
 
-Make sure to install the library with QR code support:
+Install the library:
 
 ```bash
-pip install actron-neo-api[qrcode]
+pip install actron-neo-api
 ```
 
 Or add to your requirements.txt:
 
 ```
 actron-neo-api
-qrcode[pil]
 ```

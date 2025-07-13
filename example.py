@@ -195,7 +195,7 @@ async def api_usage_example(access_token: str, refresh_token: str):
 
                 print("Quiet Mode: %s" % ('Enabled' if settings.quiet_mode_enabled else 'Disabled'))
                 print("Turbo Mode: %s" % ('Enabled' if settings.turbo_mode_enabled else 'Disabled'))
-                print("Away Mode: %s" % ('Enabled' if settings.away_mode_enabled else 'Disabled'))
+                print("Away Mode: %s" % ('Enabled' if settings.away_mode else 'Disabled'))
 
             # Display zone information
             if status.remote_zone_info:
