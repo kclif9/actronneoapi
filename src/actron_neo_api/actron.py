@@ -1,10 +1,10 @@
 import logging
 import asyncio
-from typing import Dict, List, Optional, Union, Any, Callable
+from typing import Dict, List, Optional, Union, Any
 
 import aiohttp
 
-from .auth import TokenManager
+from .oauth import OAuth2DeviceCodeAuth
 from .commands import CommandBuilder
 from .state import StateManager
 from .exceptions import ActronNeoAPIError, ActronNeoAuthError
@@ -22,40 +22,26 @@ class ActronNeoAPI:
 
     def __init__(
         self,
-        username: Optional[str] = None,
-        password: Optional[str] = None,
-        pairing_token: Optional[str] = None,
         base_url: str = "https://nimbus.actronair.com.au",
+        oauth2_client_id: str = "home_assistant",
     ):
         """
-        Initialize the ActronNeoAPI client.
+        Initialize the ActronNeoAPI client with OAuth2 authentication.
 
         Args:
-            username: Username for Actron Neo account
-            password: Password for Actron Neo account
-            pairing_token: Pre-existing pairing token for API authentication
             base_url: Base URL for the Actron Neo API
+            oauth2_client_id: OAuth2 client ID for device code flow
         """
-        self.username = username
-        self.password = password
         self.base_url = base_url
 
-        # Initialize components
-        self.token_manager = TokenManager(base_url)
-        if pairing_token:
-            self.token_manager.pairing_token = pairing_token
+        # Initialize OAuth2 authentication
+        self.oauth2_auth = OAuth2DeviceCodeAuth(base_url, oauth2_client_id)
 
         self.state_manager = StateManager()
         # Set the API reference in the state manager for command execution
         self.state_manager.set_api(self)
 
-        self.systems = None
-
-        # Validate parameters
-        if not pairing_token and (not username or not password):
-            raise ValueError(
-                "Either pairing_token, or username/password must be provided."
-            )
+        self.systems = []
 
         # Session management
         self._session = None
@@ -83,45 +69,59 @@ class ActronNeoAPI:
         """Support for async context manager."""
         await self.close()
 
-    # Authentication methods
+    # OAuth2 Device Code Flow methods
 
-    async def request_pairing_token(
-        self, device_name: str, device_unique_id: str, client: str = "ios"
-    ) -> str:
+    async def request_device_code(self) -> Dict[str, Any]:
         """
-        Request a pairing token using the user's credentials and device details.
-
-        Args:
-            device_name: Name of the device
-            device_unique_id: Unique identifier for the device
-            client: Client type (default: "ios")
-
+        Request a device code for OAuth2 device code flow.
+        
         Returns:
-            The pairing token
+            Dictionary containing device code, user code, verification URI, etc.
+            
+        Raises:
+            ActronNeoAuthError: If device code request fails
         """
-        if not self.username or not self.password:
-            raise ActronNeoAuthError("Username and password are required to request a pairing token")
+        return await self.oauth2_auth.request_device_code()
 
-        return await self.token_manager.request_pairing_token(
-            self.username,
-            self.password,
-            device_name,
-            device_unique_id,
-            client
-        )
-
-    async def refresh_token(self) -> None:
+    async def poll_for_token(self, device_code: str) -> Optional[Dict[str, Any]]:
         """
-        Refresh the access token using the pairing token.
-
-        After refreshing the token, this method fetches the system list
-        and updates the status.
+        Poll for access token using device code.
+        
+        Args:
+            device_code: The device code received from request_device_code
+            
+        Returns:
+            Token data if successful, None if still pending
+            
+        Raises:
+            ActronNeoAuthError: If polling fails
         """
-        await self.token_manager.refresh_token()
-        self.systems = await self.get_ac_systems()
-        await self.update_status()
+        return await self.oauth2_auth.poll_for_token(device_code)
 
-    # Request handling
+    async def get_user_info(self) -> Dict[str, Any]:
+        """
+        Get user information using the access token.
+        
+        Returns:
+            Dictionary containing user information
+            
+        Raises:
+            ActronNeoAuthError: If user info request fails
+        """
+        return await self.oauth2_auth.get_user_info()
+
+    def set_oauth2_tokens(self, access_token: str, refresh_token: Optional[str] = None, 
+                         expires_in: Optional[int] = None, token_type: str = "Bearer") -> None:
+        """
+        Set OAuth2 tokens manually (useful for restoring saved tokens).
+        
+        Args:
+            access_token: The access token
+            refresh_token: The refresh token (optional)
+            expires_in: Token expiration time in seconds from now (optional)
+            token_type: Token type (default: "Bearer")
+        """
+        self.oauth2_auth.set_tokens(access_token, refresh_token, expires_in, token_type)
 
     async def _handle_request(self, request_func, *args, **kwargs):
         """
@@ -129,22 +129,22 @@ class ActronNeoAPI:
         """
         try:
             # Ensure the token is valid before making the request
-            if self.token_manager.is_token_expiring_soon:
+            if self.oauth2_auth.is_token_expiring_soon:
                 _LOGGER.info("Access token is about to expire. Proactively refreshing.")
-                await self.token_manager.refresh_token()
+                await self.oauth2_auth.refresh_access_token()
 
             return await request_func(*args, **kwargs)
         except ActronNeoAuthError as e:
             # Try to refresh the token and retry on auth errors
             if "invalid_token" in str(e).lower() or "token_expired" in str(e).lower():
                 _LOGGER.warning("Access token expired or invalid. Attempting to refresh.")
-                await self.token_manager.refresh_token()
+                await self.oauth2_auth.refresh_access_token()
                 return await request_func(*args, **kwargs)
             raise
         except aiohttp.ClientResponseError as e:
             if e.status == 401:  # HTTP 401 Unauthorized
                 _LOGGER.warning("Access token expired (401 Unauthorized). Refreshing token.")
-                await self.token_manager.refresh_token()
+                await self.oauth2_auth.refresh_access_token()
                 return await request_func(*args, **kwargs)
             raise
 
@@ -176,12 +176,13 @@ class ActronNeoAPI:
             ActronNeoAPIError: For API errors
         """
         # Ensure we have a valid token
-        await self.token_manager.ensure_token_valid()
+        await self.oauth2_auth.ensure_token_valid()
+        auth_header = self.oauth2_auth.authorization_header
 
         # Prepare the request
         url = f"{self.base_url}/{endpoint.lstrip('/')}"
         request_headers = headers or {}
-        request_headers.update(self.token_manager.authorization_header)
+        request_headers.update(auth_header)
 
         # Get a session
         session = await self._get_session()
@@ -605,7 +606,7 @@ class ActronNeoAPI:
         Returns:
             Dictionary of system statuses by serial number
         """
-        if self.systems is None:
+        if not self.systems:
             return {}
 
         results = {}
@@ -661,19 +662,24 @@ class ActronNeoAPI:
     # Property accessors
 
     @property
+    def access_token(self) -> Optional[str]:
+        """Get the current access token."""
+        return self.oauth2_auth.access_token
+
+    @property
+    def refresh_token_value(self) -> Optional[str]:
+        """Get the current refresh token."""
+        return self.oauth2_auth.refresh_token
+
+    @property
     def pairing_token(self) -> Optional[str]:
-        """Get the current pairing token."""
-        return self.token_manager.pairing_token
+        """Get the current pairing token (for backward compatibility)."""
+        return self.oauth2_auth.refresh_token
 
     @pairing_token.setter
     def pairing_token(self, value: str) -> None:
-        """Set the pairing token."""
-        self.token_manager.pairing_token = value
-
-    @property
-    def access_token(self) -> Optional[str]:
-        """Get the current access token."""
-        return self.token_manager.access_token
+        """Set the pairing token (for backward compatibility)."""
+        self.oauth2_auth.refresh_token = value
 
     @property
     def status(self) -> Dict[str, Dict[str, Any]]:

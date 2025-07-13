@@ -7,7 +7,7 @@ The `ActronNeoAPI` library provides an interface to communicate with Actron Air 
 ## Features
 
 - **Authentication**:
-  - Pairing token and bearer token support.
+  - OAuth2 device code flow for secure authentication.
   - Automatic and proactive token refresh.
   - Token expiration tracking.
 - **System Information**:
@@ -38,15 +38,19 @@ pip install actron-neo-api
 
 ## Quick Start
 
+See `example.py` for a comprehensive demonstration including OAuth2 authentication and API usage.
+
 ```python
 import asyncio
 from actron_neo_api import ActronNeoAPI
 
 async def main():
-    async with ActronNeoAPI(username="your_username", password="your_password") as api:
-        # Authenticate
-        await api.request_pairing_token(device_name="MyDevice", device_unique_id="123456789")
-        await api.refresh_token()
+    async with ActronNeoAPI() as api:
+        # Set up OAuth2 tokens (get these from oauth2_example.py)
+        api.set_oauth2_tokens(
+            access_token="your_access_token",
+            refresh_token="your_refresh_token"
+        )
 
         # Get systems and update status
         systems = await api.get_ac_systems()
@@ -75,22 +79,87 @@ if __name__ == "__main__":
 
 ---
 
-## Authentication
+## OAuth2 Device Code Flow
+
+The ActronNeoAPI uses OAuth2 device code flow for secure authentication without storing passwords.
+
+### Basic OAuth2 Setup
 
 ```python
-# Initialize the API
-api = ActronNeoAPI(username="your_username", password="your_password")
+import asyncio
+from actron_neo_api import ActronNeoAPI
 
-# Request a pairing token (only needed once)
-await api.request_pairing_token(device_name="MyDevice", device_unique_id="123456789")
-print(f"Save this pairing token for future use: {api.pairing_token}")
+async def oauth2_flow():
+    # Initialize API
+    async with ActronNeoAPI() as api:
+        # Request device code
+        device_code_response = await api.request_device_code()
 
-# Or initialize with an existing pairing token
-api = ActronNeoAPI(pairing_token="your_saved_pairing_token")
+        device_code = device_code_response["device_code"]
+        user_code = device_code_response["user_code"]
+        verification_uri = device_code_response["verification_uri"]
+        verification_uri_complete = device_code_response["verification_uri_complete"]
+        expires_in = device_code_response["expires_in"]
+        interval = device_code_response["interval"]
 
-# Refresh the access token (needed for each session)
-await api.refresh_token()
+        # Display instructions to user
+        print("1. Open: %s" % verification_uri)
+        print("2. Enter code: %s" % user_code)
+        print("3. Or use direct link: %s" % verification_uri_complete)
+
+        # Poll for authorization
+        token_data = None
+        max_attempts = expires_in // interval
+
+        for attempt in range(max_attempts):
+            token_data = await api.poll_for_token(device_code)
+            if token_data:
+                print("Authorization successful!")
+                break
+            await asyncio.sleep(interval)
+
+        if token_data:
+            # Get user info
+            user_info = await api.get_user_info()
+            print(f"Authenticated as: {user_info}")
+
+            # Use API normally
+            systems = await api.get_ac_systems()
+            await api.update_status()
+
+            # Save tokens for future use
+            access_token = api.access_token
+            refresh_token = api.refresh_token_value
+            print(f"Save these tokens: {access_token}, {refresh_token}")
+
+asyncio.run(oauth2_flow())
 ```
+
+### Restoring Saved Tokens
+
+```python
+async def restore_session():
+    async with ActronNeoAPI() as api:
+        # Restore previously saved tokens
+        api.set_oauth2_tokens(
+            access_token="your_saved_access_token",
+            refresh_token="your_saved_refresh_token",
+            expires_in=3600  # 1 hour
+        )
+
+        # API will automatically refresh tokens as needed
+        systems = await api.get_ac_systems()
+```
+
+### OAuth2 Endpoints
+
+The library uses these OAuth2 endpoints:
+- **Token URL**: `https://nimbus.actronair.com.au/api/v0/oauth/token`
+- **Authorize URL**: `https://nimbus.actronair.com.au/authorize`
+- **Device Auth URL**: `https://nimbus.actronair.com.au/connect`
+- **User Info URL**: `https://nimbus.actronair.com.au/api/v0/client/account`
+
+---
 
 ## System Information
 
@@ -211,8 +280,9 @@ for i, zone in enumerate(zones):
 from actron_neo_api import ActronNeoAPI, ActronNeoAuthError, ActronNeoAPIError
 
 try:
-    async with ActronNeoAPI(username="user", password="pass") as api:
-        await api.refresh_token()
+    async with ActronNeoAPI() as api:
+        # Set up OAuth2 tokens
+        api.set_oauth2_tokens(access_token="your_token", refresh_token="your_refresh_token")
         # API operations...
 except ActronNeoAuthError as e:
     print(f"Authentication error: {e}")
