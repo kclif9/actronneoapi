@@ -218,7 +218,9 @@ class ActronNeoAPI:
         Returns:
             List of AC systems
         """
-        return await self._handle_request(self._get_ac_systems)
+        systems = await self._handle_request(self._get_ac_systems)
+        self.systems = systems  # Auto-populate for convenience
+        return systems
 
     async def _get_ac_systems(self) -> List[Dict[str, Any]]:
         """Internal method to perform the actual API call."""
