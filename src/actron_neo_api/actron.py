@@ -129,11 +129,9 @@ class ActronNeoAPI:
             return await request_func(*args, **kwargs)
         except ActronNeoAuthError as e:
             # Try to refresh the token and retry on auth errors
-            if "invalid_token" in str(e).lower() or "token_expired" in str(e).lower():
-                _LOGGER.warning("Access token expired or invalid. Attempting to refresh.")
-                await self.oauth2_auth.refresh_access_token()
-                return await request_func(*args, **kwargs)
-            raise
+            _LOGGER.warning("Authentication error: %s. Attempting to refresh token.", e)
+            await self.oauth2_auth.refresh_access_token()
+            return await request_func(*args, **kwargs)
         except aiohttp.ClientResponseError as e:
             if e.status == 401:  # HTTP 401 Unauthorized
                 _LOGGER.warning("Access token expired (401 Unauthorized). Refreshing token.")
