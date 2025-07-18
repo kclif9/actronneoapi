@@ -24,6 +24,7 @@ class ActronNeoAPI:
         self,
         base_url: str = "https://nimbus.actronair.com.au",
         oauth2_client_id: str = "home_assistant",
+        refresh_token: Optional[str] = None,
     ):
         """
         Initialize the ActronNeoAPI client with OAuth2 authentication.
@@ -31,11 +32,16 @@ class ActronNeoAPI:
         Args:
             base_url: Base URL for the Actron Neo API
             oauth2_client_id: OAuth2 client ID for device code flow
+            refresh_token: Optional refresh token for authentication
         """
         self.base_url = base_url
 
         # Initialize OAuth2 authentication
         self.oauth2_auth = OAuth2DeviceCodeAuth(base_url, oauth2_client_id)
+
+        # Set refresh token if provided
+        if refresh_token:
+            self.oauth2_auth.refresh_token = refresh_token
 
         self.state_manager = StateManager()
         # Set the API reference in the state manager for command execution
@@ -110,22 +116,6 @@ class ActronNeoAPI:
         """
         return await self.oauth2_auth.get_user_info()
 
-    async def set_oauth2_tokens(self, refresh_token: str) -> None:
-        """
-        Set OAuth2 refresh token and automatically generate access token.
-
-        Args:
-            refresh_token: The refresh token to use for generating access tokens
-
-        Raises:
-            ActronNeoAuthError: If token generation fails
-        """
-        # Set the refresh token first
-        self.oauth2_auth.refresh_token = refresh_token
-
-        # Generate access token from refresh token
-        await self.oauth2_auth.refresh_access_token()
-
     async def _handle_request(self, request_func, *args, **kwargs):
         """
         Handle API requests, retrying if the token is expired.
@@ -178,8 +168,13 @@ class ActronNeoAPI:
             ActronNeoAuthError: For authentication errors
             ActronNeoAPIError: For API errors
         """
+        # If we have a refresh token but no access token, get one
+        if self.oauth2_auth.refresh_token and not self.oauth2_auth.access_token:
+            await self.oauth2_auth.refresh_access_token()
+
         # Ensure we have a valid token
         await self.oauth2_auth.ensure_token_valid()
+
         auth_header = self.oauth2_auth.authorization_header
 
         # Prepare the request
@@ -673,16 +668,6 @@ class ActronNeoAPI:
     def refresh_token_value(self) -> Optional[str]:
         """Get the current refresh token."""
         return self.oauth2_auth.refresh_token
-
-    @property
-    def pairing_token(self) -> Optional[str]:
-        """Get the current pairing token (for backward compatibility)."""
-        return self.oauth2_auth.refresh_token
-
-    @pairing_token.setter
-    def pairing_token(self, value: str) -> None:
-        """Set the pairing token (for backward compatibility)."""
-        self.oauth2_auth.refresh_token = value
 
     @property
     def status(self) -> Dict[str, Dict[str, Any]]:

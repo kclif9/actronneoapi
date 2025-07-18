@@ -111,24 +111,23 @@ async def api_usage_example(refresh_token: str):
     print("\n=== API USAGE EXAMPLE ===\n")
 
     try:
-        async with ActronNeoAPI() as api:
-            # Set OAuth2 tokens from previous authentication
-            logger.info("Setting OAuth2 tokens...")
-            await api.set_oauth2_tokens(refresh_token)
+        # Initialize with refresh token - token will be refreshed on first API call
+        logger.info("Initializing API with refresh token...")
+        api = ActronNeoAPI(refresh_token=refresh_token)
+        
+        # Get user information
+        logger.info("Getting user information...")
+        user_info = await api.get_user_info()
+        logger.info("Authenticated as: %s", user_info.get('name', 'Unknown'))
 
-            # Get user information
-            logger.info("Getting user information...")
-            user_info = await api.get_user_info()
-            logger.info("Authenticated as: %s", user_info.get('name', 'Unknown'))
+        # Get AC systems
+        logger.info("Fetching AC systems...")
+        systems = await api.get_ac_systems()
+        logger.info("Found %d AC systems", len(systems))
 
-            # Get AC systems
-            logger.info("Fetching AC systems...")
-            systems = await api.get_ac_systems()
-            logger.info("Found %d AC systems", len(systems))
-
-            if not systems:
-                logger.warning("No AC systems found in your account")
-                return
+        if not systems:
+            logger.warning("No AC systems found in your account")
+            return
 
             # Store systems for status updates
             api.systems = systems
@@ -250,6 +249,147 @@ async def api_usage_example(refresh_token: str):
             print("2. System information retrieval")
             print("3. Status monitoring with typed models")
             print("4. Object-oriented API access")
+
+        # Alternative Method (for backward compatibility):
+        # async with ActronNeoAPI() as api:
+        #     logger.info("Setting OAuth2 tokens...")
+        #     await api.set_oauth2_tokens(refresh_token)
+        #     # ...rest of code...
+        
+        # Get user information
+        logger.info("Getting user information...")
+        user_info = await api.get_user_info()
+        logger.info("Authenticated as: %s", user_info.get('name', 'Unknown'))
+
+        # Get AC systems
+        logger.info("Fetching AC systems...")
+        systems = await api.get_ac_systems()
+        logger.info("Found %d AC systems", len(systems))
+
+        if not systems:
+            logger.warning("No AC systems found in your account")
+            return
+
+        # Store systems for status updates
+        api.systems = systems
+
+        # Update status to get the latest data
+        logger.info("Updating system status...")
+        await api.update_status()
+
+        # Work with the first system
+        system = systems[0]
+        serial = system.get("serial")
+        name = system.get("name", "Unknown System")
+
+        logger.info("Working with system: %s (Serial: %s)", name, serial)
+
+        # Get the typed status object
+        status = api.state_manager.get_status(serial)
+
+        if not status:
+            logger.error("Could not retrieve status for system %s", serial)
+            return
+
+        # Display current system information
+        print("\n" + "="*60)
+        print("SYSTEM INFORMATION")
+        print("="*60)
+
+        if status.ac_system:
+            print("System Name: %s" % status.ac_system.system_name)
+            print("Model: %s" % status.ac_system.master_wc_model)
+            print("Firmware: %s" % status.ac_system.master_wc_firmware_version)
+            print("Serial: %s" % status.ac_system.master_serial)
+
+        # Display current settings
+        if status.user_aircon_settings:
+            settings = status.user_aircon_settings
+            print("\nCURRENT SETTINGS:")
+            print("Power: %s" % ('ON' if settings.is_on else 'OFF'))
+            print("Mode: %s" % settings.mode)
+            print("Fan Mode: %s" % settings.fan_mode)
+            print("Continuous Fan: %s" % ('Enabled' if settings.continuous_fan_enabled else 'Disabled'))
+            print("Cool Setpoint: %s°C" % settings.temperature_setpoint_cool_c)
+            print("Heat Setpoint: %s°C" % settings.temperature_setpoint_heat_c)
+
+            # Get current temperature from zones
+            current_temp = None
+            if status.remote_zone_info:
+                for zone in status.remote_zone_info:
+                    if zone.live_temp_c is not None and zone.live_temp_c > 0:
+                        current_temp = zone.live_temp_c
+                        break
+                    elif zone.peripheral_temperature is not None:
+                        current_temp = zone.peripheral_temperature
+                        break
+
+            if current_temp is not None:
+                print("Current Temperature: %s°C" % current_temp)
+            else:
+                print("Current Temperature: Not available")
+
+            print("Quiet Mode: %s" % ('Enabled' if settings.quiet_mode_enabled else 'Disabled'))
+            print("Turbo Mode: %s" % ('Enabled' if settings.turbo_mode_enabled else 'Disabled'))
+            print("Away Mode: %s" % ('Enabled' if settings.away_mode else 'Disabled'))
+
+        # Display zone information
+        if status.remote_zone_info:
+            print("\nZONE INFORMATION:")
+            for i, zone in enumerate(status.remote_zone_info):
+                print("Zone %d (%s): %s" % (
+                    i + 1,
+                    zone.title,
+                    'Enabled' if zone.is_active else 'Disabled'
+                ))
+                print("  Set Temperature Cool: %s°C" % zone.temperature_setpoint_cool_c)
+                print("  Set Temperature Heat: %s°C" % zone.temperature_setpoint_heat_c)
+
+                # Display actual temperature from zone or peripheral
+                if zone.live_temp_c is not None and zone.live_temp_c > 0:
+                    print("  Current Temperature: %s°C" % zone.live_temp_c)
+                elif zone.peripheral_temperature is not None:
+                    print("  Current Temperature: %s°C (sensor)" % zone.peripheral_temperature)
+                else:
+                    print("  Current Temperature: Not available")
+
+                # Display humidity
+                if zone.humidity is not None and zone.humidity > 0:
+                    print("  Current Humidity: %s%%" % zone.humidity)
+                else:
+                    print("  Current Humidity: Not available")
+
+                # Display battery level if available
+                if zone.battery_level is not None:
+                    print("  Sensor Battery: %s%%" % zone.battery_level)
+                else:
+                    print("  Sensor Battery: Not available")
+
+                print("  Zone Position: %s%%" % zone.zone_position)
+
+        print("="*60)
+
+        # Demonstrate control capabilities
+        print("\n=== DEMONSTRATING CONTROL CAPABILITIES ===\n")
+
+        # Check if user wants to run control examples
+        if os.environ.get("ACTRON_DEMO_CONTROLS", "").lower() == "true":
+            await demonstrate_controls(api, status, serial)
+        else:
+            print("Control demonstrations are disabled by default.")
+            print("Set ACTRON_DEMO_CONTROLS=true environment variable to enable.")
+            print("\nThe following controls would be available:")
+            print("- AC System control (power, mode, temperature)")
+            print("- Fan control (speed, continuous mode)")
+            print("- Zone control (enable/disable, temperature)")
+            print("- Special modes (quiet, turbo, away)")
+
+        print("\n=== EXAMPLE COMPLETE ===")
+        print("Successfully demonstrated:")
+        print("1. OAuth2 token authentication")
+        print("2. System information retrieval")
+        print("3. Status monitoring with typed models")
+        print("4. Object-oriented API access")
 
     except ActronNeoAuthError as e:
         logger.error("Authentication error: %s", e)

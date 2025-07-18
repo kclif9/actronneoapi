@@ -45,19 +45,19 @@ import asyncio
 from actron_neo_api import ActronNeoAPI
 
 async def main():
-    async with ActronNeoAPI() as api:
-        # Set up OAuth2 tokens (get these from oauth2_example.py)
-        await api.set_oauth2_tokens("your_refresh_token")
+    # Initialize with refresh token - token will be refreshed on first API call
+    api = ActronNeoAPI(refresh_token="your_refresh_token")
+    
+    # Get systems and update status
+    systems = await api.get_ac_systems()
+    api.systems = systems
+    await api.update_status()
 
-        # Get systems and update status
-        systems = await api.get_ac_systems()
-        await api.update_status()
+    # Get the status object
+    serial = systems[0].get("serial")
+    status = api.state_manager.get_status(serial)
 
-        # Get the status object
-        serial = systems[0].get("serial")
-        status = api.state_manager.get_status(serial)
-
-        # Control your AC system using object-oriented methods
+    # Control your AC system using object-oriented methods
         # Through the AC system object
         await status.ac_system.set_system_mode(mode="COOL")
 
@@ -136,12 +136,11 @@ asyncio.run(oauth2_flow())
 
 ```python
 async def restore_session():
-    async with ActronNeoAPI() as api:
-        # Restore previously saved tokens
-        await api.set_oauth2_tokens("your_saved_refresh_token")
-
-        # API will automatically refresh tokens as needed
-        systems = await api.get_ac_systems()
+    # Initialize with refresh token - token will be refreshed on first API call
+    api = ActronNeoAPI(refresh_token="your_saved_refresh_token")
+    
+    # API will automatically refresh tokens as needed
+    systems = await api.get_ac_systems()
 ```
 
 ### OAuth2 Endpoints
@@ -273,10 +272,9 @@ for i, zone in enumerate(zones):
 from actron_neo_api import ActronNeoAPI, ActronNeoAuthError, ActronNeoAPIError
 
 try:
-    async with ActronNeoAPI() as api:
-        # Set up OAuth2 tokens
-        await api.set_oauth2_tokens("your_refresh_token")
-        # API operations...
+    api = ActronNeoAPI(refresh_token="your_refresh_token")
+    # API operations...
+    systems = await api.get_ac_systems()
 except ActronNeoAuthError as e:
     print(f"Authentication error: {e}")
 except ActronNeoAPIError as e:

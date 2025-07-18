@@ -150,24 +150,35 @@ class TestOAuth2DeviceCodeAuth:
 class TestActronNeoAPIWithOAuth2:
     """Test ActronNeoAPI with OAuth2 integration."""
 
-    def test_init_with_oauth2(self):
-        """Test ActronNeoAPI initialization with OAuth2."""
-        api = ActronNeoAPI(use_oauth2=True)
-        assert api.use_oauth2 is True
+    def test_init_default(self):
+        """Test ActronNeoAPI initialization with default parameters."""
+        api = ActronNeoAPI()
         assert api.oauth2_auth is not None
-        assert api.token_manager is None
+        assert api.oauth2_auth.base_url == "https://nimbus.actronair.com.au"
+        assert api.oauth2_auth.client_id == "home_assistant"
+        assert api.oauth2_auth.refresh_token is None
 
-    def test_init_without_oauth2(self):
-        """Test ActronNeoAPI initialization without OAuth2."""
-        api = ActronNeoAPI(username="test", password="test")
-        assert api.use_oauth2 is False
-        assert api.oauth2_auth is None
-        assert api.token_manager is not None
+    def test_init_with_refresh_token(self):
+        """Test ActronNeoAPI initialization with refresh token."""
+        api = ActronNeoAPI(refresh_token="test_refresh_token")
+        assert api.oauth2_auth is not None
+        assert api.oauth2_auth.refresh_token == "test_refresh_token"
+
+    def test_init_with_custom_params(self):
+        """Test ActronNeoAPI initialization with custom parameters."""
+        api = ActronNeoAPI(
+            base_url="https://custom.example.com",
+            oauth2_client_id="custom_client",
+            refresh_token="custom_token"
+        )
+        assert api.oauth2_auth.base_url == "https://custom.example.com"
+        assert api.oauth2_auth.client_id == "custom_client"
+        assert api.oauth2_auth.refresh_token == "custom_token"
 
     @pytest.mark.asyncio
-    async def test_oauth2_methods_enabled(self):
-        """Test OAuth2 methods are available when enabled."""
-        api = ActronNeoAPI(use_oauth2=True)
+    async def test_oauth2_methods_available(self):
+        """Test OAuth2 methods are available."""
+        api = ActronNeoAPI()
 
         # Mock the OAuth2 auth methods
         api.oauth2_auth.request_device_code = AsyncMock(return_value={"device_code": "test"})
@@ -184,41 +195,36 @@ class TestActronNeoAPIWithOAuth2:
         assert user_info["id"] == "test"
 
     @pytest.mark.asyncio
-    async def test_oauth2_methods_disabled(self):
-        """Test OAuth2 methods raise error when disabled."""
-        api = ActronNeoAPI(username="test", password="test")
-
-        with pytest.raises(ActronNeoAuthError):
-            await api.request_device_code()
-
-        with pytest.raises(ActronNeoAuthError):
-            await api.poll_for_token("test_device_code")
-
-        with pytest.raises(ActronNeoAuthError):
-            await api.get_user_info()
-
-        with pytest.raises(ActronNeoAuthError):
-            await api.set_oauth2_tokens("test")
+    async def test_lazy_token_refresh(self):
+        """Test that tokens are refreshed lazily on first API call."""
+        api = ActronNeoAPI(refresh_token="test_refresh_token")
+        
+        # Mock the OAuth2 auth methods
+        api.oauth2_auth.refresh_access_token = AsyncMock()
+        api.oauth2_auth.ensure_token_valid = AsyncMock()
+        api.oauth2_auth.authorization_header = {"Authorization": "Bearer test_token"}
+        
+        # Mock the session and response
+        mock_session = AsyncMock()
+        mock_response = AsyncMock()
+        mock_response.status = 200
+        mock_response.json = AsyncMock(return_value={"_embedded": {"ac-system": []}})
+        mock_session.request.return_value.__aenter__.return_value = mock_response
+        api._get_session = AsyncMock(return_value=mock_session)
+        
+        # Make an API call - this should trigger token refresh
+        await api.get_ac_systems()
+        
+        # Verify token refresh was called
+        api.oauth2_auth.refresh_access_token.assert_called_once()
 
     def test_token_properties(self):
-        """Test token properties work with both authentication types."""
-        # Test with OAuth2
-        oauth2_api = ActronNeoAPI(use_oauth2=True)
-        oauth2_api.oauth2_auth.access_token = "oauth2_access_token"
-        oauth2_api.oauth2_auth.refresh_token = "oauth2_refresh_token"
+        """Test token properties work correctly."""
+        api = ActronNeoAPI(refresh_token="test_refresh_token")
+        api.oauth2_auth.access_token = "test_access_token"
 
-        assert oauth2_api.access_token == "oauth2_access_token"
-        assert oauth2_api.refresh_token_value == "oauth2_refresh_token"
-        assert oauth2_api.pairing_token == "oauth2_refresh_token"
-
-        # Test with traditional auth
-        traditional_api = ActronNeoAPI(username="test", password="test")
-        traditional_api.token_manager.access_token = "traditional_access_token"
-        traditional_api.token_manager.pairing_token = "traditional_pairing_token"
-
-        assert traditional_api.access_token == "traditional_access_token"
-        assert traditional_api.refresh_token_value == "traditional_pairing_token"
-        assert traditional_api.pairing_token == "traditional_pairing_token"
+        assert api.access_token == "test_access_token"
+        assert api.refresh_token_value == "test_refresh_token"
 
 
 if __name__ == "__main__":
