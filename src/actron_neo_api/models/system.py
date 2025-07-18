@@ -39,6 +39,14 @@ class ActronAirNeoAlerts(BaseModel):
     defrosting: bool = Field(False, alias="Defrosting")
 
 
+class ActronAirNeoSystemInfo(BaseModel):
+    """Model for raw system data from get_ac_systems API endpoint"""
+    serial: str = Field("", alias="serial")
+    name: str = Field("", alias="name") 
+    status: str = Field("", alias="status")
+    # Add other fields as needed based on actual API response
+
+
 class ActronAirNeoACSystem(BaseModel):
     master_wc_model: str = Field("", alias="MasterWCModel")
     master_serial: str = Field("", alias="MasterSerial")
