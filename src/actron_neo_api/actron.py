@@ -7,7 +7,6 @@ import aiohttp
 from .oauth import OAuth2DeviceCodeAuth
 from .state import StateManager
 from .exceptions import ActronNeoAPIError, ActronNeoAuthError
-from .models.system import ActronAirNeoSystemInfo
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -200,17 +199,15 @@ class ActronNeoAPI:
 
     # API Methods
 
-    async def get_ac_systems(self) -> List[ActronAirNeoSystemInfo]:
+    async def get_ac_systems(self) -> List[Dict[str, Any]]:
         """
         Retrieve all AC systems in the customer account.
 
         Returns:
-            List of typed AC system info objects
+            List of AC systems
         """
-        raw_systems = await self._handle_request(self._get_ac_systems)
-        # Convert raw dicts to typed objects
-        systems = [ActronAirNeoSystemInfo.model_validate(system) for system in raw_systems]
-        self.systems = systems  # Store typed objects
+        systems = await self._handle_request(self._get_ac_systems)
+        self.systems = systems  # Auto-populate for convenience
         return systems
 
     async def _get_ac_systems(self) -> List[Dict[str, Any]]:
@@ -310,7 +307,7 @@ class ActronNeoAPI:
 
         results = {}
         for system in self.systems:
-            serial = system.serial  # Now using typed object property
+            serial = system.get("serial")
             if serial:
                 await self._update_system_status(serial)
                 status = self.state_manager.get_status(serial)
