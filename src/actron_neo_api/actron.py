@@ -118,25 +118,26 @@ class ActronNeoAPI:
 
     async def _handle_request(self, request_func, *args, **kwargs):
         """
-        Handle API requests, retrying if the token is expired.
+        Handle API requests, retrying once if the token is expired.
         """
-        try:
-            # Ensure the token is valid before making the request
-            if self.oauth2_auth.is_token_expiring_soon:
-                _LOGGER.info("Access token is about to expire. Proactively refreshing.")
-                await self.oauth2_auth.refresh_access_token()
-
-            return await request_func(*args, **kwargs)
-        except ActronNeoAuthError as e:
-            # Try to refresh the token and retry on auth errors
-            _LOGGER.warning("Authentication error: %s. Attempting to refresh token.", e)
+        # Ensure the token is valid before making the request
+        if self.oauth2_auth.is_token_expiring_soon:
+            _LOGGER.info("Access token is about to expire. Proactively refreshing.")
             await self.oauth2_auth.refresh_access_token()
+
+    async def _handle_request(self, request_func, *args, **kwargs):
+        """
+        Handle API requests, retrying once if the token is expired.
+        """
+        # Ensure the token is valid before making the request
+        if self.oauth2_auth.is_token_expiring_soon:
+            _LOGGER.info("Access token is about to expire. Proactively refreshing.")
+            await self.oauth2_auth.refresh_access_token()
+
+        try:
             return await request_func(*args, **kwargs)
-        except aiohttp.ClientResponseError as e:
-            if e.status == 401:  # HTTP 401 Unauthorized
-                _LOGGER.warning("Access token expired (401 Unauthorized). Refreshing token.")
-                await self.oauth2_auth.refresh_access_token()
-                return await request_func(*args, **kwargs)
+        except Exception as e:
+            _LOGGER.error(f"Error occurred: {e}")
             raise
 
     async def _make_request(
