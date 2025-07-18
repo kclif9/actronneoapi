@@ -284,6 +284,65 @@ class ActronNeoAPI:
             headers={"Content-Type": "application/json"}
         )
 
+    async def update_status(self, serial_number: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Update the status of AC systems using event-based updates.
+
+        Args:
+            serial_number: Optional serial number to update specific system,
+                          or None to update all systems
+
+        Returns:
+            Dictionary of updated status data by serial number
+        """
+        if serial_number:
+            # Update specific system
+            await self._update_system_status(serial_number)
+            status = self.state_manager.get_status(serial_number)
+            return {serial_number: status.dict() if status else None}
+
+        # Update all systems
+        if not self.systems:
+            return {}
+
+        results = {}
+        for system in self.systems:
+            serial = system.get("serial")
+            if serial:
+                await self._update_system_status(serial)
+                status = self.state_manager.get_status(serial)
+                if status:
+                    results[serial] = status.dict()
+
+        return results
+
+    async def _update_system_status(self, serial_number: str) -> None:
+        """
+        Update status for a single system using event-based updates.
+
+        Args:
+            serial_number: Serial number of the system to update
+        """
+        try:
+            # Check if we need a full update or incremental update
+            if serial_number not in self.state_manager.latest_event_id:
+                # First time - fetch full status
+                events = await self.get_ac_events(serial_number, event_type="latest")
+                if events:
+                    self.state_manager.process_events(serial_number, events)
+            else:
+                # Incremental update
+                latest_event_id = self.state_manager.latest_event_id.get(serial_number)
+                events = await self.get_ac_events(
+                    serial_number,
+                    event_type="newer",
+                    event_id=latest_event_id
+                )
+                if events:
+                    self.state_manager.process_events(serial_number, events)
+        except Exception as e:
+            _LOGGER.error("Failed to update status for system %s: %s", serial_number, e)
+
     # Property accessors
 
     @property
