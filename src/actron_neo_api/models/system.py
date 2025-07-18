@@ -42,7 +42,7 @@ class ActronAirNeoAlerts(BaseModel):
 class ActronAirNeoSystemInfo(BaseModel):
     """Model for raw system data from get_ac_systems API endpoint"""
     serial: str = Field("", alias="serial")
-    name: str = Field("", alias="name") 
+    name: str = Field("", alias="name")
     status: str = Field("", alias="status")
     # Add other fields as needed based on actual API response
 
