@@ -46,10 +46,24 @@ class ActronNeoAPI:
         self.state_manager.set_api(self)
 
         self.systems = []
+        self._initialized = False
 
         # Session management
         self._session = None
         self._session_lock = asyncio.Lock()
+
+    async def _ensure_initialized(self) -> None:
+        """Ensure the API is initialized with valid tokens."""
+        if self._initialized:
+            return
+
+        if self.oauth2_auth.refresh_token and not self.oauth2_auth.access_token:
+            try:
+                await self.oauth2_auth.refresh_access_token()
+            except (ActronNeoAuthError, aiohttp.ClientError) as e:
+                raise ActronNeoAuthError(f"Failed to initialize API: {e}") from e
+
+        self._initialized = True
 
     async def _get_session(self) -> aiohttp.ClientSession:
         """Get or create an aiohttp ClientSession."""
@@ -64,6 +78,18 @@ class ActronNeoAPI:
             if self._session and not self._session.closed:
                 await self._session.close()
                 self._session = None
+
+    async def initialize(self) -> None:
+        """
+        Initialize the API client by obtaining access tokens if needed.
+
+        This method is optional - the API will auto-initialize on first use.
+        Call this method if you want to handle initialization errors explicitly.
+
+        Raises:
+            ActronNeoAuthError: If initialization fails
+        """
+        await self._ensure_initialized()
 
     async def __aenter__(self):
         """Support for async context manager."""
@@ -156,9 +182,8 @@ class ActronNeoAPI:
             ActronNeoAuthError: For authentication errors
             ActronNeoAPIError: For API errors
         """
-        # If we have a refresh token but no access token, get one
-        if self.oauth2_auth.refresh_token and not self.oauth2_auth.access_token:
-            await self.oauth2_auth.refresh_access_token()
+        # Ensure API is initialized with valid tokens
+        await self._ensure_initialized()
 
         # Ensure we have a valid token
         await self.oauth2_auth.ensure_token_valid()
@@ -342,6 +367,18 @@ class ActronNeoAPI:
                     self.state_manager.process_events(serial_number, events)
         except Exception as e:
             _LOGGER.error("Failed to update status for system %s: %s", serial_number, e)
+
+    async def initialize(self) -> None:
+        """
+        Initialize the API client by obtaining access tokens if needed.
+
+        This method is optional - the API will auto-initialize on first use.
+        Call this method if you want to handle initialization errors explicitly.
+
+        Raises:
+            ActronNeoAuthError: If initialization fails
+        """
+        await self._ensure_initialized()
 
     # Property accessors
 
