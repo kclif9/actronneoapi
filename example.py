@@ -103,7 +103,7 @@ async def oauth2_authentication_example():
             logger.error("OAuth2 authentication failed: %s", e)
             return None, None
 
-async def api_usage_example(access_token: str, refresh_token: str):
+async def api_usage_example(refresh_token: str):
     """
     Example of using the ActronNeoAPI with saved OAuth2 tokens.
     This demonstrates the full API capabilities.
@@ -114,11 +114,7 @@ async def api_usage_example(access_token: str, refresh_token: str):
         async with ActronNeoAPI() as api:
             # Set OAuth2 tokens from previous authentication
             logger.info("Setting OAuth2 tokens...")
-            api.set_oauth2_tokens(
-                access_token=access_token,
-                refresh_token=refresh_token,
-                expires_in=3600  # 1 hour
-            )
+            await api.set_oauth2_tokens(refresh_token)
 
             # Get user information
             logger.info("Getting user information...")
@@ -373,7 +369,7 @@ async def main():
         print("export ACTRON_REFRESH_TOKEN='%s'" % refresh_token)
 
     # Run the API usage example
-    await api_usage_example(access_token, refresh_token)
+    await api_usage_example(refresh_token)
 
 if __name__ == "__main__":
     asyncio.run(main())

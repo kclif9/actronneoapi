@@ -198,7 +198,7 @@ class TestActronNeoAPIWithOAuth2:
             await api.get_user_info()
 
         with pytest.raises(ActronNeoAuthError):
-            api.set_oauth2_tokens("test", "test")
+            await api.set_oauth2_tokens("test")
 
     def test_token_properties(self):
         """Test token properties work with both authentication types."""

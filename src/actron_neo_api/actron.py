@@ -74,10 +74,10 @@ class ActronNeoAPI:
     async def request_device_code(self) -> Dict[str, Any]:
         """
         Request a device code for OAuth2 device code flow.
-        
+
         Returns:
             Dictionary containing device code, user code, verification URI, etc.
-            
+
         Raises:
             ActronNeoAuthError: If device code request fails
         """
@@ -86,13 +86,13 @@ class ActronNeoAPI:
     async def poll_for_token(self, device_code: str) -> Optional[Dict[str, Any]]:
         """
         Poll for access token using device code.
-        
+
         Args:
             device_code: The device code received from request_device_code
-            
+
         Returns:
             Token data if successful, None if still pending
-            
+
         Raises:
             ActronNeoAuthError: If polling fails
         """
@@ -101,27 +101,30 @@ class ActronNeoAPI:
     async def get_user_info(self) -> Dict[str, Any]:
         """
         Get user information using the access token.
-        
+
         Returns:
             Dictionary containing user information
-            
+
         Raises:
             ActronNeoAuthError: If user info request fails
         """
         return await self.oauth2_auth.get_user_info()
 
-    def set_oauth2_tokens(self, access_token: str, refresh_token: Optional[str] = None, 
-                         expires_in: Optional[int] = None, token_type: str = "Bearer") -> None:
+    async def set_oauth2_tokens(self, refresh_token: str) -> None:
         """
-        Set OAuth2 tokens manually (useful for restoring saved tokens).
-        
+        Set OAuth2 refresh token and automatically generate access token.
+
         Args:
-            access_token: The access token
-            refresh_token: The refresh token (optional)
-            expires_in: Token expiration time in seconds from now (optional)
-            token_type: Token type (default: "Bearer")
+            refresh_token: The refresh token to use for generating access tokens
+
+        Raises:
+            ActronNeoAuthError: If token generation fails
         """
-        self.oauth2_auth.set_tokens(access_token, refresh_token, expires_in, token_type)
+        # Set the refresh token first
+        self.oauth2_auth.refresh_token = refresh_token
+
+        # Generate access token from refresh token
+        await self.oauth2_auth.refresh_access_token()
 
     async def _handle_request(self, request_func, *args, **kwargs):
         """

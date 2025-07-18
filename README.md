@@ -47,10 +47,7 @@ from actron_neo_api import ActronNeoAPI
 async def main():
     async with ActronNeoAPI() as api:
         # Set up OAuth2 tokens (get these from oauth2_example.py)
-        api.set_oauth2_tokens(
-            access_token="your_access_token",
-            refresh_token="your_refresh_token"
-        )
+        await api.set_oauth2_tokens("your_refresh_token")
 
         # Get systems and update status
         systems = await api.get_ac_systems()
@@ -141,11 +138,7 @@ asyncio.run(oauth2_flow())
 async def restore_session():
     async with ActronNeoAPI() as api:
         # Restore previously saved tokens
-        api.set_oauth2_tokens(
-            access_token="your_saved_access_token",
-            refresh_token="your_saved_refresh_token",
-            expires_in=3600  # 1 hour
-        )
+        await api.set_oauth2_tokens("your_saved_refresh_token")
 
         # API will automatically refresh tokens as needed
         systems = await api.get_ac_systems()
@@ -282,7 +275,7 @@ from actron_neo_api import ActronNeoAPI, ActronNeoAuthError, ActronNeoAPIError
 try:
     async with ActronNeoAPI() as api:
         # Set up OAuth2 tokens
-        api.set_oauth2_tokens(access_token="your_token", refresh_token="your_refresh_token")
+        await api.set_oauth2_tokens("your_refresh_token")
         # API operations...
 except ActronNeoAuthError as e:
     print(f"Authentication error: {e}")
