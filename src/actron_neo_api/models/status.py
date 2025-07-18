@@ -1,5 +1,5 @@
 """Status models for Actron Neo API"""
-from typing import Dict, List, Optional, Union, Any, Tuple
+from typing import Dict, List, Optional, Any
 from pydantic import BaseModel, Field
 
 # Forward references for imports from other modules
@@ -145,23 +145,19 @@ class ActronAirNeoStatus(BaseModel):
     def min_temp(self) -> float:
         """Return the minimum temperature that can be set."""
         return (
-            self.last_known_state.get("NV_Limits", {})
-            .get("UserSetpoint_oC", {})
-            .get("setCool_Min", 16.0)
+            self.last_known_state['NV_Limits']['UserSetpoint_oC']['setCool_Min']
         )
 
     @property
     def max_temp(self) -> float:
         """Return the maximum temperature that can be set."""
         return (
-            self.last_known_state.get("NV_Limits", {})
-            .get("UserSetpoint_oC", {})
-            .get("setCool_Max", 32.0)
+            self.last_known_state['NV_Limits']['UserSetpoint_oC']['setCool_Max']
         )
 
     def _process_peripherals(self) -> None:
         """Process peripheral devices from the last_known_state and extract their sensor data"""
-        if not self.last_known_state.get("AirconSystem", {}).get("Peripherals"):
+        if not self.last_known_state['AirconSystem']['Peripherals']:
             return
 
         peripherals_data = self.last_known_state["AirconSystem"]["Peripherals"]

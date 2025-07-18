@@ -1,5 +1,5 @@
 """System models for Actron Neo API"""
-from typing import Dict, List, Optional, Union, Any
+from typing import Dict, Optional, Any
 from pydantic import BaseModel, Field
 
 
