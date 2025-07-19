@@ -246,8 +246,8 @@ class OAuth2DeviceCodeAuth:
         Raises:
             ActronNeoAuthError: If user info request fails
         """
-        if not self.access_token:
-            raise ActronNeoAuthError("Access token is required to get user info")
+        # Ensure we have a valid access token
+        await self.ensure_token_valid()
 
         headers = self.authorization_header
 

@@ -79,18 +79,6 @@ class ActronNeoAPI:
                 await self._session.close()
                 self._session = None
 
-    async def initialize(self) -> None:
-        """
-        Initialize the API client by obtaining access tokens if needed.
-
-        This method is optional - the API will auto-initialize on first use.
-        Call this method if you want to handle initialization errors explicitly.
-
-        Raises:
-            ActronNeoAuthError: If initialization fails
-        """
-        await self._ensure_initialized()
-
     async def __aenter__(self):
         """Support for async context manager."""
         return self
@@ -99,61 +87,18 @@ class ActronNeoAPI:
         """Support for async context manager."""
         await self.close()
 
-    # OAuth2 Device Code Flow methods
-
+    # OAuth2 Device Code Flow methods - simple proxies
     async def request_device_code(self) -> Dict[str, Any]:
-        """
-        Request a device code for OAuth2 device code flow.
-
-        Returns:
-            Dictionary containing device code, user code, verification URI, etc.
-
-        Raises:
-            ActronNeoAuthError: If device code request fails
-        """
+        """Request a device code for OAuth2 device code flow."""
         return await self.oauth2_auth.request_device_code()
 
     async def poll_for_token(self, device_code: str) -> Optional[Dict[str, Any]]:
-        """
-        Poll for access token using device code.
-
-        Args:
-            device_code: The device code received from request_device_code
-
-        Returns:
-            Token data if successful, None if still pending
-
-        Raises:
-            ActronNeoAuthError: If polling fails
-        """
+        """Poll for access token using device code."""
         return await self.oauth2_auth.poll_for_token(device_code)
 
     async def get_user_info(self) -> Dict[str, Any]:
-        """
-        Get user information using the access token.
-
-        Returns:
-            Dictionary containing user information
-
-        Raises:
-            ActronNeoAuthError: If user info request fails
-        """
+        """Get user information using the access token."""
         return await self.oauth2_auth.get_user_info()
-
-    async def _handle_request(self, request_func, *args, **kwargs):
-        """
-        Handle API requests, retrying once if the token is expired.
-        """
-        # Ensure the token is valid before making the request
-        if self.oauth2_auth.is_token_expiring_soon:
-            _LOGGER.info("Access token is about to expire. Proactively refreshing.")
-            await self.oauth2_auth.refresh_access_token()
-
-        try:
-            return await request_func(*args, **kwargs)
-        except Exception as e:
-            _LOGGER.error("Error occurred: %s", e)
-            raise
 
     async def _make_request(
         self,
@@ -231,26 +176,48 @@ class ActronNeoAPI:
         Returns:
             List of AC systems
         """
-        systems = await self._handle_request(self._get_ac_systems)
-        self.systems = systems  # Auto-populate for convenience
-        return systems
+        try:
+            response = await self._make_request(
+                "get",
+                "api/v0/client/ac-systems",
+                params={"includeNeo": "true"}
+            )
+            systems = response["_embedded"]["ac-system"]
+            self.systems = systems  # Auto-populate for convenience
+            return systems
+        except Exception as e:
+            _LOGGER.error("Error getting AC systems: %s", e)
+            raise
 
-    async def _get_ac_systems(self) -> List[Dict[str, Any]]:
-        """Internal method to perform the actual API call."""
-        response = await self._make_request(
-            "get",
-            "api/v0/client/ac-systems",
-            params={"includeNeo": "true"}
-        )
-        return response["_embedded"]["ac-system"]
+    async def get_ac_status(self, serial_number: str) -> Dict[str, Any]:
+        """
+        Retrieve the current status for a specific AC system.
 
+        This replaces the events API which was disabled by Actron in July 2025.
 
+        Args:
+            serial_number: Serial number of the AC system
+
+        Returns:
+            Current status of the AC system
+        """
+        try:
+            params = {"serial": serial_number}
+            endpoint = "api/v0/client/ac-systems/status/latest"
+
+            return await self._make_request("get", endpoint, params=params)
+        except Exception as e:
+            _LOGGER.error("Error getting AC status for %s: %s", serial_number, e)
+            raise
 
     async def get_ac_events(
         self, serial_number: str, event_type: str = "latest", event_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Retrieve events for a specific AC system.
+
+        DEPRECATED: The events API was disabled by Actron in July 2025.
+        Use get_ac_status() instead for current system status.
 
         Args:
             serial_number: Serial number of the AC system
@@ -259,31 +226,38 @@ class ActronNeoAPI:
 
         Returns:
             Events of the AC system
+
+        Raises:
+            ActronNeoAPIError: Events API is no longer available
         """
-        return await self._handle_request(
-            self._get_ac_events, serial_number, event_type, event_id
+        import warnings
+        warnings.warn(
+            "get_ac_events() is deprecated. The events API was disabled by Actron in July 2025. "
+            "Use get_ac_status() instead.",
+            DeprecationWarning,
+            stacklevel=2
         )
 
-    async def _get_ac_events(
-        self, serial_number: str, event_type: str = "latest", event_id: Optional[str] = None
-    ) -> Dict[str, Any]:
-        """Internal method to perform the actual API call."""
-        params = {"serial": serial_number}
+        try:
+            params = {"serial": serial_number}
 
-        if event_type == "latest":
-            endpoint = "api/v0/client/ac-systems/events/latest"
-        elif event_type == "newer" and event_id:
-            endpoint = "api/v0/client/ac-systems/events/newer"
-            params["newerThanEventId"] = event_id
-        elif event_type == "older" and event_id:
-            endpoint = "api/v0/client/ac-systems/events/older"
-            params["olderThanEventId"] = event_id
-        else:
-            raise ValueError(
-                "Invalid event_type or missing event_id for 'newer'/'older' event queries."
-            )
+            if event_type == "latest":
+                endpoint = "api/v0/client/ac-systems/events/latest"
+            elif event_type == "newer" and event_id:
+                endpoint = "api/v0/client/ac-systems/events/newer"
+                params["newerThanEventId"] = event_id
+            elif event_type == "older" and event_id:
+                endpoint = "api/v0/client/ac-systems/events/older"
+                params["olderThanEventId"] = event_id
+            else:
+                raise ValueError(
+                    "Invalid event_type or missing event_id for 'newer'/'older' event queries."
+                )
 
-        return await self._make_request("get", endpoint, params=params)
+            return await self._make_request("get", endpoint, params=params)
+        except Exception as e:
+            _LOGGER.error("Error getting AC events for %s: %s", serial_number, e)
+            raise
 
     async def send_command(self, serial_number: str, command: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -296,18 +270,18 @@ class ActronNeoAPI:
         Returns:
             Command response
         """
-        return await self._handle_request(self._send_command, serial_number, command)
-
-    async def _send_command(self, serial_number: str, command: Dict[str, Any]) -> Dict[str, Any]:
-        """Internal method to perform the actual API call."""
-        serial_number = serial_number.lower()
-        return await self._make_request(
-            "post",
-            "api/v0/client/ac-systems/cmds/send",
-            params={"serial": serial_number},
-            json_data=command,
-            headers={"Content-Type": "application/json"}
-        )
+        try:
+            serial_number = serial_number.lower()
+            return await self._make_request(
+                "post",
+                "api/v0/client/ac-systems/cmds/send",
+                params={"serial": serial_number},
+                json_data=command,
+                headers={"Content-Type": "application/json"}
+            )
+        except Exception as e:
+            _LOGGER.error("Error sending command to %s: %s", serial_number, e)
+            raise
 
     async def update_status(self, serial_number: Optional[str] = None) -> Dict[str, Any]:
         """
@@ -343,56 +317,31 @@ class ActronNeoAPI:
 
     async def _update_system_status(self, serial_number: str) -> None:
         """
-        Update status for a single system using event-based updates.
+        Update status for a single system using status polling.
+
+        Note: Switched from event-based updates to status polling due to
+        Actron disabling the events API in July 2025.
 
         Args:
             serial_number: Serial number of the system to update
         """
         try:
-            # Check if we need a full update or incremental update
-            if serial_number not in self.state_manager.latest_event_id:
-                # First time - fetch full status
-                events = await self.get_ac_events(serial_number, event_type="latest")
-                if events:
-                    self.state_manager.process_events(serial_number, events)
-            else:
-                # Incremental update
-                latest_event_id = self.state_manager.latest_event_id.get(serial_number)
-                events = await self.get_ac_events(
-                    serial_number,
-                    event_type="newer",
-                    event_id=latest_event_id
-                )
-                if events:
-                    self.state_manager.process_events(serial_number, events)
+            # Get current status using the status/latest endpoint
+            status_data = await self.get_ac_status(serial_number)
+            if status_data:
+                # Process the status data through the state manager
+                self.state_manager.process_status_update(serial_number, status_data)
         except Exception as e:
             _LOGGER.error("Failed to update status for system %s: %s", serial_number, e)
 
-    async def initialize(self) -> None:
-        """
-        Initialize the API client by obtaining access tokens if needed.
-
-        This method is optional - the API will auto-initialize on first use.
-        Call this method if you want to handle initialization errors explicitly.
-
-        Raises:
-            ActronNeoAuthError: If initialization fails
-        """
-        await self._ensure_initialized()
-
-    # Property accessors
-
     @property
     def access_token(self) -> Optional[str]:
-        """Get the current access token."""
         return self.oauth2_auth.access_token
 
     @property
     def refresh_token_value(self) -> Optional[str]:
-        """Get the current refresh token."""
         return self.oauth2_auth.refresh_token
 
     @property
     def latest_event_id(self) -> Dict[str, str]:
-        """Get the latest event ID for each system."""
         return self.state_manager.latest_event_id.copy()
