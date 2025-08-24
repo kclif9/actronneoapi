@@ -113,19 +113,27 @@ class OAuth2DeviceCodeAuth:
                         f"Failed to request device code. Status: {response.status}, Response: {response_text}"
                     )
 
-    async def poll_for_token(self, device_code: str) -> Optional[Dict[str, Any]]:
+    async def poll_for_token(self, device_code: str, interval: int = 5, timeout: int = 600) -> Optional[Dict[str, Any]]:
         """
-        Poll for access token using device code.
+        Poll for access token using device code with automatic polling loop.
+
+        This method implements the full OAuth2 device code flow polling logic,
+        automatically handling authorization_pending and slow_down responses
+        according to the OAuth2 specification.
 
         Args:
             device_code: The device code received from request_device_code
+            interval: Polling interval in seconds (default: 5)
+            timeout: Maximum time to wait in seconds (default: 600 = 10 minutes)
 
         Returns:
-            Token data if successful, None if still pending
+            Token data if successful, None if timeout occurs
 
         Raises:
-            ActronNeoAuthError: If polling fails or authorization is denied
+            ActronNeoAuthError: If authorization is denied or other errors occur
         """
+        import asyncio
+
         payload = {
             "client_id": self.client_id,
             "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
@@ -134,51 +142,85 @@ class OAuth2DeviceCodeAuth:
 
         headers = {"Content-Type": "application/x-www-form-urlencoded"}
 
+        start_time = time.time()
+        current_interval = interval
+        attempt = 0
+
+        _LOGGER.info("Starting token polling (interval=%ds, timeout=%ds)", interval, timeout)
+
         async with aiohttp.ClientSession() as session:
-            async with session.post(
-                self.token_url,
-                data=payload,
-                headers=headers
-            ) as response:
-                data = await response.json()
+            while time.time() - start_time < timeout:
+                attempt += 1
 
-                if response.status == 200 and "access_token" in data:
-                    # Success - store tokens
-                    self.access_token = data["access_token"]
-                    self.refresh_token = data.get("refresh_token")
-                    self.token_type = data.get("token_type", "Bearer")
+                try:
+                    async with session.post(
+                        self.token_url,
+                        data=payload,
+                        headers=headers
+                    ) as response:
+                        data = await response.json()
 
-                    expires_in = data.get("expires_in", 3600)
-                    self.token_expiry = time.time() + expires_in
+                        if response.status == 200 and "access_token" in data:
+                            # Success - store tokens
+                            self.access_token = data["access_token"]
+                            self.refresh_token = data.get("refresh_token")
+                            self.token_type = data.get("token_type", "Bearer")
 
-                    _LOGGER.info(
-                        "OAuth2 token obtained successfully. "
-                        "Expires in %s seconds", expires_in
-                    )
+                            expires_in = data.get("expires_in", 3600)
+                            self.token_expiry = time.time() + expires_in
 
-                    return data
+                            _LOGGER.info(
+                                "OAuth2 token obtained successfully after %d attempts. "
+                                "Expires in %s seconds", attempt, expires_in
+                            )
 
-                elif response.status == 400:
-                    error = data.get("error", "unknown_error")
+                            return data
 
-                    if error == "authorization_pending":
-                        # Still waiting for user authorization
-                        return None
-                    elif error == "slow_down":
-                        # Should increase polling interval
-                        _LOGGER.warning("Polling too fast, slowing down")
-                        return None
-                    elif error == "expired_token":
-                        raise ActronNeoAuthError("Device code has expired")
-                    elif error == "access_denied":
-                        raise ActronNeoAuthError("User denied authorization")
-                    else:
-                        raise ActronNeoAuthError(f"Authorization error: {error}")
-                else:
-                    response_text = await response.text()
-                    raise ActronNeoAuthError(
-                        f"Token polling failed. Status: {response.status}, Response: {response_text}"
-                    )
+                        elif response.status == 400:
+                            error = data.get("error", "unknown_error")
+
+                            if error == "authorization_pending":
+                                # Still waiting for user authorization - continue polling
+                                _LOGGER.debug(
+                                    "Authorization pending (attempt %d) - continuing to poll in %ds",
+                                    attempt, current_interval
+                                )
+                                await asyncio.sleep(current_interval)
+                                continue
+
+                            elif error == "slow_down":
+                                # Server requests slower polling - increase interval
+                                current_interval += 5  # Add 5 seconds as per OAuth2 spec
+                                _LOGGER.warning(
+                                    "Server requested slow down - increasing interval to %ds",
+                                    current_interval
+                                )
+                                await asyncio.sleep(current_interval)
+                                continue
+
+                            elif error == "expired_token":
+                                raise ActronNeoAuthError("Device code has expired")
+                            elif error == "access_denied":
+                                raise ActronNeoAuthError("User denied authorization")
+                            else:
+                                raise ActronNeoAuthError(f"Authorization error: {error}")
+                        else:
+                            response_text = await response.text()
+                            raise ActronNeoAuthError(
+                                f"Token polling failed. Status: {response.status}, Response: {response_text}"
+                            )
+
+                except aiohttp.ClientError as e:
+                    _LOGGER.warning("Network error during polling attempt %d: %s", attempt, e)
+                    await asyncio.sleep(current_interval)
+                    continue
+                except Exception as e:
+                    _LOGGER.error("Unexpected error during polling: %s", e)
+                    raise ActronNeoAuthError(f"Polling failed: {str(e)}") from e
+
+        # Timeout reached
+        _LOGGER.error("Token polling timed out after %d seconds (%d attempts)", timeout, attempt)
+        return None
 
     async def refresh_access_token(self) -> Tuple[str, float]:
         """

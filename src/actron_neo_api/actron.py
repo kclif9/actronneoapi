@@ -92,9 +92,19 @@ class ActronNeoAPI:
         """Request a device code for OAuth2 device code flow."""
         return await self.oauth2_auth.request_device_code()
 
-    async def poll_for_token(self, device_code: str) -> Optional[Dict[str, Any]]:
-        """Poll for access token using device code."""
-        return await self.oauth2_auth.poll_for_token(device_code)
+    async def poll_for_token(self, device_code: str, interval: int = 5, timeout: int = 600) -> Optional[Dict[str, Any]]:
+        """
+        Poll for access token using device code with automatic polling loop.
+
+        Args:
+            device_code: The device code received from request_device_code
+            interval: Polling interval in seconds (default: 5)
+            timeout: Maximum time to wait in seconds (default: 600 = 10 minutes)
+
+        Returns:
+            Token data if successful, None if timeout occurs
+        """
+        return await self.oauth2_auth.poll_for_token(device_code, interval, timeout)
 
     async def get_user_info(self) -> Dict[str, Any]:
         """Get user information using the access token."""

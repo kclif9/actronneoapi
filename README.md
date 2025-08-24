@@ -47,7 +47,7 @@ from actron_neo_api import ActronNeoAPI
 async def main():
     # Initialize with refresh token - token will be refreshed on first API call
     api = ActronNeoAPI(refresh_token="your_refresh_token")
-    
+
     # Get systems and update status
     systems = await api.get_ac_systems()
     api.systems = systems
@@ -104,18 +104,16 @@ async def oauth2_flow():
         print("2. Enter code: %s" % user_code)
         print("3. Or use direct link: %s" % verification_uri_complete)
 
-        # Poll for authorization
-        token_data = None
-        max_attempts = expires_in // interval
-
-        for attempt in range(max_attempts):
-            token_data = await api.poll_for_token(device_code)
-            if token_data:
-                print("Authorization successful!")
-                break
-            await asyncio.sleep(interval)
+        # Poll for authorization (automatic polling)
+        print("Waiting for authorization...")
+        token_data = await api.poll_for_token(
+            device_code,
+            interval=interval,
+            timeout=expires_in
+        )
 
         if token_data:
+            print("Authorization successful!")
             # Get user info
             user_info = await api.get_user_info()
             print(f"Authenticated as: {user_info}")
@@ -132,13 +130,34 @@ async def oauth2_flow():
 asyncio.run(oauth2_flow())
 ```
 
+### Polling Method Improvements
+
+The `poll_for_token()` method now includes **automatic polling with intelligent retry logic**:
+
+- **Automatic polling loop**: No need to implement your own polling loop
+- **Smart interval handling**: Automatically increases polling interval when server requests "slow down"
+- **Configurable timeout**: Set maximum waiting time (default: 10 minutes)
+- **Proper error handling**: Distinguishes between authorization denied, expired tokens, and network errors
+- **Logging**: Detailed logging for debugging authentication issues
+
+**New signature:**
+```python
+token_data = await api.poll_for_token(
+    device_code,
+    interval=5,      # Polling interval in seconds (default: 5)
+    timeout=600      # Maximum wait time in seconds (default: 600 = 10 minutes)
+)
+```
+
+**Backward compatibility:** The old single-shot polling is still available via `poll_for_token_once()` if you need to implement custom polling logic.
+
 ### Restoring Saved Tokens
 
 ```python
 async def restore_session():
     # Initialize with refresh token - token will be refreshed on first API call
     api = ActronNeoAPI(refresh_token="your_saved_refresh_token")
-    
+
     # API will automatically refresh tokens as needed
     systems = await api.get_ac_systems()
 ```

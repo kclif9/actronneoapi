@@ -63,26 +63,16 @@ async def oauth2_authentication_example():
             print("="*60)
             print("Waiting for authorization...")
 
-            # Step 3: Poll for token
-            token_data = None
-            max_attempts = expires_in // interval
-
-            for attempt in range(max_attempts):
-                try:
-                    token_data = await api.poll_for_token(device_code)
-                    if token_data:
-                        logger.info("Authorization successful!")
-                        break
-                    else:
-                        logger.info("Authorization pending... (attempt %d/%d)", attempt + 1, max_attempts)
-                        await asyncio.sleep(interval)
-
-                except Exception as e:
-                    logger.error("Error during polling: %s", e)
-                    break
-
-            if not token_data:
-                logger.error("Authorization timed out or failed")
+            # Step 3: Poll for token (with automatic polling)
+            try:
+                token_data = await api.poll_for_token(device_code, interval=interval, timeout=expires_in)
+                if token_data:
+                    logger.info("Authorization successful!")
+                else:
+                    logger.error("Authorization timed out")
+                    return None, None
+            except Exception as e:
+                logger.error("Error during authorization: %s", e)
                 return None, None
 
             # Return tokens for use in the main example
