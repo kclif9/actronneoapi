@@ -2,7 +2,7 @@ from typing import Dict, List, Optional, Union, Any
 
 class CommandBuilder:
     """
-    Builder class for Actron Neo API commands.
+    Builder class for Actron Air API commands.
     Provides a clear, consistent interface for creating command payloads.
     """
 

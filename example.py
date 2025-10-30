@@ -119,9 +119,6 @@ async def api_usage_example(refresh_token: str):
             logger.warning("No AC systems found in your account")
             return
 
-        # Store systems for status updates
-        api.systems = systems
-
         # Update status to get the latest data (may fail if events API is not accessible)
         logger.info("Updating system status...")
         await api.update_status()
@@ -129,6 +126,7 @@ async def api_usage_example(refresh_token: str):
         # Work with the first system
         system = systems[0]
         serial = system.get("serial")
+        family = system.get("family")
         name = system.get("name", "Unknown System")
 
         logger.info("Working with system: %s (Serial: %s)", name, serial)
@@ -143,6 +141,7 @@ async def api_usage_example(refresh_token: str):
             print("="*60)
             print("System Name: %s" % name)
             print("Serial: %s" % serial)
+            print("Family: %s" % family)
             print("Status: Events API not accessible - limited information available")
             print("="*60)
         else:
@@ -342,7 +341,7 @@ async def main():
     """
     Main example function that demonstrates both authentication and API usage.
     """
-    print("=== ACTRON NEO API EXAMPLE ===")
+    print("=== ACTRON AIR API EXAMPLE ===")
     print("This example demonstrates OAuth2 authentication and API usage.")
 
     # Check if we have saved tokens in environment variables

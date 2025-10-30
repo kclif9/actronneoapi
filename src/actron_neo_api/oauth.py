@@ -1,4 +1,4 @@
-"""OAuth2 Device Code Flow authentication for Actron Neo API."""
+"""OAuth2 Device Code Flow authentication for Actron Air API."""
 
 import logging
 import time
@@ -12,7 +12,7 @@ _LOGGER = logging.getLogger(__name__)
 
 class ActronAirOAuth2DeviceCodeAuth:
     """
-    OAuth2 Device Code Flow authentication handler for Actron Neo API.
+    OAuth2 Device Code Flow authentication handler for Actron Air API.
 
     This class implements the OAuth2 device code flow which is suitable for
     devices with limited input capabilities or when QR code authentication
@@ -24,7 +24,7 @@ class ActronAirOAuth2DeviceCodeAuth:
         Initialize the OAuth2 Device Code Flow handler.
 
         Args:
-            base_url: Base URL for the Actron Neo API
+            base_url: Base URL for the Actron Air API
             client_id: OAuth2 client ID
         """
         self.base_url = base_url

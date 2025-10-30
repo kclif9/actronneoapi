@@ -1,13 +1,13 @@
-"""System models for Actron Neo API"""
+"""System models for Actron Air API"""
 from typing import Dict, Optional, Any
 from pydantic import BaseModel, Field
 
 
-class ActronAirNeoOutdoorUnit(BaseModel):
+class ActronAirOutdoorUnit(BaseModel):
     """Model for outdoor unit data in the AC system"""
-    model_number: Optional[str] = Field(None, alias="ModelNumber")
+    model_number: Optional[str] = str(Field(None, alias="ModelNumber"))
     serial_number: Optional[str] = Field(None, alias="SerialNumber")
-    software_version: Optional[str] = Field(None, alias="SoftwareVersion")
+    software_version: Optional[str] = str(Field(None, alias="SoftwareVersion"))
     comp_speed: Optional[float] = Field(None, alias="CompSpeed")
     comp_power: Optional[int] = Field(None, alias="CompPower")
     comp_running_pwm: Optional[int] = Field(None, alias="CompRunningPWM")
@@ -24,7 +24,7 @@ class ActronAirLiveAircon(BaseModel):
     defrost: bool = Field(False, alias="Defrost")
     compressor_chasing_temperature: Optional[float] = Field(None, alias="CompressorChasingTemperature")
     compressor_live_temperature: Optional[float] = Field(None, alias="CompressorLiveTemperature")
-    outdoor_unit: Optional[ActronAirNeoOutdoorUnit] = Field(None, alias="OutdoorUnit")
+    outdoor_unit: Optional[ActronAirOutdoorUnit] = Field(None, alias="OutdoorUnit")
 
 
 class ActronAirMasterInfo(BaseModel):
@@ -33,7 +33,7 @@ class ActronAirMasterInfo(BaseModel):
     live_outdoor_temp_c: float = Field(0.0, alias="LiveOutdoorTemp_oC")
 
 
-class ActronAirNeoAlerts(BaseModel):
+class ActronAirAlerts(BaseModel):
     """Model for AC system alerts"""
     clean_filter: bool = Field(False, alias="CleanFilter")
     defrosting: bool = Field(False, alias="Defrosting")
@@ -44,7 +44,7 @@ class ActronAirACSystem(BaseModel):
     master_serial: str = Field("", alias="MasterSerial")
     master_wc_firmware_version: str = Field("", alias="MasterWCFirmwareVersion")
     system_name: str = Field("", alias="SystemName")
-    outdoor_unit: Optional[ActronAirNeoOutdoorUnit] = Field(None, alias="OutdoorUnit")
+    outdoor_unit: Optional[ActronAirOutdoorUnit] = Field(None, alias="OutdoorUnit")
     _parent_status: Optional["ActronStatus"] = None
 
     def set_parent_status(self, parent: "ActronStatus") -> None:

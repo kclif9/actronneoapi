@@ -1,4 +1,4 @@
-"""Zone models for Actron Neo API"""
+"""Zone models for Actron Air API"""
 from typing import Dict, List, Optional, Union, Any
 from pydantic import BaseModel, Field
 
@@ -7,7 +7,7 @@ class ActronAirZoneSensor(BaseModel):
     connected: bool = Field(False, alias="Connected")
     kind: str = Field("", alias="NV_Kind")
     is_paired: bool = Field(False, alias="NV_isPaired")
-    signal_strength: str = Field("NA", alias="Signal_of3")
+    signal_strength: str = str(Field("NA", alias="Signal_of3"))
     temperature: Optional[float] = Field(None, alias="Temperature_oC")
     humidity: Optional[float] = Field(None, alias="RelativeHumidity_pc")
     battery_level: Optional[float] = Field(None, alias="RemainingBatteryCapacity_pc")

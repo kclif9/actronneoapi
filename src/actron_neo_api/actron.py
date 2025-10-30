@@ -12,10 +12,10 @@ _LOGGER = logging.getLogger(__name__)
 
 class ActronAirAPI:
     """
-    Client for the Actron Neo API with improved architecture.
+    Client for the Actron Air API with improved architecture.
 
     This client provides a modern, structured approach to interacting with
-    the Actron Neo API while maintaining compatibility with the previous interface.
+    the Actron Air API while maintaining compatibility with the previous interface.
     """
 
     def __init__(
@@ -28,7 +28,7 @@ class ActronAirAPI:
         Initialize the ActronAirAPI client with OAuth2 authentication.
 
         Args:
-            base_url: Base URL for the Actron Neo API
+            base_url: Base URL for the Actron Air API
             oauth2_client_id: OAuth2 client ID for device code flow
             refresh_token: Optional refresh token for authentication
         """
@@ -51,6 +51,27 @@ class ActronAirAPI:
         # Session management
         self._session = None
         self._session_lock = asyncio.Lock()
+
+    def _get_system_link(self, serial_number: str, rel: str) -> Optional[str]:
+        """Return a HAL link for a cached system if available."""
+        for system in self.systems:
+            if system.get("serial") != serial_number:
+                continue
+
+            links = system.get("_links") or {}
+            link_info = links.get(rel)
+
+            if isinstance(link_info, dict):
+                href = link_info.get("href")
+            elif isinstance(link_info, list) and link_info:
+                href = link_info[0].get("href") if isinstance(link_info[0], dict) else None
+            else:
+                href = None
+
+            if href:
+                return href.lstrip("/")
+
+        return None
 
     async def _ensure_initialized(self) -> None:
         """Ensure the API is initialized with valid tokens."""
@@ -212,61 +233,11 @@ class ActronAirAPI:
             Current status of the AC system
         """
         try:
-            params = {"serial": serial_number}
-            endpoint = "api/v0/client/ac-systems/status/latest"
-
-            return await self._make_request("get", endpoint, params=params)
+            endpoint = self._get_system_link(serial_number, "ac-status")
+            if endpoint:
+                return await self._make_request("get", endpoint)
         except Exception as e:
             _LOGGER.error("Error getting AC status for %s: %s", serial_number, e)
-            raise
-
-    async def get_ac_events(
-        self, serial_number: str, event_type: str = "latest", event_id: Optional[str] = None
-    ) -> Dict[str, Any]:
-        """
-        Retrieve events for a specific AC system.
-
-        DEPRECATED: The events API was disabled by Actron in July 2025.
-        Use get_ac_status() instead for current system status.
-
-        Args:
-            serial_number: Serial number of the AC system
-            event_type: 'latest', 'newer', or 'older' for the event query type
-            event_id: The event ID for 'newer' or 'older' event queries
-
-        Returns:
-            Events of the AC system
-
-        Raises:
-            ActronAirAPIError: Events API is no longer available
-        """
-        import warnings
-        warnings.warn(
-            "get_ac_events() is deprecated. The events API was disabled by Actron in July 2025. "
-            "Use get_ac_status() instead.",
-            DeprecationWarning,
-            stacklevel=2
-        )
-
-        try:
-            params = {"serial": serial_number}
-
-            if event_type == "latest":
-                endpoint = "api/v0/client/ac-systems/events/latest"
-            elif event_type == "newer" and event_id:
-                endpoint = "api/v0/client/ac-systems/events/newer"
-                params["newerThanEventId"] = event_id
-            elif event_type == "older" and event_id:
-                endpoint = "api/v0/client/ac-systems/events/older"
-                params["olderThanEventId"] = event_id
-            else:
-                raise ValueError(
-                    "Invalid event_type or missing event_id for 'newer'/'older' event queries."
-                )
-
-            return await self._make_request("get", endpoint, params=params)
-        except Exception as e:
-            _LOGGER.error("Error getting AC events for %s: %s", serial_number, e)
             raise
 
     async def send_command(self, serial_number: str, command: Dict[str, Any]) -> Dict[str, Any]:
@@ -281,14 +252,15 @@ class ActronAirAPI:
             Command response
         """
         try:
-            serial_number = serial_number.lower()
-            return await self._make_request(
-                "post",
-                "api/v0/client/ac-systems/cmds/send",
-                params={"serial": serial_number},
-                json_data=command,
-                headers={"Content-Type": "application/json"}
-            )
+            endpoint = self._get_system_link(serial_number, "ac-status")
+            if endpoint:
+                serial_number = serial_number.lower()
+                return await self._make_request(
+                    "post",
+                    endpoint,
+                    json_data=command,
+                    headers={"Content-Type": "application/json"}
+                )
         except Exception as e:
             _LOGGER.error("Error sending command to %s: %s", serial_number, e)
             raise

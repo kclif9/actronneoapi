@@ -1,6 +1,6 @@
 # ActronAirAPI
 
-The `ActronAirAPI` library provides an interface to communicate with Actron Air Neo systems, enabling integration with Home Assistant or other platforms. This Python library offers methods for authentication, token management, and interacting with AC systems, zones, and settings.
+The `ActronAirAPI` library provides an interface to communicate with Actron Air systems, enabling integration with Home Assistant or other platforms. This Python library offers methods for authentication, token management, and interacting with AC systems, zones, and settings.
 
 ---
 
