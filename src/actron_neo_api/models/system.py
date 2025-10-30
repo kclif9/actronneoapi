@@ -5,9 +5,9 @@ from pydantic import BaseModel, Field
 
 class ActronAirOutdoorUnit(BaseModel):
     """Model for outdoor unit data in the AC system"""
-    model_number: Optional[str] = Field(None, alias="ModelNumber")
+    model_number: Optional[str] = str(Field(None, alias="ModelNumber"))
     serial_number: Optional[str] = Field(None, alias="SerialNumber")
-    software_version: Optional[str] = Field(None, alias="SoftwareVersion")
+    software_version: Optional[str] = str(Field(None, alias="SoftwareVersion"))
     comp_speed: Optional[float] = Field(None, alias="CompSpeed")
     comp_power: Optional[int] = Field(None, alias="CompPower")
     comp_running_pwm: Optional[int] = Field(None, alias="CompRunningPWM")
