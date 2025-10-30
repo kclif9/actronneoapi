@@ -2,7 +2,7 @@ import logging
 import re
 from typing import Dict, List, Optional, Any, Callable, Set, Tuple
 
-from .models import ActronAirNeoStatus, ActronAirNeoEventsResponse
+from .models import ActronAirStatus, ActronAirEventsResponse
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -12,7 +12,7 @@ class StateManager:
     """
 
     def __init__(self):
-        self.status: Dict[str, ActronAirNeoStatus] = {}
+        self.status: Dict[str, ActronAirStatus] = {}
         self.latest_event_id: Dict[str, str] = {}
         self._observers: List[Callable[[str, Dict[str, Any]], None]] = []
         self._api: Optional[Any] = None
@@ -22,7 +22,7 @@ class StateManager:
         Set the API reference to be passed to status objects.
 
         Args:
-            api: Reference to the ActronNeoAPI instance
+            api: Reference to the ActronAirAPI instance
         """
         self._api = api
 
@@ -34,13 +34,13 @@ class StateManager:
         """Add an observer to be notified of state changes."""
         self._observers.append(observer)
 
-    def get_status(self, serial_number: str) -> Optional[ActronAirNeoStatus]:
+    def get_status(self, serial_number: str) -> Optional[ActronAirStatus]:
         """Get the status for a specific system."""
         return self.status.get(serial_number)
 
-    def process_status_update(self, serial_number: str, status_data: Dict[str, Any]) -> ActronAirNeoStatus:
+    def process_status_update(self, serial_number: str, status_data: Dict[str, Any]) -> ActronAirStatus:
         """Process a full status update for a system."""
-        status = ActronAirNeoStatus.model_validate(status_data)
+        status = ActronAirStatus.model_validate(status_data)
         status.parse_nested_components()
 
         # Set serial number and API reference
@@ -59,9 +59,9 @@ class StateManager:
 
         return status
 
-    def process_events(self, serial_number: str, events_data: Dict[str, Any]) -> Optional[ActronAirNeoStatus]:
+    def process_events(self, serial_number: str, events_data: Dict[str, Any]) -> Optional[ActronAirStatus]:
         """Process events for a system and update state accordingly."""
-        events_response = ActronAirNeoEventsResponse.model_validate(events_data)
+        events_response = ActronAirEventsResponse.model_validate(events_data)
 
         if not events_response.events:
             return self.status.get(serial_number)
@@ -77,7 +77,7 @@ class StateManager:
                     self.status[serial_number].last_known_state = event.data
                     self.status[serial_number].parse_nested_components()
                 else:
-                    status = ActronAirNeoStatus(isOnline=True, lastKnownState=event.data)
+                    status = ActronAirStatus(isOnline=True, lastKnownState=event.data)
                     status.parse_nested_components()
                     # Set serial number and API reference
                     status.serial_number = serial_number
@@ -111,7 +111,7 @@ class StateManager:
 
         return self.status.get(serial_number)
 
-    def _map_peripheral_humidity_to_zones(self, status: ActronAirNeoStatus) -> None:
+    def _map_peripheral_humidity_to_zones(self, status: ActronAirStatus) -> None:
         """
         Map humidity values from peripherals to their respective zones.
 

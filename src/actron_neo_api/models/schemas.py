@@ -6,19 +6,19 @@ for backward compatibility.
 """
 
 # Re-export models from their respective module files
-from .zone import ActronAirNeoZone, ActronAirNeoZoneSensor
-from .settings import ActronAirNeoUserAirconSettings
-from .system import ActronAirNeoACSystem, ActronAirNeoLiveAircon, ActronAirNeoMasterInfo
-from .status import ActronAirNeoStatus, ActronAirNeoEventType, ActronAirNeoEventsResponse
+from .zone import ActronAirZone, ActronAirZoneSensor
+from .settings import ActronAirUserAirconSettings
+from .system import ActronAirACSystem, ActronAirLiveAircon, ActronAirMasterInfo
+from .status import ActronAirStatus, ActronAirEventType, ActronAirEventsResponse
 
 __all__ = [
-    'ActronAirNeoZone',
-    'ActronAirNeoZoneSensor',
-    'ActronAirNeoUserAirconSettings',
-    'ActronAirNeoLiveAircon',
-    'ActronAirNeoMasterInfo',
-    'ActronAirNeoACSystem',
-    'ActronAirNeoStatus',
-    'ActronAirNeoEventType',
-    'ActronAirNeoEventsResponse',
+    'ActronAirZone',
+    'ActronAirZoneSensor',
+    'ActronAirUserAirconSettings',
+    'ActronAirLiveAircon',
+    'ActronAirMasterInfo',
+    'ActronAirACSystem',
+    'ActronAirStatus',
+    'ActronAirEventType',
+    'ActronAirEventsResponse',
 ]

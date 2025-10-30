@@ -1,5 +1,5 @@
 """
-Comprehensive example demonstrating the ActronNeoAPI library.
+Comprehensive example demonstrating the ActronAirAPI library.
 
 This example shows:
 1. OAuth2 device code flow authentication
@@ -23,7 +23,7 @@ changing your AC settings.
 import asyncio
 import logging
 import os
-from actron_neo_api import ActronNeoAPI, ActronNeoAuthError, ActronNeoAPIError
+from actron_neo_api import ActronAirAPI, ActronAirAuthError, ActronAirAPIError
 
 # Set up logging
 logging.basicConfig(
@@ -39,7 +39,7 @@ async def oauth2_authentication_example():
     """
     print("\n=== OAUTH2 AUTHENTICATION FLOW ===\n")
 
-    async with ActronNeoAPI() as api:
+    async with ActronAirAPI() as api:
         try:
             # Step 1: Request device code
             logger.info("Requesting device code...")
@@ -95,7 +95,7 @@ async def oauth2_authentication_example():
 
 async def api_usage_example(refresh_token: str):
     """
-    Example of using the ActronNeoAPI with saved OAuth2 tokens.
+    Example of using the ActronAirAPI with saved OAuth2 tokens.
     This demonstrates the full API capabilities.
     """
     print("\n=== API USAGE EXAMPLE ===\n")
@@ -103,7 +103,7 @@ async def api_usage_example(refresh_token: str):
     try:
         # Initialize with refresh token - token will be refreshed on first API call
         logger.info("Initializing API with refresh token...")
-        api = ActronNeoAPI(refresh_token=refresh_token)
+        api = ActronAirAPI(refresh_token=refresh_token)
 
         # Get user information
         logger.info("Getting user information...")
@@ -248,11 +248,11 @@ async def api_usage_example(refresh_token: str):
         # Close the API session properly
         await api.close()
 
-    except ActronNeoAuthError as e:
+    except ActronAirAuthError as e:
         logger.error("Authentication error: %s", e)
         print("Authentication failed. Your tokens may have expired.")
         print("Please run the OAuth2 flow again to get new tokens.")
-    except ActronNeoAPIError as e:
+    except ActronAirAPIError as e:
         logger.error("API error: %s", e)
     except Exception as e:
         logger.error("Unexpected error: %s", e)

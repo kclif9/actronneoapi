@@ -5,12 +5,12 @@ import time
 from typing import Dict, Optional, Any, Tuple
 import aiohttp
 
-from .exceptions import ActronNeoAuthError
+from .exceptions import ActronAirAuthError
 
 _LOGGER = logging.getLogger(__name__)
 
 
-class OAuth2DeviceCodeAuth:
+class ActronAirOAuth2DeviceCodeAuth:
     """
     OAuth2 Device Code Flow authentication handler for Actron Neo API.
 
@@ -61,7 +61,7 @@ class OAuth2DeviceCodeAuth:
     def authorization_header(self) -> Dict[str, str]:
         """Get the authorization header using the current token."""
         if not self.access_token:
-            raise ActronNeoAuthError("No access token available")
+            raise ActronAirAuthError("No access token available")
         return {"Authorization": f"{self.token_type} {self.access_token}"}
 
     async def request_device_code(self) -> Dict[str, Any]:
@@ -72,7 +72,7 @@ class OAuth2DeviceCodeAuth:
             Dictionary containing device code, user code, verification URI, etc.
 
         Raises:
-            ActronNeoAuthError: If device code request fails
+            ActronAirAuthError: If device code request fails
         """
         payload = {
             "client_id": self.client_id,
@@ -98,7 +98,7 @@ class OAuth2DeviceCodeAuth:
 
                     for field in required_fields:
                         if field not in data:
-                            raise ActronNeoAuthError(f"Missing required field: {field}")
+                            raise ActronAirAuthError(f"Missing required field: {field}")
 
                     # Add verification_uri_complete if not present
                     if "verification_uri_complete" not in data:
@@ -109,7 +109,7 @@ class OAuth2DeviceCodeAuth:
                     return data
                 else:
                     response_text = await response.text()
-                    raise ActronNeoAuthError(
+                    raise ActronAirAuthError(
                         f"Failed to request device code. Status: {response.status}, Response: {response_text}"
                     )
 
@@ -130,7 +130,7 @@ class OAuth2DeviceCodeAuth:
             Token data if successful, None if timeout occurs
 
         Raises:
-            ActronNeoAuthError: If authorization is denied or other errors occur
+            ActronAirAuthError: If authorization is denied or other errors occur
         """
         import asyncio
 
@@ -199,14 +199,14 @@ class OAuth2DeviceCodeAuth:
                                 continue
 
                             elif error == "expired_token":
-                                raise ActronNeoAuthError("Device code has expired")
+                                raise ActronAirAuthError("Device code has expired")
                             elif error == "access_denied":
-                                raise ActronNeoAuthError("User denied authorization")
+                                raise ActronAirAuthError("User denied authorization")
                             else:
-                                raise ActronNeoAuthError(f"Authorization error: {error}")
+                                raise ActronAirAuthError(f"Authorization error: {error}")
                         else:
                             response_text = await response.text()
-                            raise ActronNeoAuthError(
+                            raise ActronAirAuthError(
                                 f"Token polling failed. Status: {response.status}, Response: {response_text}"
                             )
 
@@ -216,7 +216,7 @@ class OAuth2DeviceCodeAuth:
                     continue
                 except Exception as e:
                     _LOGGER.error("Unexpected error during polling: %s", e)
-                    raise ActronNeoAuthError(f"Polling failed: {str(e)}") from e
+                    raise ActronAirAuthError(f"Polling failed: {str(e)}") from e
 
         # Timeout reached
         _LOGGER.error("Token polling timed out after %d seconds (%d attempts)", timeout, attempt)
@@ -230,10 +230,10 @@ class OAuth2DeviceCodeAuth:
             Tuple of (access_token, expiry_timestamp)
 
         Raises:
-            ActronNeoAuthError: If token refresh fails
+            ActronAirAuthError: If token refresh fails
         """
         if not self.refresh_token:
-            raise ActronNeoAuthError("Refresh token is required to refresh the access token")
+            raise ActronAirAuthError("Refresh token is required to refresh the access token")
 
         payload = {
             "grant_type": "refresh_token",
@@ -254,7 +254,7 @@ class OAuth2DeviceCodeAuth:
 
                     self.access_token = data.get("access_token")
                     if not self.access_token:
-                        raise ActronNeoAuthError("Access token missing in response")
+                        raise ActronAirAuthError("Access token missing in response")
 
                     # Update refresh token if provided
                     if "refresh_token" in data:
@@ -274,7 +274,7 @@ class OAuth2DeviceCodeAuth:
                     return self.access_token, self.token_expiry
                 else:
                     response_text = await response.text()
-                    raise ActronNeoAuthError(
+                    raise ActronAirAuthError(
                         f"Failed to refresh access token. Status: {response.status}, Response: {response_text}"
                     )
 
@@ -286,7 +286,7 @@ class OAuth2DeviceCodeAuth:
             Dictionary containing user information
 
         Raises:
-            ActronNeoAuthError: If user info request fails
+            ActronAirAuthError: If user info request fails
         """
         # Ensure we have a valid access token
         await self.ensure_token_valid()
@@ -302,7 +302,7 @@ class OAuth2DeviceCodeAuth:
                     return await response.json()
                 else:
                     response_text = await response.text()
-                    raise ActronNeoAuthError(
+                    raise ActronAirAuthError(
                         f"Failed to get user info. Status: {response.status}, Response: {response_text}"
                     )
 
@@ -314,7 +314,7 @@ class OAuth2DeviceCodeAuth:
             The current valid access token
 
         Raises:
-            ActronNeoAuthError: If token validation fails
+            ActronAirAuthError: If token validation fails
         """
         if not self.is_token_valid:
             if self.is_token_expiring_soon:

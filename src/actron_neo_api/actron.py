@@ -4,13 +4,13 @@ from typing import Dict, List, Optional, Any
 
 import aiohttp
 
-from .oauth import OAuth2DeviceCodeAuth
+from .oauth import ActronAirOAuth2DeviceCodeAuth
 from .state import StateManager
-from .exceptions import ActronNeoAPIError, ActronNeoAuthError
+from .exceptions import ActronAirAPIError, ActronAirAuthError
 
 _LOGGER = logging.getLogger(__name__)
 
-class ActronNeoAPI:
+class ActronAirAPI:
     """
     Client for the Actron Neo API with improved architecture.
 
@@ -25,7 +25,7 @@ class ActronNeoAPI:
         refresh_token: Optional[str] = None,
     ):
         """
-        Initialize the ActronNeoAPI client with OAuth2 authentication.
+        Initialize the ActronAirAPI client with OAuth2 authentication.
 
         Args:
             base_url: Base URL for the Actron Neo API
@@ -35,7 +35,7 @@ class ActronNeoAPI:
         self.base_url = base_url
 
         # Initialize OAuth2 authentication
-        self.oauth2_auth = OAuth2DeviceCodeAuth(base_url, oauth2_client_id)
+        self.oauth2_auth = ActronAirOAuth2DeviceCodeAuth(base_url, oauth2_client_id)
 
         # Set refresh token if provided
         if refresh_token:
@@ -60,8 +60,8 @@ class ActronNeoAPI:
         if self.oauth2_auth.refresh_token and not self.oauth2_auth.access_token:
             try:
                 await self.oauth2_auth.refresh_access_token()
-            except (ActronNeoAuthError, aiohttp.ClientError) as e:
-                raise ActronNeoAuthError(f"Failed to initialize API: {e}") from e
+            except (ActronAirAuthError, aiohttp.ClientError) as e:
+                raise ActronAirAuthError(f"Failed to initialize API: {e}") from e
 
         self._initialized = True
 
@@ -134,8 +134,8 @@ class ActronNeoAPI:
             API response as JSON
 
         Raises:
-            ActronNeoAuthError: For authentication errors
-            ActronNeoAPIError: For API errors
+            ActronAirAuthError: For authentication errors
+            ActronAirAPIError: For API errors
         """
         # Ensure API is initialized with valid tokens
         await self._ensure_initialized()
@@ -165,17 +165,17 @@ class ActronNeoAPI:
             ) as response:
                 if response.status == 401:
                     response_text = await response.text()
-                    raise ActronNeoAuthError(f"Authentication failed: {response_text}")
+                    raise ActronAirAuthError(f"Authentication failed: {response_text}")
 
                 if response.status != 200:
                     response_text = await response.text()
-                    raise ActronNeoAPIError(
+                    raise ActronAirAPIError(
                         f"API request failed. Status: {response.status}, Response: {response_text}"
                     )
 
                 return await response.json()
         except aiohttp.ClientError as e:
-            raise ActronNeoAPIError(f"Request failed: {str(e)}") from e
+            raise ActronAirAPIError(f"Request failed: {str(e)}") from e
 
     # API Methods
 
@@ -238,7 +238,7 @@ class ActronNeoAPI:
             Events of the AC system
 
         Raises:
-            ActronNeoAPIError: Events API is no longer available
+            ActronAirAPIError: Events API is no longer available
         """
         import warnings
         warnings.warn(

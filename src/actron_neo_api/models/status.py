@@ -3,31 +3,31 @@ from typing import Dict, List, Optional, Any
 from pydantic import BaseModel, Field
 
 # Forward references for imports from other modules
-from .zone import ActronAirNeoZone, ActronAirNeoPeripheral
+from .zone import ActronAirZone, ActronAirPeripheral
 from .system import (
-    ActronAirNeoACSystem,
-    ActronAirNeoLiveAircon,
-    ActronAirNeoMasterInfo,
+    ActronAirACSystem,
+    ActronAirLiveAircon,
+    ActronAirMasterInfo,
     ActronAirNeoAlerts
 )
-from .settings import ActronAirNeoUserAirconSettings
+from .settings import ActronAirUserAirconSettings
 
 
-class ActronAirNeoStatus(BaseModel):
+class ActronAirStatus(BaseModel):
     is_online: bool = Field(False, alias="isOnline")
     last_known_state: Dict[str, Any] = Field({}, alias="lastKnownState")
-    ac_system: Optional[ActronAirNeoACSystem] = None
-    user_aircon_settings: Optional[ActronAirNeoUserAirconSettings] = None
-    master_info: Optional[ActronAirNeoMasterInfo] = None
-    live_aircon: Optional[ActronAirNeoLiveAircon] = None
+    ac_system: Optional[ActronAirACSystem] = None
+    user_aircon_settings: Optional[ActronAirUserAirconSettings] = None
+    master_info: Optional[ActronAirMasterInfo] = None
+    live_aircon: Optional[ActronAirLiveAircon] = None
     alerts: Optional[ActronAirNeoAlerts] = None
-    remote_zone_info: List[ActronAirNeoZone] = Field([], alias="RemoteZoneInfo")
-    peripherals: List[ActronAirNeoPeripheral] = []
+    remote_zone_info: List[ActronAirZone] = Field([], alias="RemoteZoneInfo")
+    peripherals: List[ActronAirPeripheral] = []
     _api: Optional[Any] = None
     serial_number: Optional[str] = None
 
     @property
-    def zones(self) -> Dict[int, ActronAirNeoZone]:
+    def zones(self) -> Dict[int, ActronAirZone]:
         """
         Return zones as a dictionary with their ID as keys.
 
@@ -93,7 +93,7 @@ class ActronAirNeoStatus(BaseModel):
     def parse_nested_components(self):
         """Parse nested components from the last_known_state"""
         if "AirconSystem" in self.last_known_state:
-            self.ac_system = ActronAirNeoACSystem.model_validate(self.last_known_state["AirconSystem"])
+            self.ac_system = ActronAirACSystem.model_validate(self.last_known_state["AirconSystem"])
             # Set the system name from NV_SystemSettings if available
             if "NV_SystemSettings" in self.last_known_state:
                 system_name = self.last_known_state["NV_SystemSettings"].get("SystemName", "")
@@ -112,22 +112,22 @@ class ActronAirNeoStatus(BaseModel):
             self._process_peripherals()
 
         if "UserAirconSettings" in self.last_known_state:
-            self.user_aircon_settings = ActronAirNeoUserAirconSettings.model_validate(self.last_known_state["UserAirconSettings"])
+            self.user_aircon_settings = ActronAirUserAirconSettings.model_validate(self.last_known_state["UserAirconSettings"])
             # Set parent reference
             if self.user_aircon_settings:
                 self.user_aircon_settings.set_parent_status(self)
 
         if "MasterInfo" in self.last_known_state:
-            self.master_info = ActronAirNeoMasterInfo.model_validate(self.last_known_state["MasterInfo"])
+            self.master_info = ActronAirMasterInfo.model_validate(self.last_known_state["MasterInfo"])
 
         if "LiveAircon" in self.last_known_state:
-            self.live_aircon = ActronAirNeoLiveAircon.model_validate(self.last_known_state["LiveAircon"])
+            self.live_aircon = ActronAirLiveAircon.model_validate(self.last_known_state["LiveAircon"])
 
         if "Alerts" in self.last_known_state:
             self.alerts = ActronAirNeoAlerts.model_validate(self.last_known_state["Alerts"])
 
         if "RemoteZoneInfo" in self.last_known_state:
-            self.remote_zone_info = [ActronAirNeoZone.model_validate(zone) for zone in self.last_known_state["RemoteZoneInfo"]]
+            self.remote_zone_info = [ActronAirZone.model_validate(zone) for zone in self.last_known_state["RemoteZoneInfo"]]
             # Set parent reference for each zone
             for i, zone in enumerate(self.remote_zone_info):
                 zone.set_parent_status(self, i)
@@ -137,7 +137,7 @@ class ActronAirNeoStatus(BaseModel):
         Set the API reference to enable direct command sending.
 
         Args:
-            api: Reference to the ActronNeoAPI instance
+            api: Reference to the ActronAirAPI instance
         """
         self._api = api
 
@@ -167,7 +167,7 @@ class ActronAirNeoStatus(BaseModel):
             if not peripheral_data:
                 continue
 
-            peripheral = ActronAirNeoPeripheral.from_peripheral_data(peripheral_data)
+            peripheral = ActronAirPeripheral.from_peripheral_data(peripheral_data)
             if peripheral:
                 # Set parent reference so zones property can work
                 peripheral.set_parent_status(self)
@@ -198,7 +198,7 @@ class ActronAirNeoStatus(BaseModel):
                     zone.actual_humidity_pc = peripheral.humidity
                 # The temperature will be automatically used through the existing properties
 
-    def get_peripheral_for_zone(self, zone_index: int) -> Optional[ActronAirNeoPeripheral]:
+    def get_peripheral_for_zone(self, zone_index: int) -> Optional[ActronAirPeripheral]:
         """
         Get the peripheral device assigned to a specific zone
 
@@ -277,11 +277,11 @@ class ActronAirNeoStatus(BaseModel):
             return default
 
 
-class ActronAirNeoEventType(BaseModel):
+class ActronAirEventType(BaseModel):
     id: str
     type: str
     data: Dict[str, Any]
 
 
-class ActronAirNeoEventsResponse(BaseModel):
-    events: List[ActronAirNeoEventType]
+class ActronAirEventsResponse(BaseModel):
+    events: List[ActronAirEventType]

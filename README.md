@@ -1,6 +1,6 @@
-# ActronNeoAPI
+# ActronAirAPI
 
-The `ActronNeoAPI` library provides an interface to communicate with Actron Air Neo systems, enabling integration with Home Assistant or other platforms. This Python library offers methods for authentication, token management, and interacting with AC systems, zones, and settings.
+The `ActronAirAPI` library provides an interface to communicate with Actron Air Neo systems, enabling integration with Home Assistant or other platforms. This Python library offers methods for authentication, token management, and interacting with AC systems, zones, and settings.
 
 ---
 
@@ -42,11 +42,11 @@ See `example.py` for a comprehensive demonstration including OAuth2 authenticati
 
 ```python
 import asyncio
-from actron_neo_api import ActronNeoAPI
+from actron_neo_api import ActronAirAPI
 
 async def main():
     # Initialize with refresh token - token will be refreshed on first API call
-    api = ActronNeoAPI(refresh_token="your_refresh_token")
+    api = ActronAirAPI(refresh_token="your_refresh_token")
 
     # Get systems and update status
     systems = await api.get_ac_systems()
@@ -78,17 +78,17 @@ if __name__ == "__main__":
 
 ## OAuth2 Device Code Flow
 
-The ActronNeoAPI uses OAuth2 device code flow for secure authentication without storing passwords.
+The ActronAirAPI uses OAuth2 device code flow for secure authentication without storing passwords.
 
 ### Basic OAuth2 Setup
 
 ```python
 import asyncio
-from actron_neo_api import ActronNeoAPI
+from actron_neo_api import ActronAirAPI
 
 async def oauth2_flow():
     # Initialize API
-    async with ActronNeoAPI() as api:
+    async with ActronAirAPI() as api:
         # Request device code
         device_code_response = await api.request_device_code()
 
@@ -156,7 +156,7 @@ token_data = await api.poll_for_token(
 ```python
 async def restore_session():
     # Initialize with refresh token - token will be refreshed on first API call
-    api = ActronNeoAPI(refresh_token="your_saved_refresh_token")
+    api = ActronAirAPI(refresh_token="your_saved_refresh_token")
 
     # API will automatically refresh tokens as needed
     systems = await api.get_ac_systems()
@@ -288,15 +288,15 @@ for i, zone in enumerate(zones):
 ## Error Handling
 
 ```python
-from actron_neo_api import ActronNeoAPI, ActronNeoAuthError, ActronNeoAPIError
+from actron_neo_api import ActronAirAPI, ActronAirAuthError, ActronAirAPIError
 
 try:
-    api = ActronNeoAPI(refresh_token="your_refresh_token")
+    api = ActronAirAPI(refresh_token="your_refresh_token")
     # API operations...
     systems = await api.get_ac_systems()
-except ActronNeoAuthError as e:
+except ActronAirAuthError as e:
     print(f"Authentication error: {e}")
-except ActronNeoAPIError as e:
+except ActronAirAPIError as e:
     print(f"API error: {e}")
 except Exception as e:
     print(f"Unexpected error: {e}")
