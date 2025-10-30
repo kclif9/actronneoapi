@@ -157,10 +157,13 @@ class ActronAirStatus(BaseModel):
 
     def _process_peripherals(self) -> None:
         """Process peripheral devices from the last_known_state and extract their sensor data"""
-        if not self.last_known_state['AirconSystem']['Peripherals']:
+        aircon_system = self.last_known_state.get("AirconSystem") or {}
+        peripherals_data = aircon_system.get("Peripherals")
+
+        if not peripherals_data:
+            self.peripherals = []
             return
 
-        peripherals_data = self.last_known_state["AirconSystem"]["Peripherals"]
         self.peripherals = []
 
         for peripheral_data in peripherals_data:
