@@ -46,7 +46,7 @@ from actron_neo_api import ActronAirAPI
 
 async def main():
     # Initialize with refresh token - token will be refreshed on first API call
-    api = ActronAPI(refresh_token="your_refresh_token")
+    api = ActronAirAPI(refresh_token="your_refresh_token")
 
     # Get systems and update status
     systems = await api.get_ac_systems()
