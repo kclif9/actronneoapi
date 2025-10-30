@@ -12,10 +12,10 @@ _LOGGER = logging.getLogger(__name__)
 
 class ActronAirAPI:
     """
-    Client for the Actron Neo API with improved architecture.
+    Client for the Actron Air API with improved architecture.
 
     This client provides a modern, structured approach to interacting with
-    the Actron Neo API while maintaining compatibility with the previous interface.
+    the Actron Air API while maintaining compatibility with the previous interface.
     """
 
     def __init__(
@@ -28,7 +28,7 @@ class ActronAirAPI:
         Initialize the ActronAirAPI client with OAuth2 authentication.
 
         Args:
-            base_url: Base URL for the Actron Neo API
+            base_url: Base URL for the Actron Air API
             oauth2_client_id: OAuth2 client ID for device code flow
             refresh_token: Optional refresh token for authentication
         """

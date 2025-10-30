@@ -1,4 +1,4 @@
-"""Status models for Actron Neo API"""
+"""Status models for Actron Air API"""
 from typing import Dict, List, Optional, Any
 from pydantic import BaseModel, Field
 
@@ -8,7 +8,7 @@ from .system import (
     ActronAirACSystem,
     ActronAirLiveAircon,
     ActronAirMasterInfo,
-    ActronAirNeoAlerts
+    ActronAirAlerts
 )
 from .settings import ActronAirUserAirconSettings
 
@@ -20,7 +20,7 @@ class ActronAirStatus(BaseModel):
     user_aircon_settings: Optional[ActronAirUserAirconSettings] = None
     master_info: Optional[ActronAirMasterInfo] = None
     live_aircon: Optional[ActronAirLiveAircon] = None
-    alerts: Optional[ActronAirNeoAlerts] = None
+    alerts: Optional[ActronAirAlerts] = None
     remote_zone_info: List[ActronAirZone] = Field([], alias="RemoteZoneInfo")
     peripherals: List[ActronAirPeripheral] = []
     _api: Optional[Any] = None
@@ -124,7 +124,7 @@ class ActronAirStatus(BaseModel):
             self.live_aircon = ActronAirLiveAircon.model_validate(self.last_known_state["LiveAircon"])
 
         if "Alerts" in self.last_known_state:
-            self.alerts = ActronAirNeoAlerts.model_validate(self.last_known_state["Alerts"])
+            self.alerts = ActronAirAlerts.model_validate(self.last_known_state["Alerts"])
 
         if "RemoteZoneInfo" in self.last_known_state:
             self.remote_zone_info = [ActronAirZone.model_validate(zone) for zone in self.last_known_state["RemoteZoneInfo"]]

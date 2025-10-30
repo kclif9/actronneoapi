@@ -1,4 +1,4 @@
-"""Settings models for Actron Neo API"""
+"""Settings models for Actron Air API"""
 from typing import Dict, List, Optional, Union, Any
 from pydantic import BaseModel, Field
 

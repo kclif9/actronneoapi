@@ -1,7 +1,7 @@
 """
-Actron Neo API Models
+Actron Air API Models
 
-This package contains all data models used in the Actron Neo API
+This package contains all data models used in the Actron Air API
 """
 
 # Re-export all models for easy access

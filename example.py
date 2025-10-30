@@ -342,7 +342,7 @@ async def main():
     """
     Main example function that demonstrates both authentication and API usage.
     """
-    print("=== ACTRON NEO API EXAMPLE ===")
+    print("=== ACTRON AIR API EXAMPLE ===")
     print("This example demonstrates OAuth2 authentication and API usage.")
 
     # Check if we have saved tokens in environment variables

@@ -8,7 +8,7 @@ _LOGGER = logging.getLogger(__name__)
 
 class StateManager:
     """
-    Manages the state of Actron Neo systems, handling updates and state merging.
+    Manages the state of Actron Air systems, handling updates and state merging.
     """
 
     def __init__(self):
@@ -115,7 +115,7 @@ class StateManager:
         """
         Map humidity values from peripherals to their respective zones.
 
-        The Actron Neo API reports the same central humidity value for all zones,
+        The Actron Air API reports the same central humidity value for all zones,
         but each zone controller has its own humidity sensor. This method extracts
         the actual zone-specific humidity values and associates them with the correct zones.
         """
