@@ -1,27 +1,27 @@
-from .actron import ActronNeoAPI
-from .oauth import OAuth2DeviceCodeAuth
-from .exceptions import ActronNeoAuthError, ActronNeoAPIError
-from .models.zone import ActronAirNeoZone, ActronAirNeoZoneSensor, ActronAirNeoPeripheral
-from .models.system import ActronAirNeoACSystem, ActronAirNeoLiveAircon, ActronAirNeoMasterInfo
-from .models.settings import ActronAirNeoUserAirconSettings
-from .models.status import ActronAirNeoStatus, ActronAirNeoEventType, ActronAirNeoEventsResponse
+from .actron import ActronAirAPI
+from .oauth import ActronAirOAuth2DeviceCodeAuth
+from .exceptions import ActronAirAuthError, ActronAirAPIError
+from .models.zone import ActronAirZone, ActronAirZoneSensor, ActronAirPeripheral
+from .models.system import ActronAirACSystem, ActronAirLiveAircon, ActronAirMasterInfo
+from .models.settings import ActronAirUserAirconSettings
+from .models.status import ActronAirStatus, ActronAirEventType, ActronAirEventsResponse
 
 __all__ = [
     # API and Exceptions
-    "ActronNeoAPI",
-    "OAuth2DeviceCodeAuth",
-    "ActronNeoAuthError",
-    "ActronNeoAPIError",
+    "ActronAirAPI",
+    "ActronAirOAuth2DeviceCodeAuth",
+    "ActronAirAuthError",
+    "ActronAirAPIError",
 
     # Model Classes
-    "ActronAirNeoZone",
-    "ActronAirNeoZoneSensor",
-    'ActronAirNeoPeripheral',
-    "ActronAirNeoACSystem",
-    "ActronAirNeoLiveAircon",
-    "ActronAirNeoMasterInfo",
-    "ActronAirNeoUserAirconSettings",
-    "ActronAirNeoStatus",
-    "ActronAirNeoEventType",
-    "ActronAirNeoEventsResponse"
+    "ActronAirZone",
+    "ActronAirZoneSensor",
+    'ActronAirPeripheral',
+    "ActronAirACSystem",
+    "ActronAirLiveAircon",
+    "ActronAirMasterInfo",
+    "ActronAirUserAirconSettings",
+    "ActronAirStatus",
+    "ActronAirEventType",
+    "ActronAirEventsResponse"
 ]

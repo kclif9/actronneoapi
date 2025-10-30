@@ -3,7 +3,7 @@ from typing import Dict, List, Optional, Union, Any
 from pydantic import BaseModel, Field
 
 
-class ActronAirNeoUserAirconSettings(BaseModel):
+class ActronAirUserAirconSettings(BaseModel):
     is_on: bool = Field(False, alias="isOn")
     mode: str = Field("", alias="Mode")
     fan_mode: str = Field("", alias="FanMode")

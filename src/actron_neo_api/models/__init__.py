@@ -5,23 +5,23 @@ This package contains all data models used in the Actron Neo API
 """
 
 # Re-export all models for easy access
-from .zone import ActronAirNeoZone, ActronAirNeoZoneSensor, ActronAirNeoPeripheral
-from .settings import ActronAirNeoUserAirconSettings
-from .system import ActronAirNeoACSystem, ActronAirNeoLiveAircon, ActronAirNeoMasterInfo
-from .status import ActronAirNeoStatus, ActronAirNeoEventType, ActronAirNeoEventsResponse
+from .zone import ActronAirZone, ActronAirZoneSensor, ActronAirPeripheral
+from .settings import ActronAirUserAirconSettings
+from .system import ActronAirACSystem, ActronAirLiveAircon, ActronAirMasterInfo
+from .status import ActronAirStatus, ActronAirEventType, ActronAirEventsResponse
 
 # For backward compatibility
 from .schemas import *
 
 __all__ = [
-    'ActronAirNeoZone',
-    'ActronAirNeoZoneSensor',
-    'ActronAirNeoPeripheral',
-    'ActronAirNeoUserAirconSettings',
-    'ActronAirNeoLiveAircon',
-    'ActronAirNeoMasterInfo',
-    'ActronAirNeoACSystem',
-    'ActronAirNeoStatus',
-    'ActronAirNeoEventType',
-    'ActronAirNeoEventsResponse',
+    'ActronAirZone',
+    'ActronAirZoneSensor',
+    'ActronAirPeripheral',
+    'ActronAirUserAirconSettings',
+    'ActronAirLiveAircon',
+    'ActronAirMasterInfo',
+    'ActronAirACSystem',
+    'ActronAirStatus',
+    'ActronAirEventType',
+    'ActronAirEventsResponse',
 ]

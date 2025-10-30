@@ -3,7 +3,7 @@ from typing import Dict, List, Optional, Union, Any
 from pydantic import BaseModel, Field
 
 
-class ActronAirNeoZoneSensor(BaseModel):
+class ActronAirZoneSensor(BaseModel):
     connected: bool = Field(False, alias="Connected")
     kind: str = Field("", alias="NV_Kind")
     is_paired: bool = Field(False, alias="NV_isPaired")
@@ -13,7 +13,7 @@ class ActronAirNeoZoneSensor(BaseModel):
     battery_level: Optional[float] = Field(None, alias="RemainingBatteryCapacity_pc")
 
 
-class ActronAirNeoPeripheral(BaseModel):
+class ActronAirPeripheral(BaseModel):
     """Peripheral device that provides sensor data for zones"""
     logical_address: int = Field(0, alias="LogicalAddress")
     device_type: str = Field("", alias="DeviceType")
@@ -25,7 +25,7 @@ class ActronAirNeoPeripheral(BaseModel):
     _parent_status: Optional["ActronStatus"] = None
 
     @property
-    def zones(self) -> List["ActronAirNeoZone"]:
+    def zones(self) -> List["ActronAirZone"]:
         """
         Get the actual zone objects assigned to this peripheral.
 
@@ -43,7 +43,7 @@ class ActronAirNeoPeripheral(BaseModel):
         return result
 
     @classmethod
-    def from_peripheral_data(cls, peripheral_data: Dict[str, Any]) -> "ActronAirNeoPeripheral":
+    def from_peripheral_data(cls, peripheral_data: Dict[str, Any]) -> "ActronAirPeripheral":
         """Create a peripheral instance from raw peripheral data"""
         peripheral = cls.model_validate(peripheral_data)
 
@@ -62,7 +62,7 @@ class ActronAirNeoPeripheral(BaseModel):
         self._parent_status = parent
 
 
-class ActronAirNeoZone(BaseModel):
+class ActronAirZone(BaseModel):
     can_operate: bool = Field(False, alias="CanOperate")
     common_zone: bool = Field(False, alias="CommonZone")
     live_humidity_pc: float = Field(0.0, alias="LiveHumidity_pc")
@@ -72,7 +72,7 @@ class ActronAirNeoZone(BaseModel):
     exists: bool = Field(False, alias="NV_Exists")
     temperature_setpoint_cool_c: float = Field(0.0, alias="TemperatureSetpoint_Cool_oC")
     temperature_setpoint_heat_c: float = Field(0.0, alias="TemperatureSetpoint_Heat_oC")
-    sensors: Dict[str, ActronAirNeoZoneSensor] = Field({}, alias="Sensors")
+    sensors: Dict[str, ActronAirZoneSensor] = Field({}, alias="Sensors")
     actual_humidity_pc: Optional[float] = None
     zone_id: Optional[int] = None
     _parent_status: Optional["ActronStatus"] = None
@@ -159,7 +159,7 @@ class ActronAirNeoZone(BaseModel):
         return peripheral.humidity if peripheral else None
 
     @property
-    def peripheral(self) -> Optional["ActronAirNeoPeripheral"]:
+    def peripheral(self) -> Optional["ActronAirPeripheral"]:
         """Get the peripheral device assigned to this zone.
 
         Returns:

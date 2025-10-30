@@ -1,7 +1,7 @@
-class ActronNeoAuthError(Exception):
+class ActronAirAuthError(Exception):
     """Exception raised for authentication-related errors."""
     pass
 
-class ActronNeoAPIError(Exception):
+class ActronAirAPIError(Exception):
     """Exception raised for general API errors."""
     pass

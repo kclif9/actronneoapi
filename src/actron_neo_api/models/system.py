@@ -16,7 +16,7 @@ class ActronAirNeoOutdoorUnit(BaseModel):
     family: Optional[str] = Field(None, alias="Family")
 
 
-class ActronAirNeoLiveAircon(BaseModel):
+class ActronAirLiveAircon(BaseModel):
     is_on: bool = Field(False, alias="SystemOn")
     compressor_mode: str = Field("", alias="CompressorMode")
     compressor_capacity: int = Field(0, alias="CompressorCapacity")
@@ -27,7 +27,7 @@ class ActronAirNeoLiveAircon(BaseModel):
     outdoor_unit: Optional[ActronAirNeoOutdoorUnit] = Field(None, alias="OutdoorUnit")
 
 
-class ActronAirNeoMasterInfo(BaseModel):
+class ActronAirMasterInfo(BaseModel):
     live_temp_c: float = Field(0.0, alias="LiveTemp_oC")
     live_humidity_pc: float = Field(0.0, alias="LiveHumidity_pc")
     live_outdoor_temp_c: float = Field(0.0, alias="LiveOutdoorTemp_oC")
@@ -39,7 +39,7 @@ class ActronAirNeoAlerts(BaseModel):
     defrosting: bool = Field(False, alias="Defrosting")
 
 
-class ActronAirNeoACSystem(BaseModel):
+class ActronAirACSystem(BaseModel):
     master_wc_model: str = Field("", alias="MasterWCModel")
     master_serial: str = Field("", alias="MasterSerial")
     master_wc_firmware_version: str = Field("", alias="MasterWCFirmwareVersion")
