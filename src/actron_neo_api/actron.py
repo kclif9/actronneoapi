@@ -252,7 +252,7 @@ class ActronAirAPI:
             Command response
         """
         try:
-            endpoint = self._get_system_link(serial_number, "ac-status")
+            endpoint = self._get_system_link(serial_number, "commands")
             if endpoint:
                 serial_number = serial_number.lower()
                 return await self._make_request(
