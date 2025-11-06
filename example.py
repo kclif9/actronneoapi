@@ -226,16 +226,16 @@ async def api_usage_example(refresh_token: str):
             print("\n=== DEMONSTRATING CONTROL CAPABILITIES ===\n")
 
             # Check if user wants to run control examples
-            if os.environ.get("ACTRON_DEMO_CONTROLS", "").lower() == "true":
-                await demonstrate_controls(api, status, serial)
-            else:
-                print("Control demonstrations are disabled by default.")
-                print("Set ACTRON_DEMO_CONTROLS=true environment variable to enable.")
-                print("\nThe following controls would be available:")
-                print("- AC System control (power, mode, temperature)")
-                print("- Fan control (speed, continuous mode)")
-                print("- Zone control (enable/disable, temperature)")
-                print("- Special modes (quiet, turbo, away)")
+            #if os.environ.get("ACTRON_DEMO_CONTROLS", "").lower() == "true":
+            await demonstrate_controls(api, status, serial)
+            #else:
+            #    print("Control demonstrations are disabled by default.")
+            #    print("Set ACTRON_DEMO_CONTROLS=true environment variable to enable.")
+            #    print("\nThe following controls would be available:")
+            #    print("- AC System control (power, mode, temperature)")
+            #    print("- Fan control (speed, continuous mode)")
+            #    print("- Zone control (enable/disable, temperature)")
+            #    print("- Special modes (quiet, turbo, away)")
 
         print("\n=== EXAMPLE COMPLETE ===")
         print("Successfully demonstrated:")
