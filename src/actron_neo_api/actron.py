@@ -4,6 +4,7 @@ from typing import Dict, List, Optional, Any
 
 import aiohttp
 
+from .const import DEFAULT_BASE_URL, NIMBUS_BASE_URL, QUE_BASE_URL
 from .oauth import ActronAirOAuth2DeviceCodeAuth
 from .state import StateManager
 from .exceptions import ActronAirAPIError, ActronAirAuthError
@@ -20,7 +21,7 @@ class ActronAirAPI:
 
     def __init__(
         self,
-        base_url: str = "https://nimbus.actronair.com.au",
+        base_url: Optional[str] = None,
         oauth2_client_id: str = "home_assistant",
         refresh_token: Optional[str] = None,
     ):
@@ -32,10 +33,12 @@ class ActronAirAPI:
             oauth2_client_id: OAuth2 client ID for device code flow
             refresh_token: Optional refresh token for authentication
         """
-        self.base_url = base_url
+        resolved_base_url = base_url or DEFAULT_BASE_URL
+        self._auto_manage_base_url = base_url is None
+        self.base_url = resolved_base_url
 
         # Initialize OAuth2 authentication
-        self.oauth2_auth = ActronAirOAuth2DeviceCodeAuth(base_url, oauth2_client_id)
+        self.oauth2_auth = ActronAirOAuth2DeviceCodeAuth(resolved_base_url, oauth2_client_id)
 
         # Set refresh token if provided
         if refresh_token:
@@ -72,6 +75,26 @@ class ActronAirAPI:
                 return href.lstrip("/")
 
         return None
+
+    @staticmethod
+    def _is_nx_gen_system(system: Dict[str, Any]) -> bool:
+        system_type = str(system.get("type") or "").replace("-", "").lower()
+        return system_type == "nxgen"
+
+    def _set_base_url(self, base_url: str) -> None:
+        if self.base_url == base_url:
+            return
+
+        _LOGGER.info("Switching API base URL to %s", base_url)
+        self.base_url = base_url
+
+    def _maybe_update_base_url_from_systems(self, systems: List[Dict[str, Any]]) -> None:
+        if not self._auto_manage_base_url or not systems:
+            return
+
+        has_nx_gen = any(self._is_nx_gen_system(system) for system in systems)
+        target_base = QUE_BASE_URL if has_nx_gen else NIMBUS_BASE_URL
+        self._set_base_url(target_base)
 
     async def _ensure_initialized(self) -> None:
         """Ensure the API is initialized with valid tokens."""
@@ -215,6 +238,7 @@ class ActronAirAPI:
             )
             systems = response["_embedded"]["ac-system"]
             self.systems = systems  # Auto-populate for convenience
+            self._maybe_update_base_url_from_systems(systems)
             return systems
         except Exception as e:
             _LOGGER.error("Error getting AC systems: %s", e)
