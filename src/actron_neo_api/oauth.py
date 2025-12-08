@@ -33,6 +33,7 @@ class ActronAirOAuth2DeviceCodeAuth:
         self.refresh_token: Optional[str] = None
         self.token_type: str = "Bearer"
         self.token_expiry: Optional[float] = None
+        self.authenticated_platform: Optional[str] = None  # Track which platform issued tokens
 
         # OAuth2 endpoints
         self.token_url = f"{base_url}/api/v0/oauth/token"
@@ -165,13 +166,14 @@ class ActronAirOAuth2DeviceCodeAuth:
                             self.access_token = data["access_token"]
                             self.refresh_token = data.get("refresh_token")
                             self.token_type = data.get("token_type", "Bearer")
+                            self.authenticated_platform = self.base_url  # Record platform that issued tokens
 
                             expires_in = data.get("expires_in", 3600)
                             self.token_expiry = time.time() + expires_in
 
                             _LOGGER.info(
                                 "OAuth2 token obtained successfully after %d attempts. "
-                                "Expires in %s seconds", attempt, expires_in
+                                "Expires in %s seconds. Platform: %s", attempt, expires_in, self.base_url
                             )
 
                             return data
@@ -263,12 +265,15 @@ class ActronAirOAuth2DeviceCodeAuth:
                     self.token_type = data.get("token_type", "Bearer")
                     expires_in = data.get("expires_in", 3600)
 
+                    # Update authenticated platform since refresh succeeded on this endpoint
+                    self.authenticated_platform = self.base_url
+
                     # Store expiry time as Unix timestamp
                     self.token_expiry = time.time() + expires_in
 
                     _LOGGER.info(
                         "OAuth2 token refreshed successfully. "
-                        "Expires in %s seconds", expires_in
+                        "Expires in %s seconds. Platform: %s", expires_in, self.token_url
                     )
 
                     return self.access_token, self.token_expiry

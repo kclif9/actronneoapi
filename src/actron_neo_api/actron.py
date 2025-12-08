@@ -1,10 +1,10 @@
 import logging
 import asyncio
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Literal
 
 import aiohttp
 
-from .const import DEFAULT_BASE_URL, NIMBUS_BASE_URL, QUE_BASE_URL
+from .const import BASE_URL_DEFAULT, BASE_URL_NIMBUS, BASE_URL_QUE, PLATFORM_NEO, PLATFORM_QUE
 from .oauth import ActronAirOAuth2DeviceCodeAuth
 from .state import StateManager
 from .exceptions import ActronAirAPIError, ActronAirAuthError
@@ -21,21 +21,32 @@ class ActronAirAPI:
 
     def __init__(
         self,
-        base_url: Optional[str] = None,
         oauth2_client_id: str = "home_assistant",
         refresh_token: Optional[str] = None,
+        platform: Optional[Literal[PLATFORM_NEO, PLATFORM_QUE]] = None,
     ):
         """
         Initialize the ActronAirAPI client with OAuth2 authentication.
 
         Args:
-            base_url: Base URL for the Actron Air API
             oauth2_client_id: OAuth2 client ID for device code flow
             refresh_token: Optional refresh token for authentication
+            platform: Platform to use ('neo', 'que', or None for auto-detect). Defaults to 'neo' if not specified.
         """
-        resolved_base_url = base_url or DEFAULT_BASE_URL
-        self._auto_manage_base_url = base_url is None
+        # Determine base URL from platform parameter
+        if platform == PLATFORM_QUE:
+            resolved_base_url = BASE_URL_QUE
+            self._auto_manage_base_url = False
+        elif platform == PLATFORM_NEO:
+            resolved_base_url = BASE_URL_NIMBUS
+            self._auto_manage_base_url = False
+        else:
+            # Auto-detect with Neo as fallback (platform is None)
+            resolved_base_url = BASE_URL_DEFAULT
+            self._auto_manage_base_url = True
+
         self.base_url = resolved_base_url
+        self._oauth2_client_id = oauth2_client_id
 
         # Initialize OAuth2 authentication
         self.oauth2_auth = ActronAirOAuth2DeviceCodeAuth(resolved_base_url, oauth2_client_id)
@@ -54,6 +65,31 @@ class ActronAirAPI:
         # Session management
         self._session = None
         self._session_lock = asyncio.Lock()
+
+    @property
+    def platform(self) -> str:
+        """
+        Get the current platform being used.
+
+        Returns:
+            'neo' if using Nimbus platform, 'que' if using Que platform
+        """
+        if self.base_url == BASE_URL_NIMBUS:
+            return PLATFORM_NEO
+        elif self.base_url == BASE_URL_QUE:
+            return PLATFORM_QUE
+        else:
+            return 'unknown'
+
+    @property
+    def authenticated_platform(self) -> Optional[str]:
+        """
+        Get the platform where tokens were originally obtained.
+
+        Returns:
+            Platform URL where tokens were authenticated, or None if not authenticated
+        """
+        return self.oauth2_auth.authenticated_platform
 
     def _get_system_link(self, serial_number: str, rel: str) -> Optional[str]:
         """Return a HAL link for a cached system if available."""
@@ -85,15 +121,37 @@ class ActronAirAPI:
         if self.base_url == base_url:
             return
 
-        _LOGGER.info("Switching API base URL to %s", base_url)
+        _LOGGER.info("Switching API base URL from %s to %s", self.base_url, base_url)
+
+        # Preserve existing tokens
+        old_access_token = self.oauth2_auth.access_token
+        old_refresh_token = self.oauth2_auth.refresh_token
+        old_token_expiry = self.oauth2_auth.token_expiry
+        old_authenticated_platform = self.oauth2_auth.authenticated_platform
+
+        # Update base URL and recreate OAuth2 handler to match new platform
         self.base_url = base_url
+        self.oauth2_auth = ActronAirOAuth2DeviceCodeAuth(base_url, self._oauth2_client_id)
+
+        # Restore tokens
+        self.oauth2_auth.access_token = old_access_token
+        self.oauth2_auth.refresh_token = old_refresh_token
+        self.oauth2_auth.token_expiry = old_token_expiry
+        self.oauth2_auth.authenticated_platform = old_authenticated_platform
+
+        _LOGGER.warning(
+            "Platform switched - tokens obtained from %s may not work with %s. "
+            "Re-authentication may be required.",
+            old_authenticated_platform or "unknown platform",
+            base_url
+        )
 
     def _maybe_update_base_url_from_systems(self, systems: List[Dict[str, Any]]) -> None:
         if not self._auto_manage_base_url or not systems:
             return
 
         has_nx_gen = any(self._is_nx_gen_system(system) for system in systems)
-        target_base = QUE_BASE_URL if has_nx_gen else NIMBUS_BASE_URL
+        target_base = BASE_URL_QUE if has_nx_gen else BASE_URL_NIMBUS
         self._set_base_url(target_base)
 
     async def _ensure_initialized(self) -> None:
@@ -161,7 +219,8 @@ class ActronAirAPI:
         params: Optional[Dict[str, Any]] = None,
         json_data: Optional[Dict[str, Any]] = None,
         data: Optional[Dict[str, Any]] = None,
-        headers: Optional[Dict[str, str]] = None
+        headers: Optional[Dict[str, str]] = None,
+        _retry: bool = True
     ) -> Dict[str, Any]:
         """
         Make an API request with proper error handling.
@@ -173,6 +232,7 @@ class ActronAirAPI:
             json_data: JSON body data
             data: Form data
             headers: HTTP headers
+            _retry: Internal flag to prevent infinite retry loops
 
         Returns:
             API response as JSON
@@ -209,6 +269,27 @@ class ActronAirAPI:
             ) as response:
                 if response.status == 401:
                     response_text = await response.text()
+
+                    # If we have a refresh token and haven't retried yet, attempt refresh
+                    if _retry and self.oauth2_auth.refresh_token:
+                        _LOGGER.info("Received 401, attempting to refresh token and retry")
+                        try:
+                            await self.oauth2_auth.refresh_access_token()
+                            # Retry the request once with the new token
+                            return await self._make_request(
+                                method, endpoint, params, json_data, data, headers, _retry=False
+                            )
+                        except ActronAirAuthError:
+                            # Token refresh failed - re-raise as-is for proper handling
+                            _LOGGER.error("Token refresh failed due to authentication error")
+                            raise
+                        except Exception as refresh_error:
+                            # Unexpected error during refresh
+                            _LOGGER.error("Token refresh failed: %s", refresh_error)
+                            raise ActronAirAuthError(
+                                f"Authentication failed and token refresh failed: {response_text}"
+                            ) from refresh_error
+
                     raise ActronAirAuthError(f"Authentication failed: {response_text}")
 
                 if response.status != 200:
@@ -330,6 +411,10 @@ class ActronAirAPI:
 
         Args:
             serial_number: Serial number of the system to update
+        
+        Raises:
+            ActronAirAuthError: If authentication fails
+            ActronAirAPIError: If API request fails
         """
         try:
             # Get current status using the status/latest endpoint
@@ -337,8 +422,12 @@ class ActronAirAPI:
             if status_data:
                 # Process the status data through the state manager
                 self.state_manager.process_status_update(serial_number, status_data)
+        except (ActronAirAuthError, ActronAirAPIError):
+            # Re-raise authentication and API errors for proper handling upstream
+            raise
         except Exception as e:
             _LOGGER.error("Failed to update status for system %s: %s", serial_number, e)
+            raise
 
     @property
     def access_token(self) -> Optional[str]:
