@@ -31,7 +31,7 @@ class ActronAirAPI:
         Args:
             oauth2_client_id: OAuth2 client ID for device code flow
             refresh_token: Optional refresh token for authentication
-            platform: Platform to use ('neo', 'que', or None for auto-detect). Defaults to 'neo' if not specified.
+            platform: Platform to use ('neo', 'que', or None for auto-detect). If None, enables auto-detection with Neo as the initial platform.
         """
         # Determine base URL from platform parameter
         if platform == PLATFORM_QUE:
