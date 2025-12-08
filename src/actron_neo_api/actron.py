@@ -79,7 +79,7 @@ class ActronAirAPI:
         elif self.base_url == BASE_URL_QUE:
             return PLATFORM_QUE
         else:
-            return 'unknown'
+            return "unknown"
 
     @property
     def authenticated_platform(self) -> Optional[str]:
