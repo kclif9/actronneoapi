@@ -411,7 +411,7 @@ class ActronAirAPI:
 
         Args:
             serial_number: Serial number of the system to update
-        
+
         Raises:
             ActronAirAuthError: If authentication fails
             ActronAirAPIError: If API request fails
