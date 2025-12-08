@@ -273,7 +273,7 @@ class ActronAirOAuth2DeviceCodeAuth:
 
                     _LOGGER.info(
                         "OAuth2 token refreshed successfully. "
-                        "Expires in %s seconds. Platform: %s", expires_in, self.token_url
+                        "Expires in %s seconds. Platform: %s", expires_in, self.base_url
                     )
 
                     return self.access_token, self.token_expiry
