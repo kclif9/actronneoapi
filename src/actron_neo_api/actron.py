@@ -23,7 +23,7 @@ class ActronAirAPI:
         self,
         oauth2_client_id: str = "home_assistant",
         refresh_token: Optional[str] = None,
-        platform: Optional[Literal[PLATFORM_NEO, PLATFORM_QUE]] = None,
+        platform: Optional[Literal["neo", "que"]] = None,
     ):
         """
         Initialize the ActronAirAPI client with OAuth2 authentication.
