@@ -1,27 +1,22 @@
-"""
-Actron Air API Models
+"""Actron Air API Models.
 
 This package contains all data models used in the Actron Air API
 """
 
 # Re-export all models for easy access
-from .zone import ActronAirZone, ActronAirZoneSensor, ActronAirPeripheral
-from .settings import ActronAirUserAirconSettings
-from .system import ActronAirACSystem, ActronAirLiveAircon, ActronAirMasterInfo
-from .status import ActronAirStatus, ActronAirEventType, ActronAirEventsResponse
-
 # For backward compatibility
-from .schemas import *
+from .settings import ActronAirUserAirconSettings
+from .status import ActronAirStatus
+from .system import ActronAirACSystem, ActronAirLiveAircon, ActronAirMasterInfo
+from .zone import ActronAirPeripheral, ActronAirZone, ActronAirZoneSensor
 
 __all__ = [
-    'ActronAirZone',
-    'ActronAirZoneSensor',
-    'ActronAirPeripheral',
-    'ActronAirUserAirconSettings',
-    'ActronAirLiveAircon',
-    'ActronAirMasterInfo',
-    'ActronAirACSystem',
-    'ActronAirStatus',
-    'ActronAirEventType',
-    'ActronAirEventsResponse',
+    "ActronAirZone",
+    "ActronAirZoneSensor",
+    "ActronAirPeripheral",
+    "ActronAirUserAirconSettings",
+    "ActronAirLiveAircon",
+    "ActronAirMasterInfo",
+    "ActronAirACSystem",
+    "ActronAirStatus",
 ]

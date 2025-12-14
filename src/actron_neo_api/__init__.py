@@ -1,10 +1,9 @@
 from .actron import ActronAirAPI
+from .exceptions import ActronAirAPIError, ActronAirAuthError
+from .models.status import ActronAirStatus
+from .models.system import ActronAirACSystem
+from .models.zone import ActronAirPeripheral, ActronAirZone
 from .oauth import ActronAirOAuth2DeviceCodeAuth
-from .exceptions import ActronAirAuthError, ActronAirAPIError
-from .models.zone import ActronAirZone, ActronAirZoneSensor, ActronAirPeripheral
-from .models.system import ActronAirACSystem, ActronAirLiveAircon, ActronAirMasterInfo
-from .models.settings import ActronAirUserAirconSettings
-from .models.status import ActronAirStatus, ActronAirEventType, ActronAirEventsResponse
 
 __all__ = [
     # API and Exceptions
@@ -12,16 +11,9 @@ __all__ = [
     "ActronAirOAuth2DeviceCodeAuth",
     "ActronAirAuthError",
     "ActronAirAPIError",
-
-    # Model Classes
-    "ActronAirZone",
-    "ActronAirZoneSensor",
-    'ActronAirPeripheral',
-    "ActronAirACSystem",
-    "ActronAirLiveAircon",
-    "ActronAirMasterInfo",
-    "ActronAirUserAirconSettings",
+    # Model Classes - Only classes directly imported by Home Assistant
     "ActronAirStatus",
-    "ActronAirEventType",
-    "ActronAirEventsResponse"
+    "ActronAirZone",
+    "ActronAirPeripheral",
+    "ActronAirACSystem",
 ]

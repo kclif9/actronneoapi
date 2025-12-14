@@ -1,10 +1,10 @@
 """Test OAuth2 device code flow implementation."""
 
-import asyncio
-import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock, patch
 
-from actron_neo_api import ActronAirAPI, ActronAirOAuth2DeviceCodeAuth, ActronAirAuthError
+import pytest
+
+from actron_neo_api import ActronAirAPI, ActronAirOAuth2DeviceCodeAuth
 
 
 class TestActronAirOAuth2DeviceCodeAuth:
@@ -32,10 +32,10 @@ class TestActronAirOAuth2DeviceCodeAuth:
             "user_code": "TEST123",
             "verification_uri": "https://example.com/device",
             "expires_in": 600,
-            "interval": 5
+            "interval": 5,
         }
 
-        with patch('aiohttp.ClientSession.post') as mock_post:
+        with patch("aiohttp.ClientSession.post") as mock_post:
             mock_post.return_value.__aenter__.return_value.status = 200
             mock_post.return_value.__aenter__.return_value.json.return_value = mock_response
 
@@ -55,10 +55,10 @@ class TestActronAirOAuth2DeviceCodeAuth:
             "access_token": "test_access_token",
             "refresh_token": "test_refresh_token",
             "token_type": "Bearer",
-            "expires_in": 3600
+            "expires_in": 3600,
         }
 
-        with patch('aiohttp.ClientSession.post') as mock_post:
+        with patch("aiohttp.ClientSession.post") as mock_post:
             mock_post.return_value.__aenter__.return_value.status = 200
             mock_post.return_value.__aenter__.return_value.json.return_value = mock_response
 
@@ -74,11 +74,9 @@ class TestActronAirOAuth2DeviceCodeAuth:
         """Test token polling when authorization is pending."""
         auth = ActronAirOAuth2DeviceCodeAuth("https://example.com", "test_client")
 
-        mock_response = {
-            "error": "authorization_pending"
-        }
+        mock_response = {"error": "authorization_pending"}
 
-        with patch('aiohttp.ClientSession.post') as mock_post:
+        with patch("aiohttp.ClientSession.post") as mock_post:
             mock_post.return_value.__aenter__.return_value.status = 400
             mock_post.return_value.__aenter__.return_value.json.return_value = mock_response
 
@@ -96,10 +94,10 @@ class TestActronAirOAuth2DeviceCodeAuth:
             "access_token": "new_access_token",
             "refresh_token": "new_refresh_token",
             "token_type": "Bearer",
-            "expires_in": 3600
+            "expires_in": 3600,
         }
 
-        with patch('aiohttp.ClientSession.post') as mock_post:
+        with patch("aiohttp.ClientSession.post") as mock_post:
             mock_post.return_value.__aenter__.return_value.status = 200
             mock_post.return_value.__aenter__.return_value.json.return_value = mock_response
 
@@ -115,13 +113,9 @@ class TestActronAirOAuth2DeviceCodeAuth:
         auth = ActronAirOAuth2DeviceCodeAuth("https://example.com", "test_client")
         auth.access_token = "test_access_token"
 
-        mock_response = {
-            "id": "test_user_id",
-            "email": "test@example.com",
-            "name": "Test User"
-        }
+        mock_response = {"id": "test_user_id", "email": "test@example.com", "name": "Test User"}
 
-        with patch('aiohttp.ClientSession.get') as mock_get:
+        with patch("aiohttp.ClientSession.get") as mock_get:
             mock_get.return_value.__aenter__.return_value.status = 200
             mock_get.return_value.__aenter__.return_value.json.return_value = mock_response
 
@@ -138,7 +132,7 @@ class TestActronAirOAuth2DeviceCodeAuth:
             access_token="test_access_token",
             refresh_token="test_refresh_token",
             expires_in=3600,
-            token_type="Bearer"
+            token_type="Bearer",
         )
 
         assert auth.access_token == "test_access_token"
@@ -169,7 +163,7 @@ class TestActronAirAPIWithOAuth2:
         api = ActronAirAPI(
             base_url="https://custom.example.com",
             oauth2_client_id="custom_client",
-            refresh_token="custom_token"
+            refresh_token="custom_token",
         )
         assert api.oauth2_auth.base_url == "https://custom.example.com"
         assert api.oauth2_auth.client_id == "custom_client"

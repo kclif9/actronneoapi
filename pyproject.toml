@@ -26,3 +26,9 @@ Homepage = "https://github.com/kclif9/actronneoapi"
 Issues = "https://github.com/kclif9/actronneoapi/issues"
 
 [tool.setuptools_scm]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]

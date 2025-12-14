@@ -16,6 +16,7 @@
         "https://json.schemastore.org/github-workflow.json": ".github/workflows/*"
     },
     "[python]": {
-        "editor.formatOnSave": true
+        "editor.formatOnSave": true,
+      "editor.defaultFormatter": "charliermarsh.ruff"
     }
 }
