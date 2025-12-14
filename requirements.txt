@@ -1,4 +1,4 @@
-pydantic
 aiohttp
+pydantic
 pytest
 pytest-asyncio

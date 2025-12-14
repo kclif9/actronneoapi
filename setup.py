@@ -1,3 +1,5 @@
+"""Setup configuration for actron_neo_api package."""
+
 from setuptools import setup
 
 setup(

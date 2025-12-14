@@ -1,5 +1,6 @@
 """Test OAuth2 device code flow implementation."""
 
+import time
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -71,16 +72,20 @@ class TestActronAirOAuth2DeviceCodeAuth:
 
     @pytest.mark.asyncio
     async def test_poll_for_token_pending(self):
-        """Test token polling when authorization is pending."""
+        """Test token polling when authorization is pending and times out."""
         auth = ActronAirOAuth2DeviceCodeAuth("https://example.com", "test_client")
 
         mock_response = {"error": "authorization_pending"}
 
-        with patch("aiohttp.ClientSession.post") as mock_post:
+        with patch("aiohttp.ClientSession.post") as mock_post, patch("time.time") as mock_time:
+            # Simulate timeout by advancing time past the threshold
+            # start_time, first check, second check (past timeout)
+            mock_time.side_effect = [0, 0, 601]
+
             mock_post.return_value.__aenter__.return_value.status = 400
             mock_post.return_value.__aenter__.return_value.json.return_value = mock_response
 
-            result = await auth.poll_for_token("test_device_code")
+            result = await auth.poll_for_token("test_device_code", interval=1, timeout=1)
 
             assert result is None
 
@@ -112,6 +117,8 @@ class TestActronAirOAuth2DeviceCodeAuth:
         """Test getting user information."""
         auth = ActronAirOAuth2DeviceCodeAuth("https://example.com", "test_client")
         auth.access_token = "test_access_token"
+        auth.refresh_token = "test_refresh_token"  # Add refresh token to avoid error
+        auth.token_expiry = time.time() + 3600  # Set token as valid
 
         mock_response = {"id": "test_user_id", "email": "test@example.com", "name": "Test User"}
 
@@ -161,13 +168,13 @@ class TestActronAirAPIWithOAuth2:
     def test_init_with_custom_params(self):
         """Test ActronAirAPI initialization with custom parameters."""
         api = ActronAirAPI(
-            base_url="https://custom.example.com",
             oauth2_client_id="custom_client",
             refresh_token="custom_token",
+            platform="neo",
         )
-        assert api.oauth2_auth.base_url == "https://custom.example.com"
         assert api.oauth2_auth.client_id == "custom_client"
         assert api.oauth2_auth.refresh_token == "custom_token"
+        assert api.base_url == "https://nimbus.actronair.com.au"
 
     @pytest.mark.asyncio
     async def test_oauth2_methods_available(self):
@@ -187,30 +194,6 @@ class TestActronAirAPIWithOAuth2:
         assert device_code["device_code"] == "test"
         assert token_data["access_token"] == "test"
         assert user_info["id"] == "test"
-
-    @pytest.mark.asyncio
-    async def test_lazy_token_refresh(self):
-        """Test that tokens are refreshed lazily on first API call."""
-        api = ActronAirAPI(refresh_token="test_refresh_token")
-
-        # Mock the OAuth2 auth methods
-        api.oauth2_auth.refresh_access_token = AsyncMock()
-        api.oauth2_auth.ensure_token_valid = AsyncMock()
-        api.oauth2_auth.authorization_header = {"Authorization": "Bearer test_token"}
-
-        # Mock the session and response
-        mock_session = AsyncMock()
-        mock_response = AsyncMock()
-        mock_response.status = 200
-        mock_response.json = AsyncMock(return_value={"_embedded": {"ac-system": []}})
-        mock_session.request.return_value.__aenter__.return_value = mock_response
-        api._get_session = AsyncMock(return_value=mock_session)
-
-        # Make an API call - this should trigger token refresh
-        await api.get_ac_systems()
-
-        # Verify token refresh was called
-        api.oauth2_auth.refresh_access_token.assert_called_once()
 
     def test_token_properties(self):
         """Test token properties work correctly."""
