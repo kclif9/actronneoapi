@@ -225,8 +225,8 @@ class ActronAirOAuth2DeviceCodeAuth:
                     _LOGGER.warning("Network error during polling attempt %d: %s", attempt, e)
                     await asyncio.sleep(current_interval)
                     continue
-                except Exception as e:
-                    _LOGGER.error("Unexpected error during polling: %s", e)
+                except (ValueError, KeyError, TypeError) as e:
+                    _LOGGER.error("Data parsing error during polling: %s", e)
                     raise ActronAirAuthError(f"Polling failed: {str(e)}") from e
 
         # Timeout reached

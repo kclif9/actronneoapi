@@ -54,7 +54,8 @@ class StateManager:
             ActronAirStatus object if found, None otherwise
 
         """
-        return self.status.get(serial_number)
+        # Normalize serial number to lowercase for consistent lookup
+        return self.status.get(serial_number.lower())
 
     def process_status_update(
         self, serial_number: str, status_data: Dict[str, Any]
@@ -75,6 +76,9 @@ class StateManager:
         """
         status = ActronAirStatus.model_validate(status_data)
         status.parse_nested_components()
+
+        # Normalize serial number to lowercase for consistent storage
+        serial_number = serial_number.lower()
 
         # Set serial number and API reference
         status.serial_number = serial_number

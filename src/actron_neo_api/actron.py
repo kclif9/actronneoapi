@@ -105,8 +105,12 @@ class ActronAirAPI:
             The href URL string with leading slash removed, or None if not found
 
         """
+        # Normalize serial number comparison (case-insensitive)
+        serial_lower = serial_number.lower()
+
         for system in self.systems:
-            if system.get("serial") != serial_number:
+            system_serial = system.get("serial")
+            if not system_serial or system_serial.lower() != serial_lower:
                 continue
 
             links = system.get("_links") or {}
@@ -323,8 +327,13 @@ class ActronAirAPI:
                             # Token refresh failed - re-raise as-is for proper handling
                             _LOGGER.error("Token refresh failed due to authentication error")
                             raise
-                        except Exception as refresh_error:
-                            # Unexpected error during refresh
+                        except (
+                            aiohttp.ClientError,
+                            ValueError,
+                            TypeError,
+                            KeyError,
+                        ) as refresh_error:
+                            # Unexpected error during refresh (network, parsing, etc.)
                             _LOGGER.error("Token refresh failed: %s", refresh_error)
                             raise ActronAirAuthError(
                                 f"Authentication failed and token refresh failed: {response_text}"
@@ -371,6 +380,9 @@ class ActronAirAPI:
             Current status of the AC system
 
         """
+        # Normalize serial number to lowercase for consistent lookup
+        serial_number = serial_number.lower()
+
         endpoint = self._get_system_link(serial_number, "ac-status")
         if not endpoint:
             raise ActronAirAPIError(f"No ac-status link found for system {serial_number}")
@@ -387,11 +399,13 @@ class ActronAirAPI:
             Command response
 
         """
+        # Normalize serial number to lowercase for consistent lookup
+        serial_number = serial_number.lower()
+
         endpoint = self._get_system_link(serial_number, "commands")
         if not endpoint:
             raise ActronAirAPIError(f"No commands link found for system {serial_number}")
 
-        serial_number = serial_number.lower()
         return await self._make_request(
             "post",
             endpoint,
