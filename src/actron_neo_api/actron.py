@@ -351,17 +351,13 @@ class ActronAirAPI:
             List of AC systems
 
         """
-        try:
-            response = await self._make_request(
-                "get", "api/v0/client/ac-systems", params={"includeNeo": "true"}
-            )
-            systems = response["_embedded"]["ac-system"]
-            self.systems = systems  # Auto-populate for convenience
-            self._maybe_update_base_url_from_systems(systems)
-            return systems
-        except Exception as e:
-            _LOGGER.error("Error getting AC systems: %s", e)
-            raise
+        response = await self._make_request(
+            "get", "api/v0/client/ac-systems", params={"includeNeo": "true"}
+        )
+        systems = response["_embedded"]["ac-system"]
+        self.systems = systems  # Auto-populate for convenience
+        self._maybe_update_base_url_from_systems(systems)
+        return systems
 
     async def get_ac_status(self, serial_number: str) -> Dict[str, Any]:
         """Retrieve the current status for a specific AC system.
@@ -375,14 +371,10 @@ class ActronAirAPI:
             Current status of the AC system
 
         """
-        try:
-            endpoint = self._get_system_link(serial_number, "ac-status")
-            if endpoint:
-                return await self._make_request("get", endpoint)
+        endpoint = self._get_system_link(serial_number, "ac-status")
+        if not endpoint:
             raise ActronAirAPIError(f"No ac-status link found for system {serial_number}")
-        except Exception as e:
-            _LOGGER.error("Error getting AC status for %s: %s", serial_number, e)
-            raise
+        return await self._make_request("get", endpoint)
 
     async def send_command(self, serial_number: str, command: Dict[str, Any]) -> Dict[str, Any]:
         """Send a command to the specified AC system.
@@ -395,20 +387,17 @@ class ActronAirAPI:
             Command response
 
         """
-        try:
-            endpoint = self._get_system_link(serial_number, "commands")
-            if endpoint:
-                serial_number = serial_number.lower()
-                return await self._make_request(
-                    "post",
-                    endpoint,
-                    json_data=command,
-                    headers={"Content-Type": "application/json"},
-                )
+        endpoint = self._get_system_link(serial_number, "commands")
+        if not endpoint:
             raise ActronAirAPIError(f"No commands link found for system {serial_number}")
-        except Exception as e:
-            _LOGGER.error("Error sending command to %s: %s", serial_number, e)
-            raise
+
+        serial_number = serial_number.lower()
+        return await self._make_request(
+            "post",
+            endpoint,
+            json_data=command,
+            headers={"Content-Type": "application/json"},
+        )
 
     async def update_status(self, serial_number: Optional[str] = None) -> Dict[str, Any]:
         """Update the status of AC systems using event-based updates.
@@ -456,18 +445,11 @@ class ActronAirAPI:
             ActronAirAPIError: If API request fails
 
         """
-        try:
-            # Get current status using the status/latest endpoint
-            status_data = await self.get_ac_status(serial_number)
-            if status_data:
-                # Process the status data through the state manager
-                self.state_manager.process_status_update(serial_number, status_data)
-        except (ActronAirAuthError, ActronAirAPIError):
-            # Re-raise authentication and API errors for proper handling upstream
-            raise
-        except Exception as e:
-            _LOGGER.error("Failed to update status for system %s: %s", serial_number, e)
-            raise
+        # Get current status using the status/latest endpoint
+        status_data = await self.get_ac_status(serial_number)
+        if status_data:
+            # Process the status data through the state manager
+            self.state_manager.process_status_update(serial_number, status_data)
 
     @property
     def access_token(self) -> Optional[str]:
