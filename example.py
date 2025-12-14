@@ -23,14 +23,15 @@ changing your AC settings.
 import asyncio
 import logging
 import os
-from actron_neo_api import ActronAirAPI, ActronAirAuthError, ActronAirAPIError
+
+from actron_neo_api import ActronAirAPI, ActronAirAPIError, ActronAirAuthError
 
 # Set up logging
 logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
+
 
 async def oauth2_authentication_example():
     """
@@ -53,19 +54,21 @@ async def oauth2_authentication_example():
             interval = device_code_response["interval"]
 
             # Step 2: Display instructions to user
-            print("\n" + "="*60)
+            print("\n" + "=" * 60)
             print("OAUTH2 DEVICE CODE FLOW")
-            print("="*60)
+            print("=" * 60)
             print("1. Open this URL in your browser: %s" % verification_uri)
             print("2. Enter this code: %s" % user_code)
             print("3. Or use the complete URL: %s" % verification_uri_complete)
             print("4. Complete authorization within %d minutes" % (expires_in // 60))
-            print("="*60)
+            print("=" * 60)
             print("Waiting for authorization...")
 
             # Step 3: Poll for token (with automatic polling)
             try:
-                token_data = await api.poll_for_token(device_code, interval=interval, timeout=expires_in)
+                token_data = await api.poll_for_token(
+                    device_code, interval=interval, timeout=expires_in
+                )
                 if token_data:
                     logger.info("Authorization successful!")
                 else:
@@ -79,19 +82,20 @@ async def oauth2_authentication_example():
             access_token = api.access_token
             refresh_token = api.refresh_token_value
 
-            print("\n" + "="*60)
+            print("\n" + "=" * 60)
             print("AUTHENTICATION SUCCESSFUL!")
-            print("="*60)
+            print("=" * 60)
             print("Access Token: %s..." % access_token[:20])
             print("Refresh Token: %s..." % refresh_token[:20])
             print("Save these tokens for future use!")
-            print("="*60)
+            print("=" * 60)
 
             return access_token, refresh_token
 
         except Exception as e:
             logger.error("OAuth2 authentication failed: %s", e)
             return None, None
+
 
 async def api_usage_example(refresh_token: str):
     """
@@ -108,7 +112,7 @@ async def api_usage_example(refresh_token: str):
         # Get user information
         logger.info("Getting user information...")
         user_info = await api.get_user_info()
-        logger.info("Authenticated as: %s", user_info.get('name', 'Unknown'))
+        logger.info("Authenticated as: %s", user_info.get("name", "Unknown"))
 
         # Get AC systems
         logger.info("Fetching AC systems...")
@@ -135,20 +139,22 @@ async def api_usage_example(refresh_token: str):
         status = api.state_manager.get_status(serial)
 
         if not status:
-            logger.warning("Status data not available for system %s (events API may not be accessible)", serial)
-            print("\n" + "="*60)
+            logger.warning(
+                "Status data not available for system %s (events API may not be accessible)", serial
+            )
+            print("\n" + "=" * 60)
             print("SYSTEM INFORMATION")
-            print("="*60)
+            print("=" * 60)
             print("System Name: %s" % name)
             print("Serial: %s" % serial)
             print("Family: %s" % family)
             print("Status: Events API not accessible - limited information available")
-            print("="*60)
+            print("=" * 60)
         else:
             # Display current system information
-            print("\n" + "="*60)
+            print("\n" + "=" * 60)
             print("SYSTEM INFORMATION")
-            print("="*60)
+            print("=" * 60)
 
             if status.ac_system:
                 print("System Name: %s" % status.ac_system.system_name)
@@ -160,9 +166,11 @@ async def api_usage_example(refresh_token: str):
             if status.user_aircon_settings:
                 settings = status.user_aircon_settings
                 print("\nCURRENT SETTINGS:")
-                print("Power: %s" % ('ON' if settings.is_on else 'OFF'))
+                print("Power: %s" % ("ON" if settings.is_on else "OFF"))
                 print("Mode: %s" % settings.mode)
-                print("Fan Mode: %s" % ('Enabled' if settings.continuous_fan_enabled else 'Disabled'))
+                print(
+                    "Fan Mode: %s" % ("Enabled" if settings.continuous_fan_enabled else "Disabled")
+                )
                 print("Cool Setpoint: %s°C" % settings.temperature_setpoint_cool_c)
                 print("Heat Setpoint: %s°C" % settings.temperature_setpoint_heat_c)
 
@@ -182,19 +190,18 @@ async def api_usage_example(refresh_token: str):
                 else:
                     print("Current Temperature: Not available")
 
-                print("Quiet Mode: %s" % ('Enabled' if settings.quiet_mode_enabled else 'Disabled'))
-                print("Turbo Mode: %s" % ('Enabled' if settings.turbo_mode_enabled else 'Disabled'))
-                print("Away Mode: %s" % ('Enabled' if settings.away_mode else 'Disabled'))
+                print("Quiet Mode: %s" % ("Enabled" if settings.quiet_mode_enabled else "Disabled"))
+                print("Turbo Mode: %s" % ("Enabled" if settings.turbo_mode_enabled else "Disabled"))
+                print("Away Mode: %s" % ("Enabled" if settings.away_mode else "Disabled"))
 
             # Display zone information
             if status.remote_zone_info:
                 print("\nZONE INFORMATION:")
                 for i, zone in enumerate(status.remote_zone_info):
-                    print("Zone %d (%s): %s" % (
-                        i + 1,
-                        zone.title,
-                        'Enabled' if zone.is_active else 'Disabled'
-                    ))
+                    print(
+                        "Zone %d (%s): %s"
+                        % (i + 1, zone.title, "Enabled" if zone.is_active else "Disabled")
+                    )
                     print("  Set Temperature Cool: %s°C" % zone.temperature_setpoint_cool_c)
                     print("  Set Temperature Heat: %s°C" % zone.temperature_setpoint_heat_c)
 
@@ -220,15 +227,15 @@ async def api_usage_example(refresh_token: str):
 
                     print("  Zone Position: %s%%" % zone.zone_position)
 
-            print("="*60)
+            print("=" * 60)
 
             # Demonstrate control capabilities
             print("\n=== DEMONSTRATING CONTROL CAPABILITIES ===\n")
 
             # Check if user wants to run control examples
-            #if os.environ.get("ACTRON_DEMO_CONTROLS", "").lower() == "true":
+            # if os.environ.get("ACTRON_DEMO_CONTROLS", "").lower() == "true":
             await demonstrate_controls(api, status, serial)
-            #else:
+            # else:
             #    print("Control demonstrations are disabled by default.")
             #    print("Set ACTRON_DEMO_CONTROLS=true environment variable to enable.")
             #    print("\nThe following controls would be available:")
@@ -255,6 +262,7 @@ async def api_usage_example(refresh_token: str):
         logger.error("API error: %s", e)
     except Exception as e:
         logger.error("Unexpected error: %s", e)
+
 
 async def demonstrate_controls(api, status, serial):
     """
@@ -305,9 +313,9 @@ async def demonstrate_controls(api, status, serial):
 
             # Enable the first zone
             first_zone = status.remote_zone_info[0]
-            logger.info("Enabling zone %d (%s)...", first_zone.zone_number, first_zone.zone_name)
+            logger.info("Enabling zone %d (%s)...", first_zone.zone_id, first_zone.title)
             await first_zone.enable(is_enabled=True)
-            print("✓ Zone %d enabled" % first_zone.zone_number)
+            print("✓ Zone %d enabled" % first_zone.zone_id)
 
             # Set zone temperature to 22°C
             logger.info("Setting zone temperature to 22°C...")
@@ -325,17 +333,18 @@ async def demonstrate_controls(api, status, serial):
         if updated_status and updated_status.user_aircon_settings:
             settings = updated_status.user_aircon_settings
             print("✓ Updated settings:")
-            print("  Power: %s" % ('ON' if settings.is_on else 'OFF'))
+            print("  Power: %s" % ("ON" if settings.is_on else "OFF"))
             print("  Mode: %s" % settings.mode)
             print("  Temperature: %s°C" % settings.temperature_setpoint_cool_c)
             print("  Fan Mode: %s" % settings.fan_mode)
-            print("  Quiet Mode: %s" % ('Enabled' if settings.quiet_mode_enabled else 'Disabled'))
+            print("  Quiet Mode: %s" % ("Enabled" if settings.quiet_mode_enabled else "Disabled"))
 
         print("\n✓ Control demonstrations completed successfully!")
 
     except Exception as e:
         logger.error("Error during control demonstration: %s", e)
         print("✗ Some control operations may have failed")
+
 
 async def main():
     """
@@ -366,6 +375,7 @@ async def main():
 
     # Run the API usage example
     await api_usage_example(refresh_token)
+
 
 if __name__ == "__main__":
     asyncio.run(main())

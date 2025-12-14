@@ -1,10 +1,16 @@
 """System models for Actron Air API"""
-from typing import Dict, Optional, Any
+
+from typing import TYPE_CHECKING, Any, Dict, Optional
+
 from pydantic import BaseModel, Field
+
+if TYPE_CHECKING:
+    from .status import ActronAirStatus
 
 
 class ActronAirOutdoorUnit(BaseModel):
     """Model for outdoor unit data in the AC system"""
+
     model_number: Optional[str] = str(Field(None, alias="ModelNumber"))
     serial_number: Optional[str] = Field(None, alias="SerialNumber")
     software_version: Optional[str] = str(Field(None, alias="SoftwareVersion"))
@@ -22,7 +28,9 @@ class ActronAirLiveAircon(BaseModel):
     compressor_capacity: int = Field(0, alias="CompressorCapacity")
     fan_rpm: int = Field(0, alias="FanRPM")
     defrost: bool = Field(False, alias="Defrost")
-    compressor_chasing_temperature: Optional[float] = Field(None, alias="CompressorChasingTemperature")
+    compressor_chasing_temperature: Optional[float] = Field(
+        None, alias="CompressorChasingTemperature"
+    )
     compressor_live_temperature: Optional[float] = Field(None, alias="CompressorLiveTemperature")
     outdoor_unit: Optional[ActronAirOutdoorUnit] = Field(None, alias="OutdoorUnit")
 
@@ -35,6 +43,7 @@ class ActronAirMasterInfo(BaseModel):
 
 class ActronAirAlerts(BaseModel):
     """Model for AC system alerts"""
+
     clean_filter: bool = Field(False, alias="CleanFilter")
     defrosting: bool = Field(False, alias="Defrosting")
 
@@ -45,59 +54,11 @@ class ActronAirACSystem(BaseModel):
     master_wc_firmware_version: str = Field("", alias="MasterWCFirmwareVersion")
     system_name: str = Field("", alias="SystemName")
     outdoor_unit: Optional[ActronAirOutdoorUnit] = Field(None, alias="OutdoorUnit")
-    _parent_status: Optional["ActronStatus"] = None
+    _parent_status: Optional["ActronAirStatus"] = None
 
-    def set_parent_status(self, parent: "ActronStatus") -> None:
+    def set_parent_status(self, parent: "ActronAirStatus") -> None:
         """Set reference to parent ActronStatus object"""
         self._parent_status = parent
-
-    async def get_outdoor_unit_model(self) -> Optional[str]:
-        """
-        Get the outdoor unit model for this AC system.
-
-        Returns:
-            The outdoor unit model or None if not available
-        """
-        # First check if we already have the data in our model
-        if self.outdoor_unit and self.outdoor_unit.model_number:
-            return self.outdoor_unit.model_number
-
-        # If not, try to get it from the API
-        if not self._parent_status or not self._parent_status._api:
-            return None
-
-        try:
-            return await self._parent_status._api.get_outdoor_unit_model(self.master_serial)
-        except Exception:
-            return None
-
-    async def get_firmware_version(self) -> Optional[str]:
-        """
-        Get the firmware version for this AC system.
-
-        Returns:
-            The firmware version or None if not available
-        """
-        if not self._parent_status or not self._parent_status._api:
-            raise ValueError("No API reference available")
-
-        return await self._parent_status._api.get_master_firmware(self.master_serial)
-
-    async def update_status(self) -> Optional["ActronStatus"]:
-        """
-        Update the status of this AC system.
-
-        Returns:
-            Updated ActronStatus object or None if update failed
-        """
-        if not self._parent_status or not self._parent_status._api:
-            raise ValueError("No API reference available")
-
-        # Update status for this specific AC unit
-        await self._parent_status._api._fetch_full_update(self.master_serial)
-
-        # Return the updated status
-        return self._parent_status._api.state_manager.get_status(self.master_serial)
 
     async def set_system_mode(self, mode: str) -> Dict[str, Any]:
         """
@@ -116,12 +77,7 @@ class ActronAirACSystem(BaseModel):
         # Determine if system should be on or off based on mode
         is_on = mode.upper() != "OFF"
 
-        command = {
-            "command": {
-                "UserAirconSettings.isOn": is_on,
-                "type": "set-settings"
-            }
-        }
+        command = {"command": {"UserAirconSettings.isOn": is_on, "type": "set-settings"}}
 
         if is_on:
             command["command"]["UserAirconSettings.Mode"] = mode

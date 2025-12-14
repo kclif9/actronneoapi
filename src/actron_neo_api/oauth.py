@@ -2,7 +2,8 @@
 
 import logging
 import time
-from typing import Dict, Optional, Any, Tuple
+from typing import Any, Dict, Optional, Tuple
+
 import aiohttp
 
 from .exceptions import ActronAirAuthError
@@ -45,17 +46,16 @@ class ActronAirOAuth2DeviceCodeAuth:
     def is_token_valid(self) -> bool:
         """Check if the access token is valid and not expired."""
         return (
-            self.access_token is not None and
-            self.token_expiry is not None and
-            time.time() < self.token_expiry
+            self.access_token is not None
+            and self.token_expiry is not None
+            and time.time() < self.token_expiry
         )
 
     @property
     def is_token_expiring_soon(self) -> bool:
         """Check if the token is expiring within the next 15 minutes."""
         return (
-            self.token_expiry is not None and
-            time.time() > (self.token_expiry - 900)  # 15 minutes
+            self.token_expiry is not None and time.time() > (self.token_expiry - 900)  # 15 minutes
         )
 
     @property
@@ -77,24 +77,23 @@ class ActronAirOAuth2DeviceCodeAuth:
         """
         payload = {
             "client_id": self.client_id,
-            "scope": "read write"  # Add appropriate scopes
+            "scope": "read write",  # Add appropriate scopes
         }
 
         headers = {"Content-Type": "application/x-www-form-urlencoded"}
 
         async with aiohttp.ClientSession() as session:
-            async with session.post(
-                self.token_url,
-                data=payload,
-                headers=headers
-            ) as response:
+            async with session.post(self.token_url, data=payload, headers=headers) as response:
                 if response.status == 200:
                     data = await response.json()
 
                     # Validate required fields
                     required_fields = [
-                        "device_code", "user_code", "verification_uri",
-                        "expires_in", "interval"
+                        "device_code",
+                        "user_code",
+                        "verification_uri",
+                        "expires_in",
+                        "interval",
                     ]
 
                     for field in required_fields:
@@ -111,10 +110,14 @@ class ActronAirOAuth2DeviceCodeAuth:
                 else:
                     response_text = await response.text()
                     raise ActronAirAuthError(
-                        f"Failed to request device code. Status: {response.status}, Response: {response_text}"
+                        f"Failed to request device code. "
+                        f"Status: {response.status}, "
+                        f"Response: {response_text}"
                     )
 
-    async def poll_for_token(self, device_code: str, interval: int = 5, timeout: int = 600) -> Optional[Dict[str, Any]]:
+    async def poll_for_token(
+        self, device_code: str, interval: int = 5, timeout: int = 600
+    ) -> Optional[Dict[str, Any]]:
         """
         Poll for access token using device code with automatic polling loop.
 
@@ -138,7 +141,7 @@ class ActronAirOAuth2DeviceCodeAuth:
         payload = {
             "client_id": self.client_id,
             "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
-            "device_code": device_code
+            "device_code": device_code,
         }
 
         headers = {"Content-Type": "application/x-www-form-urlencoded"}
@@ -155,9 +158,7 @@ class ActronAirOAuth2DeviceCodeAuth:
 
                 try:
                     async with session.post(
-                        self.token_url,
-                        data=payload,
-                        headers=headers
+                        self.token_url, data=payload, headers=headers
                     ) as response:
                         data = await response.json()
 
@@ -166,14 +167,19 @@ class ActronAirOAuth2DeviceCodeAuth:
                             self.access_token = data["access_token"]
                             self.refresh_token = data.get("refresh_token")
                             self.token_type = data.get("token_type", "Bearer")
-                            self.authenticated_platform = self.base_url  # Record platform that issued tokens
+                            self.authenticated_platform = (
+                                self.base_url
+                            )  # Record platform that issued tokens
 
                             expires_in = data.get("expires_in", 3600)
                             self.token_expiry = time.time() + expires_in
 
                             _LOGGER.info(
                                 "OAuth2 token obtained successfully after %d attempts. "
-                                "Expires in %s seconds. Platform: %s", attempt, expires_in, self.base_url
+                                "Expires in %s seconds. Platform: %s",
+                                attempt,
+                                expires_in,
+                                self.base_url,
                             )
 
                             return data
@@ -184,8 +190,10 @@ class ActronAirOAuth2DeviceCodeAuth:
                             if error == "authorization_pending":
                                 # Still waiting for user authorization - continue polling
                                 _LOGGER.debug(
-                                    "Authorization pending (attempt %d) - continuing to poll in %ds",
-                                    attempt, current_interval
+                                    "Authorization pending (attempt %d). "
+                                    "Continuing to poll in %ds. ",
+                                    attempt,
+                                    current_interval,
                                 )
                                 await asyncio.sleep(current_interval)
                                 continue
@@ -195,7 +203,7 @@ class ActronAirOAuth2DeviceCodeAuth:
                                 current_interval += 5  # Add 5 seconds as per OAuth2 spec
                                 _LOGGER.warning(
                                     "Server requested slow down - increasing interval to %ds",
-                                    current_interval
+                                    current_interval,
                                 )
                                 await asyncio.sleep(current_interval)
                                 continue
@@ -209,7 +217,9 @@ class ActronAirOAuth2DeviceCodeAuth:
                         else:
                             response_text = await response.text()
                             raise ActronAirAuthError(
-                                f"Token polling failed. Status: {response.status}, Response: {response_text}"
+                                f"Token polling failed. "
+                                f"Status: {response.status},"
+                                f"Response: {response_text}. "
                             )
 
                 except aiohttp.ClientError as e:
@@ -240,17 +250,13 @@ class ActronAirOAuth2DeviceCodeAuth:
         payload = {
             "grant_type": "refresh_token",
             "refresh_token": self.refresh_token,
-            "client_id": self.client_id
+            "client_id": self.client_id,
         }
 
         headers = {"Content-Type": "application/x-www-form-urlencoded"}
 
         async with aiohttp.ClientSession() as session:
-            async with session.post(
-                self.token_url,
-                data=payload,
-                headers=headers
-            ) as response:
+            async with session.post(self.token_url, data=payload, headers=headers) as response:
                 if response.status == 200:
                     data = await response.json()
 
@@ -272,15 +278,18 @@ class ActronAirOAuth2DeviceCodeAuth:
                     self.token_expiry = time.time() + expires_in
 
                     _LOGGER.info(
-                        "OAuth2 token refreshed successfully. "
-                        "Expires in %s seconds. Platform: %s", expires_in, self.base_url
+                        "OAuth2 token refreshed successfully. Expires in %s seconds. Platform: %s",
+                        expires_in,
+                        self.base_url,
                     )
 
                     return self.access_token, self.token_expiry
                 else:
                     response_text = await response.text()
                     raise ActronAirAuthError(
-                        f"Failed to refresh access token. Status: {response.status}, Response: {response_text}"
+                        f"Failed to refresh access token. "
+                        f"Status: {response.status}, "
+                        f"Response: {response_text}. "
                     )
 
     async def get_user_info(self) -> Dict[str, Any]:
@@ -299,16 +308,15 @@ class ActronAirOAuth2DeviceCodeAuth:
         headers = self.authorization_header
 
         async with aiohttp.ClientSession() as session:
-            async with session.get(
-                self.user_info_url,
-                headers=headers
-            ) as response:
+            async with session.get(self.user_info_url, headers=headers) as response:
                 if response.status == 200:
                     return await response.json()
                 else:
                     response_text = await response.text()
                     raise ActronAirAuthError(
-                        f"Failed to get user info. Status: {response.status}, Response: {response_text}"
+                        f"Failed to get user info. "
+                        f"Status: {response.status}, "
+                        f"Response: {response_text}. "
                     )
 
     async def ensure_token_valid(self) -> str:
@@ -331,8 +339,13 @@ class ActronAirOAuth2DeviceCodeAuth:
 
         return self.access_token
 
-    def set_tokens(self, access_token: str, refresh_token: Optional[str] = None,
-                   expires_in: Optional[int] = None, token_type: str = "Bearer") -> None:
+    def set_tokens(
+        self,
+        access_token: str,
+        refresh_token: Optional[str] = None,
+        expires_in: Optional[int] = None,
+        token_type: str = "Bearer",
+    ) -> None:
         """
         Set tokens manually (useful for restoring saved tokens).
 

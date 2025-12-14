@@ -1,15 +1,16 @@
-import logging
 import asyncio
-from typing import Dict, List, Optional, Any, Literal
+import logging
+from typing import Any, Dict, List, Literal, Optional
 
 import aiohttp
 
 from .const import BASE_URL_DEFAULT, BASE_URL_NIMBUS, BASE_URL_QUE, PLATFORM_NEO, PLATFORM_QUE
+from .exceptions import ActronAirAPIError, ActronAirAuthError
 from .oauth import ActronAirOAuth2DeviceCodeAuth
 from .state import StateManager
-from .exceptions import ActronAirAPIError, ActronAirAuthError
 
 _LOGGER = logging.getLogger(__name__)
+
 
 class ActronAirAPI:
     """
@@ -31,7 +32,8 @@ class ActronAirAPI:
         Args:
             oauth2_client_id: OAuth2 client ID for device code flow
             refresh_token: Optional refresh token for authentication
-            platform: Platform to use ('neo', 'que', or None for auto-detect). If None, enables auto-detection with Neo as the initial platform.
+            platform: Platform to use ('neo', 'que', or None for auto-detect).
+            If None, enables auto-detection with Neo as the initial platform.
         """
         # Determine base URL from platform parameter
         if platform == PLATFORM_QUE:
@@ -143,7 +145,7 @@ class ActronAirAPI:
             "Platform switched - tokens obtained from %s may not work with %s. "
             "Re-authentication may be required.",
             old_authenticated_platform or "unknown platform",
-            base_url
+            base_url,
         )
 
     def _maybe_update_base_url_from_systems(self, systems: List[Dict[str, Any]]) -> None:
@@ -194,7 +196,9 @@ class ActronAirAPI:
         """Request a device code for OAuth2 device code flow."""
         return await self.oauth2_auth.request_device_code()
 
-    async def poll_for_token(self, device_code: str, interval: int = 5, timeout: int = 600) -> Optional[Dict[str, Any]]:
+    async def poll_for_token(
+        self, device_code: str, interval: int = 5, timeout: int = 600
+    ) -> Optional[Dict[str, Any]]:
         """
         Poll for access token using device code with automatic polling loop.
 
@@ -220,7 +224,7 @@ class ActronAirAPI:
         json_data: Optional[Dict[str, Any]] = None,
         data: Optional[Dict[str, Any]] = None,
         headers: Optional[Dict[str, str]] = None,
-        _retry: bool = True
+        _retry: bool = True,
     ) -> Dict[str, Any]:
         """
         Make an API request with proper error handling.
@@ -260,12 +264,7 @@ class ActronAirAPI:
         # Make the request
         try:
             async with session.request(
-                method,
-                url,
-                params=params,
-                json=json_data,
-                data=data,
-                headers=request_headers
+                method, url, params=params, json=json_data, data=data, headers=request_headers
             ) as response:
                 if response.status == 401:
                     response_text = await response.text()
@@ -313,9 +312,7 @@ class ActronAirAPI:
         """
         try:
             response = await self._make_request(
-                "get",
-                "api/v0/client/ac-systems",
-                params={"includeNeo": "true"}
+                "get", "api/v0/client/ac-systems", params={"includeNeo": "true"}
             )
             systems = response["_embedded"]["ac-system"]
             self.systems = systems  # Auto-populate for convenience
@@ -364,7 +361,7 @@ class ActronAirAPI:
                     "post",
                     endpoint,
                     json_data=command,
-                    headers={"Content-Type": "application/json"}
+                    headers={"Content-Type": "application/json"},
                 )
         except Exception as e:
             _LOGGER.error("Error sending command to %s: %s", serial_number, e)

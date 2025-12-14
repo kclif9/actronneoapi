@@ -1,10 +1,11 @@
 import logging
 import re
-from typing import Dict, List, Optional, Any, Callable, Set, Tuple
+from typing import Any, Callable, Dict, List, Optional, Set
 
-from .models import ActronAirStatus, ActronAirEventsResponse
+from .models import ActronAirStatus
 
 _LOGGER = logging.getLogger(__name__)
+
 
 class StateManager:
     """
@@ -38,7 +39,9 @@ class StateManager:
         """Get the status for a specific system."""
         return self.status.get(serial_number)
 
-    def process_status_update(self, serial_number: str, status_data: Dict[str, Any]) -> ActronAirStatus:
+    def process_status_update(
+        self, serial_number: str, status_data: Dict[str, Any]
+    ) -> ActronAirStatus:
         """Process a full status update for a system."""
         status = ActronAirStatus.model_validate(status_data)
         status.parse_nested_components()
@@ -58,58 +61,6 @@ class StateManager:
             observer(serial_number, status_data)
 
         return status
-
-    def process_events(self, serial_number: str, events_data: Dict[str, Any]) -> Optional[ActronAirStatus]:
-        """Process events for a system and update state accordingly."""
-        events_response = ActronAirEventsResponse.model_validate(events_data)
-
-        if not events_response.events:
-            return self.status.get(serial_number)
-
-        # Track the latest event ID
-        self.latest_event_id[serial_number] = events_response.events[0].id
-
-        # Process events in reverse order (oldest to newest)
-        for event in reversed(events_response.events):
-            if event.type == "full-status-broadcast":
-                # Replace the full state
-                if serial_number in self.status:
-                    self.status[serial_number].last_known_state = event.data
-                    self.status[serial_number].parse_nested_components()
-                else:
-                    status = ActronAirStatus(isOnline=True, lastKnownState=event.data)
-                    status.parse_nested_components()
-                    # Set serial number and API reference
-                    status.serial_number = serial_number
-                    if self._api:
-                        status.set_api(self._api)
-                    self.status[serial_number] = status
-
-                # Extract zone-specific humidity from peripherals
-                self._map_peripheral_humidity_to_zones(self.status[serial_number])
-
-                # Notify observers
-                for observer in self._observers:
-                    observer(serial_number, event.data)
-
-            elif event.type == "status-change-broadcast":
-                # Incremental update
-                if serial_number in self.status:
-                    self._merge_incremental_update(
-                        self.status[serial_number].last_known_state,
-                        event.data
-                    )
-                    self.status[serial_number].parse_nested_components()
-
-                    # Extract zone-specific humidity from peripherals after update
-                    self._map_peripheral_humidity_to_zones(self.status[serial_number])
-
-                    # Notify observers
-                    changed_paths = self._get_changed_paths(event.data)
-                    for observer in self._observers:
-                        observer(serial_number, {"changed_paths": changed_paths})
-
-        return self.status.get(serial_number)
 
     def _map_peripheral_humidity_to_zones(self, status: ActronAirStatus) -> None:
         """
@@ -174,11 +125,13 @@ class StateManager:
         """Get the paths (dot notation) of changed fields in the incremental update."""
         paths = set()
         for key in incremental_data:
-            if not key.startswith('@'):
+            if not key.startswith("@"):
                 paths.add(key)
         return paths
 
-    def _merge_incremental_update(self, full_state: Dict[str, Any], incremental_data: Dict[str, Any]) -> None:
+    def _merge_incremental_update(
+        self, full_state: Dict[str, Any], incremental_data: Dict[str, Any]
+    ) -> None:
         """Merge incremental updates into the full state."""
         for key, value in incremental_data.items():
             if key.startswith("@"):

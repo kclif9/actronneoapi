@@ -1,16 +1,14 @@
 """Status models for Actron Air API"""
-from typing import Dict, List, Optional, Any
+
+from typing import Any, Dict, List, Optional
+
 from pydantic import BaseModel, Field
 
-# Forward references for imports from other modules
-from .zone import ActronAirZone, ActronAirPeripheral
-from .system import (
-    ActronAirACSystem,
-    ActronAirLiveAircon,
-    ActronAirMasterInfo,
-    ActronAirAlerts
-)
 from .settings import ActronAirUserAirconSettings
+from .system import ActronAirACSystem, ActronAirAlerts, ActronAirLiveAircon, ActronAirMasterInfo
+
+# Forward references for imports from other modules
+from .zone import ActronAirPeripheral, ActronAirZone
 
 
 class ActronAirStatus(BaseModel):
@@ -112,22 +110,31 @@ class ActronAirStatus(BaseModel):
             self._process_peripherals()
 
         if "UserAirconSettings" in self.last_known_state:
-            self.user_aircon_settings = ActronAirUserAirconSettings.model_validate(self.last_known_state["UserAirconSettings"])
+            self.user_aircon_settings = ActronAirUserAirconSettings.model_validate(
+                self.last_known_state["UserAirconSettings"]
+            )
             # Set parent reference
             if self.user_aircon_settings:
                 self.user_aircon_settings.set_parent_status(self)
 
         if "MasterInfo" in self.last_known_state:
-            self.master_info = ActronAirMasterInfo.model_validate(self.last_known_state["MasterInfo"])
+            self.master_info = ActronAirMasterInfo.model_validate(
+                self.last_known_state["MasterInfo"]
+            )
 
         if "LiveAircon" in self.last_known_state:
-            self.live_aircon = ActronAirLiveAircon.model_validate(self.last_known_state["LiveAircon"])
+            self.live_aircon = ActronAirLiveAircon.model_validate(
+                self.last_known_state["LiveAircon"]
+            )
 
         if "Alerts" in self.last_known_state:
             self.alerts = ActronAirAlerts.model_validate(self.last_known_state["Alerts"])
 
         if "RemoteZoneInfo" in self.last_known_state:
-            self.remote_zone_info = [ActronAirZone.model_validate(zone) for zone in self.last_known_state["RemoteZoneInfo"]]
+            self.remote_zone_info = [
+                ActronAirZone.model_validate(zone)
+                for zone in self.last_known_state["RemoteZoneInfo"]
+            ]
             # Set parent reference for each zone
             for i, zone in enumerate(self.remote_zone_info):
                 zone.set_parent_status(self, i)
@@ -144,16 +151,12 @@ class ActronAirStatus(BaseModel):
     @property
     def min_temp(self) -> float:
         """Return the minimum temperature that can be set."""
-        return (
-            self.last_known_state['NV_Limits']['UserSetpoint_oC']['setCool_Min']
-        )
+        return self.last_known_state["NV_Limits"]["UserSetpoint_oC"]["setCool_Min"]
 
     @property
     def max_temp(self) -> float:
         """Return the maximum temperature that can be set."""
-        return (
-            self.last_known_state['NV_Limits']['UserSetpoint_oC']['setCool_Max']
-        )
+        return self.last_known_state["NV_Limits"]["UserSetpoint_oC"]["setCool_Max"]
 
     def _process_peripherals(self) -> None:
         """Process peripheral devices from the last_known_state and extract their sensor data"""
@@ -219,72 +222,3 @@ class ActronAirStatus(BaseModel):
                 return peripheral
 
         return None
-
-    def get_sensor_value(self, sensor_name: str) -> Any:
-        """
-        Get a sensor value by its name.
-
-        Args:
-            sensor_name: The name of the sensor
-
-        Returns:
-            The value of the sensor, or None if not found
-        """
-        if sensor_name not in self._sensors:
-            return None
-
-        sensor = self._sensors[sensor_name]
-        return self._get_value_by_path_direct(sensor.path, sensor.attribute, sensor.default)
-
-    def _get_value_by_path_direct(self, path: List[str], attribute_name: str, default: Any = None) -> Any:
-        """
-        Direct access to the raw JSON data in last_known_state
-        This is a simplified version used by sensor properties to avoid recursion
-        """
-        if not path:
-            return self.last_known_state.get(attribute_name, default)
-
-        try:
-            current = self.last_known_state
-            for key in path:
-                if key not in current:
-                    return default
-                current = current[key]
-            return current.get(attribute_name, default)
-        except (KeyError, AttributeError, TypeError):
-            return default
-
-    def get_value_by_path(self, path: List[str], attribute_name: str, default: Any = None) -> Any:
-        """
-        Get a value from the nested structure by following a path of keys.
-
-        Args:
-            path: A list of keys to follow in the hierarchy
-            attribute_name: The name of the attribute to retrieve at the end of the path
-            default: Default value to return if the path or attribute doesn't exist
-
-        Returns:
-            The value at the specified path, or the default if not found
-        """
-        if not path:
-            return self.last_known_state.get(attribute_name, default)
-
-        try:
-            current = self.last_known_state
-            for key in path:
-                if key not in current:
-                    return default
-                current = current[key]
-            return current.get(attribute_name, default)
-        except (KeyError, AttributeError, TypeError):
-            return default
-
-
-class ActronAirEventType(BaseModel):
-    id: str
-    type: str
-    data: Dict[str, Any]
-
-
-class ActronAirEventsResponse(BaseModel):
-    events: List[ActronAirEventType]
