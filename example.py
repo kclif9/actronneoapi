@@ -92,8 +92,8 @@ async def oauth2_authentication_example() -> Tuple[Optional[str], Optional[str]]
             return access_token, refresh_token
 
         except Exception as e:
-            logger.error("OAuth2 authentication failed: %s", e)
-            return None, None
+            logger.error("OAuth2 authentication failed: %s", e, exc_info=True)
+            raise
 
 
 async def api_usage_example(refresh_token: str) -> None:
@@ -256,8 +256,10 @@ async def api_usage_example(refresh_token: str) -> None:
         print("Please run the OAuth2 flow again to get new tokens.")
     except ActronAirAPIError as e:
         logger.error("API error: %s", e)
+        raise
     except Exception as e:
-        logger.error("Unexpected error: %s", e)
+        logger.error("Unexpected error: %s", e, exc_info=True)
+        raise
 
 
 async def demonstrate_controls(api: ActronAirAPI, status: ActronAirStatus, serial: str) -> None:
@@ -331,11 +333,11 @@ async def demonstrate_controls(api: ActronAirAPI, status: ActronAirStatus, seria
             print(f"  Temperature: {settings.temperature_setpoint_cool_c}°C")
             print(f"  Fan Mode: {settings.fan_mode}")
             print(f"  Quiet Mode: {'Enabled' if settings.quiet_mode_enabled else 'Disabled'}")
-        print("\n✓ Control demonstrations completed successfully!")
+        print("✓ Control demonstrations completed successfully!")
 
     except Exception as e:
-        logger.error("Error during control demonstration: %s", e)
-        print("✗ Some control operations may have failed")
+        logger.error("Error during control demonstration: %s", e, exc_info=True)
+        raise
 
 
 async def main() -> None:

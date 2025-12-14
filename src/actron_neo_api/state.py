@@ -86,9 +86,14 @@ class StateManager:
 
         self.status[serial_number] = status
 
-        # Notify observers
+        # Notify observers - don't let observer errors break the update
         for observer in self._observers:
-            observer(serial_number, status_data)
+            try:
+                observer(serial_number, status_data)
+            except Exception as e:
+                _LOGGER.error(
+                    "Observer callback failed for system %s: %s", serial_number, e, exc_info=True
+                )
 
         return status
 
