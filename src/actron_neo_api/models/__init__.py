@@ -1,5 +1,4 @@
-"""
-Actron Air API Models
+"""Actron Air API Models.
 
 This package contains all data models used in the Actron Air API
 """

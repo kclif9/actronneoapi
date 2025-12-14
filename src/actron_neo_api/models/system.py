@@ -1,4 +1,4 @@
-"""System models for Actron Air API"""
+"""System models for Actron Air API."""
 
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
@@ -9,8 +9,7 @@ if TYPE_CHECKING:
 
 
 class ActronAirOutdoorUnit(BaseModel):
-    """
-    Outdoor unit data for an Actron Air AC system.
+    """Outdoor unit data for an Actron Air AC system.
 
     Contains information about the compressor unit including model, serial number,
     compressor speed, power consumption, and operational status.
@@ -28,8 +27,7 @@ class ActronAirOutdoorUnit(BaseModel):
 
 
 class ActronAirLiveAircon(BaseModel):
-    """
-    Live operational data for the air conditioning system.
+    """Live operational data for the air conditioning system.
 
     Contains real-time information about system operation including power state,
     compressor mode and capacity, fan speed, defrost status, and temperature targets.
@@ -48,8 +46,7 @@ class ActronAirLiveAircon(BaseModel):
 
 
 class ActronAirMasterInfo(BaseModel):
-    """
-    Master controller information and sensor readings.
+    """Master controller information and sensor readings.
 
     Contains live sensor data from the main controller including indoor temperature,
     humidity, and outdoor temperature readings.
@@ -61,8 +58,7 @@ class ActronAirMasterInfo(BaseModel):
 
 
 class ActronAirAlerts(BaseModel):
-    """
-    System alert and notification flags.
+    """System alert and notification flags.
 
     Contains boolean flags for system alerts such as filter cleaning reminders
     and defrost cycle status.
@@ -73,8 +69,7 @@ class ActronAirAlerts(BaseModel):
 
 
 class ActronAirACSystem(BaseModel):
-    """
-    Complete AC system information including hardware and firmware details.
+    """Complete AC system information including hardware and firmware details.
 
     Represents the main air conditioning system with its master controller,
     outdoor unit, and system identification. Provides methods to control
@@ -89,17 +84,16 @@ class ActronAirACSystem(BaseModel):
     _parent_status: Optional["ActronAirStatus"] = None
 
     def set_parent_status(self, parent: "ActronAirStatus") -> None:
-        """
-        Set reference to parent ActronStatus object.
+        """Set reference to parent ActronStatus object.
 
         Args:
             parent: Parent ActronAirStatus instance
+
         """
         self._parent_status = parent
 
     async def set_system_mode(self, mode: str) -> Dict[str, Any]:
-        """
-        Set the system mode for this AC unit.
+        """Set the system mode for this AC unit.
 
         Args:
             mode: Mode to set ('AUTO', 'COOL', 'FAN', 'HEAT', 'OFF')
@@ -107,6 +101,7 @@ class ActronAirACSystem(BaseModel):
 
         Returns:
             API response dictionary
+
         """
         if not self._parent_status or not self._parent_status._api:
             raise ValueError("No API reference available")

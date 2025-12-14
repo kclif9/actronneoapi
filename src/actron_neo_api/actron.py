@@ -1,3 +1,5 @@
+"""Actron Air API client module."""
+
 import asyncio
 import logging
 from typing import Any, Dict, List, Literal, Optional
@@ -13,8 +15,7 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class ActronAirAPI:
-    """
-    Client for the Actron Air API with improved architecture.
+    """Client for the Actron Air API with improved architecture.
 
     This client provides a modern, structured approach to interacting with
     the Actron Air API while maintaining compatibility with the previous interface.
@@ -26,14 +27,14 @@ class ActronAirAPI:
         refresh_token: Optional[str] = None,
         platform: Optional[Literal["neo", "que"]] = None,
     ):
-        """
-        Initialize the ActronAirAPI client with OAuth2 authentication.
+        """Initialize the ActronAirAPI client with OAuth2 authentication.
 
         Args:
             oauth2_client_id: OAuth2 client ID for device code flow
             refresh_token: Optional refresh token for authentication
             platform: Platform to use ('neo', 'que', or None for auto-detect).
             If None, enables auto-detection with Neo as the initial platform.
+
         """
         # Determine base URL from platform parameter
         if platform == PLATFORM_QUE:
@@ -61,20 +62,20 @@ class ActronAirAPI:
         # Set the API reference in the state manager for command execution
         self.state_manager.set_api(self)
 
-        self.systems = []
+        self.systems: List[Dict[str, Any]] = []
         self._initialized = False
 
         # Session management
-        self._session = None
+        self._session: Optional[aiohttp.ClientSession] = None
         self._session_lock = asyncio.Lock()
 
     @property
     def platform(self) -> str:
-        """
-        Get the current platform being used.
+        """Get the current platform being used.
 
         Returns:
             'neo' if using Nimbus platform, 'que' if using Que platform
+
         """
         if self.base_url == BASE_URL_NIMBUS:
             return PLATFORM_NEO
@@ -85,17 +86,16 @@ class ActronAirAPI:
 
     @property
     def authenticated_platform(self) -> Optional[str]:
-        """
-        Get the platform where tokens were originally obtained.
+        """Get the platform where tokens were originally obtained.
 
         Returns:
             Platform URL where tokens were authenticated, or None if not authenticated
+
         """
         return self.oauth2_auth.authenticated_platform
 
     def _get_system_link(self, serial_number: str, rel: str) -> Optional[str]:
-        """
-        Return a HAL link for a cached system if available.
+        """Return a HAL link for a cached system if available.
 
         Args:
             serial_number: Serial number of the AC system
@@ -103,6 +103,7 @@ class ActronAirAPI:
 
         Returns:
             The href URL string with leading slash removed, or None if not found
+
         """
         for system in self.systems:
             if system.get("serial") != serial_number:
@@ -125,21 +126,20 @@ class ActronAirAPI:
 
     @staticmethod
     def _is_nx_gen_system(system: Dict[str, Any]) -> bool:
-        """
-        Check if a system is an NX Gen type.
+        """Check if a system is an NX Gen type.
 
         Args:
             system: System dictionary containing type information
 
         Returns:
             True if the system is NX Gen type, False otherwise
+
         """
         system_type = str(system.get("type") or "").replace("-", "").lower()
         return system_type == "nxgen"
 
     def _set_base_url(self, base_url: str) -> None:
-        """
-        Update the base URL and preserve existing authentication tokens.
+        """Update the base URL and preserve existing authentication tokens.
 
         Args:
             base_url: New base URL to switch to
@@ -147,6 +147,7 @@ class ActronAirAPI:
         Note:
             This preserves tokens but they may not work if switching between
             incompatible platforms (Neo vs Que).
+
         """
         if self.base_url == base_url:
             return
@@ -177,8 +178,7 @@ class ActronAirAPI:
         )
 
     def _maybe_update_base_url_from_systems(self, systems: List[Dict[str, Any]]) -> None:
-        """
-        Automatically update base URL based on system types if auto-management is enabled.
+        """Automatically update base URL based on system types if auto-management is enabled.
 
         Args:
             systems: List of AC systems to analyze
@@ -186,6 +186,7 @@ class ActronAirAPI:
         Note:
             Switches to QUE platform if any NX Gen systems are found,
             otherwise uses NIMBUS platform.
+
         """
         if not self._auto_manage_base_url or not systems:
             return
@@ -211,7 +212,9 @@ class ActronAirAPI:
         """Get or create an aiohttp ClientSession."""
         async with self._session_lock:
             if self._session is None or self._session.closed:
-                self._session = aiohttp.ClientSession()
+                session: aiohttp.ClientSession = aiohttp.ClientSession()
+                self._session = session
+                return session
             return self._session
 
     async def close(self) -> None:
@@ -221,11 +224,11 @@ class ActronAirAPI:
                 await self._session.close()
                 self._session = None
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> "ActronAirAPI":
         """Support for async context manager."""
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
+    async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         """Support for async context manager."""
         await self.close()
 
@@ -237,8 +240,7 @@ class ActronAirAPI:
     async def poll_for_token(
         self, device_code: str, interval: int = 5, timeout: int = 600
     ) -> Optional[Dict[str, Any]]:
-        """
-        Poll for access token using device code with automatic polling loop.
+        """Poll for access token using device code with automatic polling loop.
 
         Args:
             device_code: The device code received from request_device_code
@@ -247,6 +249,7 @@ class ActronAirAPI:
 
         Returns:
             Token data if successful, None if timeout occurs
+
         """
         return await self.oauth2_auth.poll_for_token(device_code, interval, timeout)
 
@@ -264,8 +267,7 @@ class ActronAirAPI:
         headers: Optional[Dict[str, str]] = None,
         _retry: bool = True,
     ) -> Dict[str, Any]:
-        """
-        Make an API request with proper error handling.
+        """Make an API request with proper error handling.
 
         Args:
             method: HTTP method ("get", "post", etc.)
@@ -282,6 +284,7 @@ class ActronAirAPI:
         Raises:
             ActronAirAuthError: For authentication errors
             ActronAirAPIError: For API errors
+
         """
         # Ensure API is initialized with valid tokens
         await self._ensure_initialized()
@@ -342,11 +345,11 @@ class ActronAirAPI:
     # API Methods
 
     async def get_ac_systems(self) -> List[Dict[str, Any]]:
-        """
-        Retrieve all AC systems in the customer account.
+        """Retrieve all AC systems in the customer account.
 
         Returns:
             List of AC systems
+
         """
         try:
             response = await self._make_request(
@@ -361,8 +364,7 @@ class ActronAirAPI:
             raise
 
     async def get_ac_status(self, serial_number: str) -> Dict[str, Any]:
-        """
-        Retrieve the current status for a specific AC system.
+        """Retrieve the current status for a specific AC system.
 
         This replaces the events API which was disabled by Actron in July 2025.
 
@@ -371,18 +373,19 @@ class ActronAirAPI:
 
         Returns:
             Current status of the AC system
+
         """
         try:
             endpoint = self._get_system_link(serial_number, "ac-status")
             if endpoint:
                 return await self._make_request("get", endpoint)
+            raise ActronAirAPIError(f"No ac-status link found for system {serial_number}")
         except Exception as e:
             _LOGGER.error("Error getting AC status for %s: %s", serial_number, e)
             raise
 
     async def send_command(self, serial_number: str, command: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Send a command to the specified AC system.
+        """Send a command to the specified AC system.
 
         Args:
             serial_number: Serial number of the AC system
@@ -390,6 +393,7 @@ class ActronAirAPI:
 
         Returns:
             Command response
+
         """
         try:
             endpoint = self._get_system_link(serial_number, "commands")
@@ -401,13 +405,13 @@ class ActronAirAPI:
                     json_data=command,
                     headers={"Content-Type": "application/json"},
                 )
+            raise ActronAirAPIError(f"No commands link found for system {serial_number}")
         except Exception as e:
             _LOGGER.error("Error sending command to %s: %s", serial_number, e)
             raise
 
     async def update_status(self, serial_number: Optional[str] = None) -> Dict[str, Any]:
-        """
-        Update the status of AC systems using event-based updates.
+        """Update the status of AC systems using event-based updates.
 
         Args:
             serial_number: Optional serial number to update specific system,
@@ -415,6 +419,7 @@ class ActronAirAPI:
 
         Returns:
             Dictionary of updated status data by serial number
+
         """
         if serial_number:
             # Update specific system
@@ -438,8 +443,7 @@ class ActronAirAPI:
         return results
 
     async def _update_system_status(self, serial_number: str) -> None:
-        """
-        Update status for a single system using status polling.
+        """Update status for a single system using status polling.
 
         Note: Switched from event-based updates to status polling due to
         Actron disabling the events API in July 2025.
@@ -450,6 +454,7 @@ class ActronAirAPI:
         Raises:
             ActronAirAuthError: If authentication fails
             ActronAirAPIError: If API request fails
+
         """
         try:
             # Get current status using the status/latest endpoint
@@ -466,12 +471,15 @@ class ActronAirAPI:
 
     @property
     def access_token(self) -> Optional[str]:
+        """Get the current OAuth2 access token."""
         return self.oauth2_auth.access_token
 
     @property
     def refresh_token_value(self) -> Optional[str]:
+        """Get the current OAuth2 refresh token."""
         return self.oauth2_auth.refresh_token
 
     @property
     def latest_event_id(self) -> Dict[str, str]:
+        """Get the latest event ID for each system."""
         return self.state_manager.latest_event_id.copy()

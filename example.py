@@ -1,5 +1,4 @@
-"""
-Comprehensive example demonstrating the ActronAirAPI library.
+"""Comprehensive example demonstrating the ActronAirAPI library.
 
 This example shows:
 1. OAuth2 device code flow authentication
@@ -23,8 +22,9 @@ changing your AC settings.
 import asyncio
 import logging
 import os
+from typing import Optional, Tuple
 
-from actron_neo_api import ActronAirAPI, ActronAirAPIError, ActronAirAuthError
+from actron_neo_api import ActronAirAPI, ActronAirAPIError, ActronAirAuthError, ActronAirStatus
 
 # Set up logging
 logging.basicConfig(
@@ -33,11 +33,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-async def oauth2_authentication_example():
-    """
-    Example of OAuth2 device code flow authentication.
-    This is the first step to get your tokens.
-    """
+async def oauth2_authentication_example() -> Tuple[Optional[str], Optional[str]]:
+    """Example of OAuth2 device code flow authentication."""
     print("\n=== OAUTH2 AUTHENTICATION FLOW ===\n")
 
     async with ActronAirAPI() as api:
@@ -57,10 +54,10 @@ async def oauth2_authentication_example():
             print("\n" + "=" * 60)
             print("OAUTH2 DEVICE CODE FLOW")
             print("=" * 60)
-            print("1. Open this URL in your browser: %s" % verification_uri)
-            print("2. Enter this code: %s" % user_code)
-            print("3. Or use the complete URL: %s" % verification_uri_complete)
-            print("4. Complete authorization within %d minutes" % (expires_in // 60))
+            print(f"1. Open this URL in your browser: {verification_uri}")
+            print(f"2. Enter this code: {user_code}")
+            print(f"3. Or use the complete URL: {verification_uri_complete}")
+            print(f"4. Complete authorization within {expires_in // 60} minutes")
             print("=" * 60)
             print("Waiting for authorization...")
 
@@ -85,8 +82,10 @@ async def oauth2_authentication_example():
             print("\n" + "=" * 60)
             print("AUTHENTICATION SUCCESSFUL!")
             print("=" * 60)
-            print("Access Token: %s..." % access_token[:20])
-            print("Refresh Token: %s..." % refresh_token[:20])
+            if access_token:
+                print(f"Access Token: {access_token[:20]}...")
+            if refresh_token:
+                print(f"Refresh Token: {refresh_token[:20]}...")
             print("Save these tokens for future use!")
             print("=" * 60)
 
@@ -97,11 +96,8 @@ async def oauth2_authentication_example():
             return None, None
 
 
-async def api_usage_example(refresh_token: str):
-    """
-    Example of using the ActronAirAPI with saved OAuth2 tokens.
-    This demonstrates the full API capabilities.
-    """
+async def api_usage_example(refresh_token: str) -> None:
+    """Example of using the ActronAirAPI with saved OAuth2 tokens."""
     print("\n=== API USAGE EXAMPLE ===\n")
 
     try:
@@ -136,6 +132,9 @@ async def api_usage_example(refresh_token: str):
         logger.info("Working with system: %s (Serial: %s)", name, serial)
 
         # Get the typed status object
+        if not serial:
+            logger.warning("System has no serial number, skipping")
+            return
         status = api.state_manager.get_status(serial)
 
         if not status:
@@ -145,9 +144,9 @@ async def api_usage_example(refresh_token: str):
             print("\n" + "=" * 60)
             print("SYSTEM INFORMATION")
             print("=" * 60)
-            print("System Name: %s" % name)
-            print("Serial: %s" % serial)
-            print("Family: %s" % family)
+            print(f"System Name: {name}")
+            print(f"Serial: {serial}")
+            print(f"Family: {family}")
             print("Status: Events API not accessible - limited information available")
             print("=" * 60)
         else:
@@ -157,22 +156,20 @@ async def api_usage_example(refresh_token: str):
             print("=" * 60)
 
             if status.ac_system:
-                print("System Name: %s" % status.ac_system.system_name)
-                print("Model: %s" % status.ac_system.master_wc_model)
-                print("Firmware: %s" % status.ac_system.master_wc_firmware_version)
-                print("Serial: %s" % status.ac_system.master_serial)
+                print(f"System Name: {status.ac_system.system_name}")
+                print(f"Model: {status.ac_system.master_wc_model}")
+                print(f"Firmware: {status.ac_system.master_wc_firmware_version}")
+                print(f"Serial: {status.ac_system.master_serial}")
 
             # Display current settings
             if status.user_aircon_settings:
                 settings = status.user_aircon_settings
                 print("\nCURRENT SETTINGS:")
-                print("Power: %s" % ("ON" if settings.is_on else "OFF"))
-                print("Mode: %s" % settings.mode)
-                print(
-                    "Fan Mode: %s" % ("Enabled" if settings.continuous_fan_enabled else "Disabled")
-                )
-                print("Cool Setpoint: %s°C" % settings.temperature_setpoint_cool_c)
-                print("Heat Setpoint: %s°C" % settings.temperature_setpoint_heat_c)
+                print(f"Power: {'ON' if settings.is_on else 'OFF'}")
+                print(f"Mode: {settings.mode}")
+                print(f"Fan Mode: {'Enabled' if settings.continuous_fan_enabled else 'Disabled'}")
+                print(f"Cool Setpoint: {settings.temperature_setpoint_cool_c}°C")
+                print(f"Heat Setpoint: {settings.temperature_setpoint_heat_c}°C")
 
                 # Get current temperature from zones
                 current_temp = None
@@ -186,47 +183,46 @@ async def api_usage_example(refresh_token: str):
                             break
 
                 if current_temp is not None:
-                    print("Current Temperature: %s°C" % current_temp)
+                    print(f"Current Temperature: {current_temp}°C")
                 else:
                     print("Current Temperature: Not available")
 
-                print("Quiet Mode: %s" % ("Enabled" if settings.quiet_mode_enabled else "Disabled"))
-                print("Turbo Mode: %s" % ("Enabled" if settings.turbo_mode_enabled else "Disabled"))
-                print("Away Mode: %s" % ("Enabled" if settings.away_mode else "Disabled"))
+                print(f"Quiet Mode: {'Enabled' if settings.quiet_mode_enabled else 'Disabled'}")
+                print(f"Turbo Mode: {'Enabled' if settings.turbo_mode_enabled else 'Disabled'}")
+                print(f"Away Mode: {'Enabled' if settings.away_mode else 'Disabled'}")
 
             # Display zone information
             if status.remote_zone_info:
                 print("\nZONE INFORMATION:")
                 for i, zone in enumerate(status.remote_zone_info):
                     print(
-                        "Zone %d (%s): %s"
-                        % (i + 1, zone.title, "Enabled" if zone.is_active else "Disabled")
+                        f"Zone {i + 1} ({zone.title}): "
+                        f"{'Enabled' if zone.is_active else 'Disabled'}"
                     )
-                    print("  Set Temperature Cool: %s°C" % zone.temperature_setpoint_cool_c)
-                    print("  Set Temperature Heat: %s°C" % zone.temperature_setpoint_heat_c)
+                    print(f"  Set Temperature Cool: {zone.temperature_setpoint_cool_c}°C")
+                    print(f"  Set Temperature Heat: {zone.temperature_setpoint_heat_c}°C")
 
                     # Display actual temperature from zone or peripheral
                     if zone.live_temp_c is not None and zone.live_temp_c > 0:
-                        print("  Current Temperature: %s°C" % zone.live_temp_c)
+                        print(f"  Current Temperature: {zone.live_temp_c}°C")
                     elif zone.peripheral_temperature is not None:
-                        print("  Current Temperature: %s°C (sensor)" % zone.peripheral_temperature)
+                        print(f"  Current Temperature: {zone.peripheral_temperature}°C (sensor)")
                     else:
                         print("  Current Temperature: Not available")
 
                     # Display humidity
                     if zone.humidity is not None and zone.humidity > 0:
-                        print("  Current Humidity: %s%%" % zone.humidity)
+                        print(f"  Current Humidity: {zone.humidity}%")
                     else:
                         print("  Current Humidity: Not available")
 
                     # Display battery level if available
                     if zone.battery_level is not None:
-                        print("  Sensor Battery: %s%%" % zone.battery_level)
+                        print(f"  Sensor Battery: {zone.battery_level}%")
                     else:
                         print("  Sensor Battery: Not available")
 
-                    print("  Zone Position: %s%%" % zone.zone_position)
-
+                    print(f"  Zone Position: {zone.zone_position}%")
             print("=" * 60)
 
             # Demonstrate control capabilities
@@ -264,11 +260,8 @@ async def api_usage_example(refresh_token: str):
         logger.error("Unexpected error: %s", e)
 
 
-async def demonstrate_controls(api, status, serial):
-    """
-    Demonstrate actual control operations.
-    Only runs if explicitly enabled via environment variable.
-    """
+async def demonstrate_controls(api: ActronAirAPI, status: ActronAirStatus, serial: str) -> None:
+    """Demonstrate actual control operations."""
     print("Running control demonstrations...")
     print("WARNING: This will change your AC system settings!")
 
@@ -315,7 +308,7 @@ async def demonstrate_controls(api, status, serial):
             first_zone = status.remote_zone_info[0]
             logger.info("Enabling zone %d (%s)...", first_zone.zone_id, first_zone.title)
             await first_zone.enable(is_enabled=True)
-            print("✓ Zone %d enabled" % first_zone.zone_id)
+            print(f"✓ Zone {first_zone.zone_id} enabled")
 
             # Set zone temperature to 22°C
             logger.info("Setting zone temperature to 22°C...")
@@ -333,12 +326,11 @@ async def demonstrate_controls(api, status, serial):
         if updated_status and updated_status.user_aircon_settings:
             settings = updated_status.user_aircon_settings
             print("✓ Updated settings:")
-            print("  Power: %s" % ("ON" if settings.is_on else "OFF"))
-            print("  Mode: %s" % settings.mode)
-            print("  Temperature: %s°C" % settings.temperature_setpoint_cool_c)
-            print("  Fan Mode: %s" % settings.fan_mode)
-            print("  Quiet Mode: %s" % ("Enabled" if settings.quiet_mode_enabled else "Disabled"))
-
+            print(f"  Power: {'ON' if settings.is_on else 'OFF'}")
+            print(f"  Mode: {settings.mode}")
+            print(f"  Temperature: {settings.temperature_setpoint_cool_c}°C")
+            print(f"  Fan Mode: {settings.fan_mode}")
+            print(f"  Quiet Mode: {'Enabled' if settings.quiet_mode_enabled else 'Disabled'}")
         print("\n✓ Control demonstrations completed successfully!")
 
     except Exception as e:
@@ -346,10 +338,8 @@ async def demonstrate_controls(api, status, serial):
         print("✗ Some control operations may have failed")
 
 
-async def main():
-    """
-    Main example function that demonstrates both authentication and API usage.
-    """
+async def main() -> None:
+    """Main example function that demonstrates both authentication and API usage."""
     print("=== ACTRON AIR API EXAMPLE ===")
     print("This example demonstrates OAuth2 authentication and API usage.")
 
@@ -359,8 +349,8 @@ async def main():
 
     if saved_access_token and saved_refresh_token:
         print("\nUsing saved tokens from environment variables...")
-        access_token = saved_access_token
-        refresh_token = saved_refresh_token
+        access_token: Optional[str] = saved_access_token
+        refresh_token: Optional[str] = saved_refresh_token
     else:
         print("\nNo saved tokens found. Starting OAuth2 authentication flow...")
         access_token, refresh_token = await oauth2_authentication_example()
@@ -369,11 +359,13 @@ async def main():
             print("Authentication failed. Cannot continue with API example.")
             return
 
-        print("\nTo skip authentication in future runs, set these environment variables:")
-        print("export ACTRON_ACCESS_TOKEN='%s'" % access_token)
-        print("export ACTRON_REFRESH_TOKEN='%s'" % refresh_token)
+        print("\\nTo skip authentication in future runs, set these environment variables:")
+        print(f"export ACTRON_ACCESS_TOKEN='{access_token}'")
+        print(f"export ACTRON_REFRESH_TOKEN='{refresh_token}'")
 
     # Run the API usage example
+    # At this point we know refresh_token is not None due to the check above
+    assert refresh_token is not None
     await api_usage_example(refresh_token)
 
 

@@ -1,4 +1,4 @@
-"""Zone models for Actron Air API"""
+"""Zone models for Actron Air API."""
 
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
@@ -9,8 +9,7 @@ if TYPE_CHECKING:
 
 
 class ActronAirZoneSensor(BaseModel):
-    """
-    Sensor data for a zone controller.
+    """Sensor data for a zone controller.
 
     Represents sensor readings from zone control units including
     temperature, humidity, battery level, and connection status.
@@ -26,8 +25,7 @@ class ActronAirZoneSensor(BaseModel):
 
 
 class ActronAirPeripheral(BaseModel):
-    """
-    Peripheral device that provides sensor data for zones.
+    """Peripheral device that provides sensor data for zones.
 
     Peripherals are additional sensor devices that can be assigned to one or
     more zones to provide more accurate temperature and humidity readings
@@ -45,11 +43,11 @@ class ActronAirPeripheral(BaseModel):
 
     @property
     def zones(self) -> List["ActronAirZone"]:
-        """
-        Get the actual zone objects assigned to this peripheral.
+        """Get the actual zone objects assigned to this peripheral.
 
         Returns:
             List of zone objects this peripheral is assigned to
+
         """
         if not self._parent_status or not self._parent_status.remote_zone_info:
             return []
@@ -63,14 +61,14 @@ class ActronAirPeripheral(BaseModel):
 
     @classmethod
     def from_peripheral_data(cls, peripheral_data: Dict[str, Any]) -> "ActronAirPeripheral":
-        """
-        Create a peripheral instance from raw peripheral data.
+        """Create a peripheral instance from raw peripheral data.
 
         Args:
             peripheral_data: Raw peripheral data dictionary from API
 
         Returns:
             ActronAirPeripheral instance with extracted sensor data
+
         """
         peripheral = cls.model_validate(peripheral_data)
 
@@ -85,18 +83,17 @@ class ActronAirPeripheral(BaseModel):
         return peripheral
 
     def set_parent_status(self, parent: "ActronAirStatus") -> None:
-        """
-        Set reference to parent ActronStatus object.
+        """Set reference to parent ActronStatus object.
 
         Args:
             parent: Parent ActronAirStatus instance
+
         """
         self._parent_status = parent
 
 
 class ActronAirZone(BaseModel):
-    """
-    Individual climate control zone in an Actron Air system.
+    """Individual climate control zone in an Actron Air system.
 
     Represents a single controllable zone with its own temperature settings,
     sensors, and control capabilities. Provides methods to enable/disable
@@ -119,28 +116,31 @@ class ActronAirZone(BaseModel):
 
     @property
     def is_active(self) -> bool:
-        """
-        Check if this zone is currently active.
+        """Check if this zone is currently active.
 
         Returns:
             True if zone is enabled and can operate, False otherwise
+
         """
+        if not self._parent_status or not self._parent_status.user_aircon_settings:
+            return False
+
         enabled_zones = self._parent_status.user_aircon_settings.enabled_zones
 
         if not self.can_operate:
             return False
-        if self.zone_id >= len(enabled_zones):
+        if self.zone_id is None or self.zone_id >= len(enabled_zones):
             return False
         return enabled_zones[self.zone_id]
 
     @property
     def hvac_mode(self) -> str:
-        """
-        Get the current HVAC mode for this zone, accounting for zone and system state.
+        """Get the current HVAC mode for this zone, accounting for zone and system state.
 
         Returns:
             String representing the mode ("OFF", "COOL", "HEAT", "AUTO", "FAN")
             "OFF" is returned if the system is off or the zone is inactive
+
         """
         if not self._parent_status or not self._parent_status.user_aircon_settings:
             return "OFF"
@@ -158,6 +158,7 @@ class ActronAirZone(BaseModel):
     @property
     def humidity(self) -> float:
         """Get the best available humidity reading for this zone.
+
         Returns the actual sensor reading if available, otherwise the system-reported value.
         """
         if self.actual_humidity_pc is not None:
@@ -170,8 +171,9 @@ class ActronAirZone(BaseModel):
 
         Returns:
             Battery level as a percentage or None if no peripheral sensor is assigned
+
         """
-        if not self._parent_status:
+        if not self._parent_status or self.zone_id is None:
             return None
 
         peripheral = self._parent_status.get_peripheral_for_zone(self.zone_id)
@@ -183,8 +185,9 @@ class ActronAirZone(BaseModel):
 
         Returns:
             Temperature in degrees Celsius or None if no peripheral sensor is assigned
+
         """
-        if not self._parent_status:
+        if not self._parent_status or self.zone_id is None:
             return None
 
         peripheral = self._parent_status.get_peripheral_for_zone(self.zone_id)
@@ -196,8 +199,9 @@ class ActronAirZone(BaseModel):
 
         Returns:
             Relative humidity as a percentage or None if no peripheral sensor is assigned
+
         """
-        if not self._parent_status:
+        if not self._parent_status or self.zone_id is None:
             return None
 
         peripheral = self._parent_status.get_peripheral_for_zone(self.zone_id)
@@ -209,6 +213,7 @@ class ActronAirZone(BaseModel):
 
         Returns:
             The peripheral device or None if no peripheral is assigned
+
         """
         if not self._parent_status or self.zone_id is None:
             return None
@@ -257,14 +262,14 @@ class ActronAirZone(BaseModel):
 
     # Command generation methods
     def set_temperature_command(self, temperature: float) -> Dict[str, Any]:
-        """
-        Create a command to set temperature for this zone based on the current AC mode.
+        """Create a command to set temperature for this zone based on the current AC mode.
 
         Args:
             temperature: The temperature to set
 
         Returns:
             Command dictionary
+
         """
         if self.zone_id is None:
             raise ValueError("Zone index not set")
@@ -273,12 +278,16 @@ class ActronAirZone(BaseModel):
             raise ValueError("No parent AC status available to determine mode")
 
         mode = self._parent_status.user_aircon_settings.mode.upper()
-        command = {"type": "set-settings"}
+        command: Dict[str, Any] = {"type": "set-settings"}
 
         if mode == "COOL":
-            command[f"RemoteZoneInfo[{self.zone_id}].TemperatureSetpoint_Cool_oC"] = temperature
+            command[f"RemoteZoneInfo[{self.zone_id}].TemperatureSetpoint_Cool_oC"] = float(
+                temperature
+            )
         elif mode == "HEAT":
-            command[f"RemoteZoneInfo[{self.zone_id}].TemperatureSetpoint_Heat_oC"] = temperature
+            command[f"RemoteZoneInfo[{self.zone_id}].TemperatureSetpoint_Heat_oC"] = float(
+                temperature
+            )
         elif mode == "AUTO":
             # AUTO: maintain the temperature differential between cooling and heating
             # Get the current differential from parent settings
@@ -288,9 +297,9 @@ class ActronAirZone(BaseModel):
 
             # Apply the same differential to the new temperature
             # For AUTO mode, we assume the provided temperature is for cooling
-            cool_setpoint = temperature
-            heat_setpoint = max(
-                10.0, temperature - differential
+            cool_setpoint = float(temperature)
+            heat_setpoint = float(
+                max(10.0, temperature - differential)
             )  # Ensure we don't go below a reasonable minimum
 
             command[f"RemoteZoneInfo[{self.zone_id}].TemperatureSetpoint_Cool_oC"] = cool_setpoint
@@ -299,14 +308,14 @@ class ActronAirZone(BaseModel):
         return {"command": command}
 
     def set_enable_command(self, is_enabled: bool) -> Dict[str, Any]:
-        """
-        Create a command to enable or disable this zone.
+        """Create a command to enable or disable this zone.
 
         Args:
             is_enabled: True to enable, False to disable
 
         Returns:
             Command dictionary
+
         """
         if self.zone_id is None:
             raise ValueError("Zone index not set")
@@ -328,19 +337,19 @@ class ActronAirZone(BaseModel):
         }
 
     def set_parent_status(self, parent: "ActronAirStatus", zone_index: int) -> None:
-        """Set reference to parent ActronStatus object and this zone's index"""
+        """Set reference to parent ActronStatus object and this zone's index."""
         self._parent_status = parent
         self.zone_id = zone_index
 
     async def set_temperature(self, temperature: float) -> Dict[str, Any]:
-        """
-        Set temperature for this zone based on the current AC mode and send the command.
+        """Set temperature for this zone based on the current AC mode and send the command.
 
         Args:
             temperature: The temperature to set
 
         Returns:
             API response dictionary
+
         """
         if self.zone_id is None:
             raise ValueError("Zone index not set")
@@ -360,14 +369,14 @@ class ActronAirZone(BaseModel):
         raise ValueError("No API reference available to send command")
 
     async def enable(self, is_enabled: bool = True) -> Dict[str, Any]:
-        """
-        Enable or disable this zone and send the command.
+        """Enable or disable this zone and send the command.
 
         Args:
             is_enabled: True to enable, False to disable
 
         Returns:
             API response dictionary
+
         """
         command = self.set_enable_command(is_enabled)
         if (

@@ -1,4 +1,4 @@
-"""Settings models for Actron Air API"""
+"""Settings models for Actron Air API."""
 
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
@@ -9,8 +9,7 @@ if TYPE_CHECKING:
 
 
 class ActronAirUserAirconSettings(BaseModel):
-    """
-    User-configurable settings for an Actron Air AC system.
+    """User-configurable settings for an Actron Air AC system.
 
     Contains all user-adjustable parameters including power state, mode,
     temperature setpoints, fan settings, and special modes (quiet, turbo, away).
@@ -31,37 +30,39 @@ class ActronAirUserAirconSettings(BaseModel):
     _parent_status: Optional["ActronAirStatus"] = None
 
     def set_parent_status(self, parent: "ActronAirStatus") -> None:
-        """
-        Set reference to parent ActronStatus object.
+        """Set reference to parent ActronStatus object.
 
         Args:
             parent: Parent ActronAirStatus instance
+
         """
         self._parent_status = parent
 
     @property
     def turbo_supported(self) -> bool:
-        """
-        Check if turbo mode is supported by this system.
+        """Check if turbo mode is supported by this system.
 
         Returns:
             True if turbo mode is supported, False otherwise
 
         Note:
             Handles both boolean and dictionary representations of turbo mode data
+
         """
-        return self.turbo_mode_enabled.get("Supported", False)
+        if isinstance(self.turbo_mode_enabled, dict):
+            return self.turbo_mode_enabled.get("Supported", False)
+        return False
 
     @property
     def turbo_enabled(self) -> bool:
-        """
-        Get the current turbo mode status.
+        """Get the current turbo mode status.
 
         Returns:
             True if turbo mode is currently enabled, False otherwise
 
         Note:
             Handles both boolean and dictionary representations from API
+
         """
         if isinstance(self.turbo_mode_enabled, dict):
             return self.turbo_mode_enabled.get("Enabled", False)
@@ -69,21 +70,21 @@ class ActronAirUserAirconSettings(BaseModel):
 
     @property
     def continuous_fan_enabled(self) -> bool:
-        """
-        Check if continuous fan mode is currently enabled.
+        """Check if continuous fan mode is currently enabled.
 
         Returns:
             True if fan will run continuously, False if it cycles with compressor
+
         """
         return "CONT" in self.fan_mode
 
     @property
     def base_fan_mode(self) -> str:
-        """
-        Get the base fan mode without the continuous mode suffix.
+        """Get the base fan mode without the continuous mode suffix.
 
         Returns:
             Fan mode string (e.g., "AUTO", "LOW", "HIGH") without "+CONT" suffix
+
         """
         if self.continuous_fan_enabled:
             if "+CONT" in self.fan_mode:
@@ -94,8 +95,7 @@ class ActronAirUserAirconSettings(BaseModel):
 
     # Command generation methods
     def _set_system_mode_command(self, mode: str) -> Dict[str, Any]:
-        """
-        Create a command to set the AC system mode.
+        """Create a command to set the AC system mode.
 
         Args:
             mode: Mode to set ('AUTO', 'COOL', 'FAN', 'HEAT', 'OFF')
@@ -103,6 +103,7 @@ class ActronAirUserAirconSettings(BaseModel):
 
         Returns:
             Command dictionary
+
         """
         # Determine if system should be on or off based on mode
         is_on = mode.upper() != "OFF"
@@ -115,14 +116,14 @@ class ActronAirUserAirconSettings(BaseModel):
         return command
 
     def _set_fan_mode_command(self, fan_mode: str) -> Dict[str, Any]:
-        """
-        Create a command to set the fan mode, preserving continuous mode setting.
+        """Create a command to set the fan mode, preserving continuous mode setting.
 
         Args:
             fan_mode: The fan mode (e.g., "AUTO", "LOW", "MEDIUM", "HIGH")
 
         Returns:
             Command dictionary
+
         """
         # Preserve the continuous mode setting
         mode = fan_mode
@@ -137,14 +138,14 @@ class ActronAirUserAirconSettings(BaseModel):
         }
 
     def _set_continuous_mode_command(self, enabled: bool) -> Dict[str, Any]:
-        """
-        Create a command to enable/disable continuous fan mode.
+        """Create a command to enable/disable continuous fan mode.
 
         Args:
             enabled: True to enable continuous mode, False to disable
 
         Returns:
             Command dictionary
+
         """
         base_mode = self.base_fan_mode
         mode = f"{base_mode}+CONT" if enabled else base_mode
@@ -157,34 +158,38 @@ class ActronAirUserAirconSettings(BaseModel):
         }
 
     def _set_temperature_command(self, temperature: float) -> Dict[str, Any]:
-        """
-        Create a command to set temperature for the system based on the current AC mode.
+        """Create a command to set temperature for the system based on the current AC mode.
 
         Args:
             temperature: The temperature to set
 
         Returns:
             Command dictionary
+
         """
         if not self.mode:
             raise ValueError("No mode available in settings")
 
         mode = self.mode.upper()
-        command = {"command": {"type": "set-settings"}}
+        command: Dict[str, Any] = {"command": {"type": "set-settings"}}
 
         if mode == "COOL":
-            command["command"]["UserAirconSettings.TemperatureSetpoint_Cool_oC"] = temperature
+            command["command"]["UserAirconSettings.TemperatureSetpoint_Cool_oC"] = float(
+                temperature
+            )
         elif mode == "HEAT":
-            command["command"]["UserAirconSettings.TemperatureSetpoint_Heat_oC"] = temperature
+            command["command"]["UserAirconSettings.TemperatureSetpoint_Heat_oC"] = float(
+                temperature
+            )
         elif mode == "AUTO":
             # AUTO: maintain the temperature differential between cooling and heating
             differential = self.temperature_setpoint_cool_c - self.temperature_setpoint_heat_c
 
             # Apply the same differential to the new temperature
             # For AUTO mode, we assume the provided temperature is for cooling
-            cool_setpoint = temperature
-            heat_setpoint = max(
-                10.0, temperature - differential
+            cool_setpoint = float(temperature)
+            heat_setpoint = float(
+                max(10.0, temperature - differential)
             )  # Ensure we don't go below a reasonable minimum
 
             command["command"]["UserAirconSettings.TemperatureSetpoint_Cool_oC"] = cool_setpoint
@@ -193,14 +198,14 @@ class ActronAirUserAirconSettings(BaseModel):
         return command
 
     def _set_away_mode_command(self, enabled: bool = False) -> Dict[str, Any]:
-        """
-        Create a command to enable/disable away mode.
+        """Create a command to enable/disable away mode.
 
         Args:
             enabled: True to enable, False to disable
 
         Returns:
             Command dictionary
+
         """
         return {
             "command": {
@@ -210,14 +215,14 @@ class ActronAirUserAirconSettings(BaseModel):
         }
 
     def _set_quiet_mode_command(self, enabled: bool = False) -> Dict[str, Any]:
-        """
-        Create a command to enable/disable quiet mode.
+        """Create a command to enable/disable quiet mode.
 
         Args:
             enabled: True to enable, False to disable
 
         Returns:
             Command dictionary
+
         """
         return {
             "command": {
@@ -227,14 +232,14 @@ class ActronAirUserAirconSettings(BaseModel):
         }
 
     def _set_turbo_mode_command(self, enabled: bool = False) -> Dict[str, Any]:
-        """
-        Create a command to enable/disable turbo mode.
+        """Create a command to enable/disable turbo mode.
 
         Args:
             enabled: True to enable, False to disable
 
         Returns:
             Command dictionary
+
         """
         return {
             "command": {
@@ -244,8 +249,7 @@ class ActronAirUserAirconSettings(BaseModel):
         }
 
     async def set_system_mode(self, mode: str) -> Dict[str, Any]:
-        """
-        Set the AC system mode and send the command.
+        """Set the AC system mode and send the command.
 
         Args:
             mode: Mode to set ('AUTO', 'COOL', 'FAN', 'HEAT', 'OFF')
@@ -253,6 +257,7 @@ class ActronAirUserAirconSettings(BaseModel):
 
         Returns:
             API response dictionary
+
         """
         command = self._set_system_mode_command(mode)
         if (
@@ -266,14 +271,14 @@ class ActronAirUserAirconSettings(BaseModel):
         raise ValueError("No API reference available to send command")
 
     async def set_fan_mode(self, fan_mode: str) -> Dict[str, Any]:
-        """
-        Set the fan mode and send the command. Preserves current continuous mode setting.
+        """Set the fan mode and send the command. Preserves current continuous mode setting.
 
         Args:
             fan_mode: The fan mode (e.g., "AUTO", "LOW", "MEDIUM", "HIGH")
 
         Returns:
             API response dictionary
+
         """
         command = self._set_fan_mode_command(fan_mode)
         if (
@@ -287,14 +292,14 @@ class ActronAirUserAirconSettings(BaseModel):
         raise ValueError("No API reference available to send command")
 
     async def set_continuous_mode(self, enabled: bool) -> Dict[str, Any]:
-        """
-        Enable or disable continuous fan mode and send the command.
+        """Enable or disable continuous fan mode and send the command.
 
         Args:
             enabled: True to enable continuous mode, False to disable
 
         Returns:
             API response dictionary
+
         """
         command = self._set_continuous_mode_command(enabled)
         if (
@@ -308,14 +313,14 @@ class ActronAirUserAirconSettings(BaseModel):
         raise ValueError("No API reference available to send command")
 
     async def set_temperature(self, temperature: float) -> Dict[str, Any]:
-        """
-        Set temperature for the system based on the current AC mode and send the command.
+        """Set temperature for the system based on the current AC mode and send the command.
 
         Args:
             temperature: The temperature to set
 
         Returns:
             API response dictionary
+
         """
         # Apply limits if they are available
         if self._parent_status and self._parent_status.last_known_state:
@@ -344,14 +349,14 @@ class ActronAirUserAirconSettings(BaseModel):
         raise ValueError("No API reference available to send command")
 
     async def set_away_mode(self, enabled: bool = False) -> Dict[str, Any]:
-        """
-        Enable/disable away mode and send the command.
+        """Enable/disable away mode and send the command.
 
         Args:
             enabled: True to enable, False to disable
 
         Returns:
             API response dictionary
+
         """
         command = self._set_away_mode_command(enabled)
         if (
@@ -365,14 +370,14 @@ class ActronAirUserAirconSettings(BaseModel):
         raise ValueError("No API reference available to send command")
 
     async def set_quiet_mode(self, enabled: bool = False) -> Dict[str, Any]:
-        """
-        Enable/disable quiet mode and send the command.
+        """Enable/disable quiet mode and send the command.
 
         Args:
             enabled: True to enable, False to disable
 
         Returns:
             API response dictionary
+
         """
         command = self._set_quiet_mode_command(enabled)
         if (
@@ -386,14 +391,14 @@ class ActronAirUserAirconSettings(BaseModel):
         raise ValueError("No API reference available to send command")
 
     async def set_turbo_mode(self, enabled: bool = False) -> Dict[str, Any]:
-        """
-        Enable/disable turbo mode and send the command.
+        """Enable/disable turbo mode and send the command.
 
         Args:
             enabled: True to enable, False to disable
 
         Returns:
             API response dictionary
+
         """
         command = self._set_turbo_mode_command(enabled)
         if (

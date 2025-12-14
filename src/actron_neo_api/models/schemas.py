@@ -1,5 +1,4 @@
-"""
-Schema models for Actron Air API
+"""Schema models for Actron Air API.
 
 This file re-exports models from their respective module files
 for backward compatibility.

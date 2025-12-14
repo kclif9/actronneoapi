@@ -1,3 +1,5 @@
+"""State management module for Actron Air systems."""
+
 import logging
 from typing import Any, Callable, Dict, List, Optional
 
@@ -7,13 +9,10 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class StateManager:
-    """
-    Manages the state of Actron Air systems, handling updates and state merging.
-    """
+    """Manages the state of Actron Air systems, handling updates and state merging."""
 
-    def __init__(self):
-        """
-        Initialize the state manager.
+    def __init__(self) -> None:
+        """Initialize the state manager.
 
         Creates empty dictionaries for system status tracking and event IDs,
         and initializes observer list for state change notifications.
@@ -24,11 +23,11 @@ class StateManager:
         self._api: Optional[Any] = None
 
     def set_api(self, api: Any) -> None:
-        """
-        Set the API reference to be passed to status objects.
+        """Set the API reference to be passed to status objects.
 
         Args:
             api: Reference to the ActronAirAPI instance
+
         """
         self._api = api
 
@@ -37,31 +36,30 @@ class StateManager:
             status.set_api(api)
 
     def add_observer(self, observer: Callable[[str, Dict[str, Any]], None]) -> None:
-        """
-        Add an observer to be notified of state changes.
+        """Add an observer to be notified of state changes.
 
         Args:
             observer: Callback function that takes (serial_number, status_data)
+
         """
         self._observers.append(observer)
 
     def get_status(self, serial_number: str) -> Optional[ActronAirStatus]:
-        """
-        Get the status for a specific system.
+        """Get the status for a specific system.
 
         Args:
             serial_number: Serial number of the AC system
 
         Returns:
             ActronAirStatus object if found, None otherwise
+
         """
         return self.status.get(serial_number)
 
     def process_status_update(
         self, serial_number: str, status_data: Dict[str, Any]
     ) -> ActronAirStatus:
-        """
-        Process a full status update for a system.
+        """Process a full status update for a system.
 
         Args:
             serial_number: Serial number of the AC system
@@ -73,6 +71,7 @@ class StateManager:
         Note:
             This parses nested components, maps peripheral data to zones,
             and notifies all registered observers.
+
         """
         status = ActronAirStatus.model_validate(status_data)
         status.parse_nested_components()
@@ -94,8 +93,7 @@ class StateManager:
         return status
 
     def _map_peripheral_humidity_to_zones(self, status: ActronAirStatus) -> None:
-        """
-        Map humidity values from peripherals to their respective zones.
+        """Map humidity values from peripherals to their respective zones.
 
         The Actron Air API reports the same central humidity value for all zones,
         but each zone controller has its own humidity sensor. This method extracts
@@ -130,14 +128,14 @@ class StateManager:
                 zone.actual_humidity_pc = zone_humidity_map[i]
 
     def _extract_peripheral_humidity(self, peripheral: Dict[str, Any]) -> Optional[float]:
-        """
-        Extract humidity reading from a peripheral device.
+        """Extract humidity reading from a peripheral device.
 
         Args:
             peripheral: Peripheral device data from API response
 
         Returns:
             Humidity value as float or None if not available
+
         """
         sensor_inputs = peripheral.get("SensorInputs", {})
         if not sensor_inputs:

@@ -12,8 +12,7 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class ActronAirOAuth2DeviceCodeAuth:
-    """
-    OAuth2 Device Code Flow authentication handler for Actron Air API.
+    """OAuth2 Device Code Flow authentication handler for Actron Air API.
 
     This class implements the OAuth2 device code flow which is suitable for
     devices with limited input capabilities or when QR code authentication
@@ -21,12 +20,12 @@ class ActronAirOAuth2DeviceCodeAuth:
     """
 
     def __init__(self, base_url: str, client_id: str = "home_assistant"):
-        """
-        Initialize the OAuth2 Device Code Flow handler.
+        """Initialize the OAuth2 Device Code Flow handler.
 
         Args:
             base_url: Base URL for the Actron Air API
             client_id: OAuth2 client ID
+
         """
         self.base_url = base_url
         self.client_id = client_id
@@ -66,14 +65,14 @@ class ActronAirOAuth2DeviceCodeAuth:
         return {"Authorization": f"{self.token_type} {self.access_token}"}
 
     async def request_device_code(self) -> Dict[str, Any]:
-        """
-        Request a device code for OAuth2 device code flow.
+        """Request a device code for OAuth2 device code flow.
 
         Returns:
             Dictionary containing device code, user code, verification URI, etc.
 
         Raises:
             ActronAirAuthError: If device code request fails
+
         """
         payload = {
             "client_id": self.client_id,
@@ -118,8 +117,7 @@ class ActronAirOAuth2DeviceCodeAuth:
     async def poll_for_token(
         self, device_code: str, interval: int = 5, timeout: int = 600
     ) -> Optional[Dict[str, Any]]:
-        """
-        Poll for access token using device code with automatic polling loop.
+        """Poll for access token using device code with automatic polling loop.
 
         This method implements the full OAuth2 device code flow polling logic,
         automatically handling authorization_pending and slow_down responses
@@ -135,6 +133,7 @@ class ActronAirOAuth2DeviceCodeAuth:
 
         Raises:
             ActronAirAuthError: If authorization is denied or other errors occur
+
         """
         import asyncio
 
@@ -235,14 +234,14 @@ class ActronAirOAuth2DeviceCodeAuth:
         return None
 
     async def refresh_access_token(self) -> Tuple[str, float]:
-        """
-        Refresh the access token using the refresh token.
+        """Refresh the access token using the refresh token.
 
         Returns:
             Tuple of (access_token, expiry_timestamp)
 
         Raises:
             ActronAirAuthError: If token refresh fails
+
         """
         if not self.refresh_token:
             raise ActronAirAuthError("Refresh token is required to refresh the access token")
@@ -283,6 +282,8 @@ class ActronAirOAuth2DeviceCodeAuth:
                         self.base_url,
                     )
 
+                    if self.access_token is None or self.token_expiry is None:
+                        raise ActronAirAuthError("Access token or expiry missing after refresh")
                     return self.access_token, self.token_expiry
                 else:
                     response_text = await response.text()
@@ -293,14 +294,14 @@ class ActronAirOAuth2DeviceCodeAuth:
                     )
 
     async def get_user_info(self) -> Dict[str, Any]:
-        """
-        Get user information using the access token.
+        """Get user information using the access token.
 
         Returns:
             Dictionary containing user information
 
         Raises:
             ActronAirAuthError: If user info request fails
+
         """
         # Ensure we have a valid access token
         await self.ensure_token_valid()
@@ -320,14 +321,14 @@ class ActronAirOAuth2DeviceCodeAuth:
                     )
 
     async def ensure_token_valid(self) -> str:
-        """
-        Ensure the token is valid, refreshing it if necessary.
+        """Ensure the token is valid, refreshing it if necessary.
 
         Returns:
             The current valid access token
 
         Raises:
             ActronAirAuthError: If token validation fails
+
         """
         if not self.is_token_valid:
             if self.is_token_expiring_soon:
@@ -337,6 +338,8 @@ class ActronAirOAuth2DeviceCodeAuth:
 
             await self.refresh_access_token()
 
+        if not self.access_token:
+            raise ActronAirAuthError("Access token is not available")
         return self.access_token
 
     def set_tokens(
@@ -346,14 +349,14 @@ class ActronAirOAuth2DeviceCodeAuth:
         expires_in: Optional[int] = None,
         token_type: str = "Bearer",
     ) -> None:
-        """
-        Set tokens manually (useful for restoring saved tokens).
+        """Set tokens manually (useful for restoring saved tokens).
 
         Args:
             access_token: The access token
             refresh_token: The refresh token (optional)
             expires_in: Token expiration time in seconds from now (optional)
             token_type: Token type (default: "Bearer")
+
         """
         self.access_token = access_token
         self.refresh_token = refresh_token
