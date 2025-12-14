@@ -32,12 +32,12 @@ repos:
   #       args: [--config-file=mypy.ini]
 
   # Docstring checking
-  # - repo: https://github.com/pycqa/pydocstyle
-  #   rev: 6.3.0
-  #   hooks:
-  #     - id: pydocstyle
-  #       args: [--convention=google]
-  #       exclude: ^tests/
+  - repo: https://github.com/pycqa/pydocstyle
+    rev: 6.3.0
+    hooks:
+      - id: pydocstyle
+        args: [--convention=google]
+        exclude: ^tests/
 
   # Sort requirements.txt
   - repo: https://github.com/pre-commit/pre-commit-hooks
