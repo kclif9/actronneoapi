@@ -164,6 +164,16 @@ class ActronAirStatus(BaseModel):
         self._api = api
 
     @property
+    def api(self) -> Optional[Any]:
+        """Get the API reference for sending commands.
+
+        Returns:
+            The ActronAirAPI instance or None if not set
+
+        """
+        return self._api
+
+    @property
     def min_temp(self) -> float:
         """Return the minimum temperature that can be set."""
         try:
@@ -186,7 +196,7 @@ class ActronAirStatus(BaseModel):
         to zones. This method creates ActronAirPeripheral objects from the raw data
         and maps their readings to the appropriate zones.
         """
-        aircon_system = self.last_known_state.get("AirconSystem") or {}
+        aircon_system = self.last_known_state.get("AirconSystem", {})
         peripherals_data = aircon_system.get("Peripherals")
 
         if not peripherals_data:
@@ -205,7 +215,7 @@ class ActronAirStatus(BaseModel):
                     # Set parent reference so zones property can work
                     peripheral.set_parent_status(self)
                     self.peripherals.append(peripheral)
-            except Exception as e:
+            except (ValueError, TypeError, KeyError) as e:
                 # Skip invalid peripheral data but log warning
                 _LOGGER.warning("Failed to parse peripheral data: %s", e)
 

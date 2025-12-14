@@ -103,7 +103,7 @@ class ActronAirACSystem(BaseModel):
             API response dictionary
 
         """
-        if not self._parent_status or not self._parent_status._api:
+        if not self._parent_status or not self._parent_status.api:
             raise ValueError("No API reference available")
 
         # Determine if system should be on or off based on mode
@@ -114,4 +114,4 @@ class ActronAirACSystem(BaseModel):
         if is_on:
             command["command"]["UserAirconSettings.Mode"] = mode
 
-        return await self._parent_status._api.send_command(self.master_serial, command)
+        return await self._parent_status.api.send_command(self.master_serial, command)

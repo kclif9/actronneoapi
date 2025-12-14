@@ -90,7 +90,7 @@ class StateManager:
         for observer in self._observers:
             try:
                 observer(serial_number, status_data)
-            except Exception as e:
+            except (TypeError, ValueError, KeyError, AttributeError, RuntimeError) as e:
                 _LOGGER.error(
                     "Observer callback failed for system %s: %s", serial_number, e, exc_info=True
                 )

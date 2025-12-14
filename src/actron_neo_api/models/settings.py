@@ -262,10 +262,10 @@ class ActronAirUserAirconSettings(BaseModel):
         command = self._set_system_mode_command(mode)
         if (
             self._parent_status
-            and self._parent_status._api
+            and self._parent_status.api
             and hasattr(self._parent_status, "serial_number")
         ):
-            return await self._parent_status._api.send_command(
+            return await self._parent_status.api.send_command(
                 self._parent_status.serial_number, command
             )
         raise ValueError("No API reference available to send command")
@@ -283,10 +283,10 @@ class ActronAirUserAirconSettings(BaseModel):
         command = self._set_fan_mode_command(fan_mode)
         if (
             self._parent_status
-            and self._parent_status._api
+            and self._parent_status.api
             and hasattr(self._parent_status, "serial_number")
         ):
-            return await self._parent_status._api.send_command(
+            return await self._parent_status.api.send_command(
                 self._parent_status.serial_number, command
             )
         raise ValueError("No API reference available to send command")
@@ -304,10 +304,10 @@ class ActronAirUserAirconSettings(BaseModel):
         command = self._set_continuous_mode_command(enabled)
         if (
             self._parent_status
-            and self._parent_status._api
+            and self._parent_status.api
             and hasattr(self._parent_status, "serial_number")
         ):
-            return await self._parent_status._api.send_command(
+            return await self._parent_status.api.send_command(
                 self._parent_status.serial_number, command
             )
         raise ValueError("No API reference available to send command")
@@ -340,10 +340,10 @@ class ActronAirUserAirconSettings(BaseModel):
         command = self._set_temperature_command(temperature)
         if (
             self._parent_status
-            and self._parent_status._api
+            and self._parent_status.api
             and hasattr(self._parent_status, "serial_number")
         ):
-            return await self._parent_status._api.send_command(
+            return await self._parent_status.api.send_command(
                 self._parent_status.serial_number, command
             )
         raise ValueError("No API reference available to send command")
@@ -361,10 +361,10 @@ class ActronAirUserAirconSettings(BaseModel):
         command = self._set_away_mode_command(enabled)
         if (
             self._parent_status
-            and self._parent_status._api
+            and self._parent_status.api
             and hasattr(self._parent_status, "serial_number")
         ):
-            return await self._parent_status._api.send_command(
+            return await self._parent_status.api.send_command(
                 self._parent_status.serial_number, command
             )
         raise ValueError("No API reference available to send command")
@@ -382,10 +382,10 @@ class ActronAirUserAirconSettings(BaseModel):
         command = self._set_quiet_mode_command(enabled)
         if (
             self._parent_status
-            and self._parent_status._api
+            and self._parent_status.api
             and hasattr(self._parent_status, "serial_number")
         ):
-            return await self._parent_status._api.send_command(
+            return await self._parent_status.api.send_command(
                 self._parent_status.serial_number, command
             )
         raise ValueError("No API reference available to send command")
@@ -403,10 +403,10 @@ class ActronAirUserAirconSettings(BaseModel):
         command = self._set_turbo_mode_command(enabled)
         if (
             self._parent_status
-            and self._parent_status._api
+            and self._parent_status.api
             and hasattr(self._parent_status, "serial_number")
         ):
-            return await self._parent_status._api.send_command(
+            return await self._parent_status.api.send_command(
                 self._parent_status.serial_number, command
             )
         raise ValueError("No API reference available to send command")

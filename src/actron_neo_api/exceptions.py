@@ -9,8 +9,6 @@ class ActronAirAuthError(Exception):
     token refresh failures, and 401 unauthorized responses.
     """
 
-    pass
-
 
 class ActronAirAPIError(Exception):
     """Exception raised for general API errors.
@@ -19,5 +17,3 @@ class ActronAirAPIError(Exception):
     non-200 status codes (except 401), or malformed data. This is the base
     exception for all non-authentication related API failures.
     """
-
-    pass
