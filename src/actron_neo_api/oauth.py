@@ -190,7 +190,7 @@ class ActronAirOAuth2DeviceCodeAuth:
                                 # Still waiting for user authorization - continue polling
                                 _LOGGER.debug(
                                     "Authorization pending (attempt %d). "
-                                    "Continuing to poll in %ds. ",
+                                    "Continuing to poll in %ds.",
                                     attempt,
                                     current_interval,
                                 )
@@ -217,8 +217,8 @@ class ActronAirOAuth2DeviceCodeAuth:
                             response_text = await response.text()
                             raise ActronAirAuthError(
                                 f"Token polling failed. "
-                                f"Status: {response.status},"
-                                f"Response: {response_text}. "
+                                f"Status: {response.status}, "
+                                f"Response: {response_text}."
                             )
 
                 except aiohttp.ClientError as e:
@@ -290,7 +290,7 @@ class ActronAirOAuth2DeviceCodeAuth:
                     raise ActronAirAuthError(
                         f"Failed to refresh access token. "
                         f"Status: {response.status}, "
-                        f"Response: {response_text}. "
+                        f"Response: {response_text}."
                     )
 
     async def get_user_info(self) -> Dict[str, Any]:
@@ -317,7 +317,7 @@ class ActronAirOAuth2DeviceCodeAuth:
                     raise ActronAirAuthError(
                         f"Failed to get user info. "
                         f"Status: {response.status}, "
-                        f"Response: {response_text}. "
+                        f"Response: {response_text}."
                     )
 
     async def ensure_token_valid(self) -> str:

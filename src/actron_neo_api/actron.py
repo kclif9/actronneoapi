@@ -216,9 +216,8 @@ class ActronAirAPI:
         """Get or create an aiohttp ClientSession."""
         async with self._session_lock:
             if self._session is None or self._session.closed:
-                session: aiohttp.ClientSession = aiohttp.ClientSession()
-                self._session = session
-                return session
+                self._session = aiohttp.ClientSession()
+                return self._session
             return self._session
 
     async def close(self) -> None:

@@ -361,7 +361,7 @@ async def main() -> None:
             print("Authentication failed. Cannot continue with API example.")
             return
 
-        print("\\nTo skip authentication in future runs, set these environment variables:")
+        print("\nTo skip authentication in future runs, set these environment variables:")
         print(f"export ACTRON_ACCESS_TOKEN='{access_token}'")
         print(f"export ACTRON_REFRESH_TOKEN='{refresh_token}'")
 
