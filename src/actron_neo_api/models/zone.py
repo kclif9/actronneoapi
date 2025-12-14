@@ -9,6 +9,13 @@ if TYPE_CHECKING:
 
 
 class ActronAirZoneSensor(BaseModel):
+    """
+    Sensor data for a zone controller.
+
+    Represents sensor readings from zone control units including
+    temperature, humidity, battery level, and connection status.
+    """
+
     connected: bool = Field(False, alias="Connected")
     kind: str = Field("", alias="NV_Kind")
     is_paired: bool = Field(False, alias="NV_isPaired")
@@ -19,7 +26,13 @@ class ActronAirZoneSensor(BaseModel):
 
 
 class ActronAirPeripheral(BaseModel):
-    """Peripheral device that provides sensor data for zones"""
+    """
+    Peripheral device that provides sensor data for zones.
+
+    Peripherals are additional sensor devices that can be assigned to one or
+    more zones to provide more accurate temperature and humidity readings
+    than the central controller.
+    """
 
     logical_address: int = Field(0, alias="LogicalAddress")
     device_type: str = Field("", alias="DeviceType")
@@ -50,7 +63,15 @@ class ActronAirPeripheral(BaseModel):
 
     @classmethod
     def from_peripheral_data(cls, peripheral_data: Dict[str, Any]) -> "ActronAirPeripheral":
-        """Create a peripheral instance from raw peripheral data"""
+        """
+        Create a peripheral instance from raw peripheral data.
+
+        Args:
+            peripheral_data: Raw peripheral data dictionary from API
+
+        Returns:
+            ActronAirPeripheral instance with extracted sensor data
+        """
         peripheral = cls.model_validate(peripheral_data)
 
         sensor_inputs = peripheral_data.get("SensorInputs", {})
@@ -64,11 +85,24 @@ class ActronAirPeripheral(BaseModel):
         return peripheral
 
     def set_parent_status(self, parent: "ActronAirStatus") -> None:
-        """Set reference to parent ActronStatus object"""
+        """
+        Set reference to parent ActronStatus object.
+
+        Args:
+            parent: Parent ActronAirStatus instance
+        """
         self._parent_status = parent
 
 
 class ActronAirZone(BaseModel):
+    """
+    Individual climate control zone in an Actron Air system.
+
+    Represents a single controllable zone with its own temperature settings,
+    sensors, and control capabilities. Provides methods to enable/disable
+    the zone and adjust temperature setpoints.
+    """
+
     can_operate: bool = Field(False, alias="CanOperate")
     common_zone: bool = Field(False, alias="CommonZone")
     live_humidity_pc: float = Field(0.0, alias="LiveHumidity_pc")
@@ -85,7 +119,12 @@ class ActronAirZone(BaseModel):
 
     @property
     def is_active(self) -> bool:
-        """Check if this zone is currently active"""
+        """
+        Check if this zone is currently active.
+
+        Returns:
+            True if zone is enabled and can operate, False otherwise
+        """
         enabled_zones = self._parent_status.user_aircon_settings.enabled_zones
 
         if not self.can_operate:

@@ -9,7 +9,12 @@ if TYPE_CHECKING:
 
 
 class ActronAirOutdoorUnit(BaseModel):
-    """Model for outdoor unit data in the AC system"""
+    """
+    Outdoor unit data for an Actron Air AC system.
+
+    Contains information about the compressor unit including model, serial number,
+    compressor speed, power consumption, and operational status.
+    """
 
     model_number: Optional[str] = str(Field(None, alias="ModelNumber"))
     serial_number: Optional[str] = Field(None, alias="SerialNumber")
@@ -23,6 +28,13 @@ class ActronAirOutdoorUnit(BaseModel):
 
 
 class ActronAirLiveAircon(BaseModel):
+    """
+    Live operational data for the air conditioning system.
+
+    Contains real-time information about system operation including power state,
+    compressor mode and capacity, fan speed, defrost status, and temperature targets.
+    """
+
     is_on: bool = Field(False, alias="SystemOn")
     compressor_mode: str = Field("", alias="CompressorMode")
     compressor_capacity: int = Field(0, alias="CompressorCapacity")
@@ -36,19 +48,39 @@ class ActronAirLiveAircon(BaseModel):
 
 
 class ActronAirMasterInfo(BaseModel):
+    """
+    Master controller information and sensor readings.
+
+    Contains live sensor data from the main controller including indoor temperature,
+    humidity, and outdoor temperature readings.
+    """
+
     live_temp_c: float = Field(0.0, alias="LiveTemp_oC")
     live_humidity_pc: float = Field(0.0, alias="LiveHumidity_pc")
     live_outdoor_temp_c: float = Field(0.0, alias="LiveOutdoorTemp_oC")
 
 
 class ActronAirAlerts(BaseModel):
-    """Model for AC system alerts"""
+    """
+    System alert and notification flags.
+
+    Contains boolean flags for system alerts such as filter cleaning reminders
+    and defrost cycle status.
+    """
 
     clean_filter: bool = Field(False, alias="CleanFilter")
     defrosting: bool = Field(False, alias="Defrosting")
 
 
 class ActronAirACSystem(BaseModel):
+    """
+    Complete AC system information including hardware and firmware details.
+
+    Represents the main air conditioning system with its master controller,
+    outdoor unit, and system identification. Provides methods to control
+    system-level settings like operating mode.
+    """
+
     master_wc_model: str = Field("", alias="MasterWCModel")
     master_serial: str = Field("", alias="MasterSerial")
     master_wc_firmware_version: str = Field("", alias="MasterWCFirmwareVersion")
@@ -57,7 +89,12 @@ class ActronAirACSystem(BaseModel):
     _parent_status: Optional["ActronAirStatus"] = None
 
     def set_parent_status(self, parent: "ActronAirStatus") -> None:
-        """Set reference to parent ActronStatus object"""
+        """
+        Set reference to parent ActronStatus object.
+
+        Args:
+            parent: Parent ActronAirStatus instance
+        """
         self._parent_status = parent
 
     async def set_system_mode(self, mode: str) -> Dict[str, Any]:

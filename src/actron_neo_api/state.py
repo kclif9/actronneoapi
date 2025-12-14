@@ -13,6 +13,12 @@ class StateManager:
     """
 
     def __init__(self):
+        """
+        Initialize the state manager.
+
+        Creates empty dictionaries for system status tracking and event IDs,
+        and initializes observer list for state change notifications.
+        """
         self.status: Dict[str, ActronAirStatus] = {}
         self.latest_event_id: Dict[str, str] = {}
         self._observers: List[Callable[[str, Dict[str, Any]], None]] = []
@@ -32,17 +38,43 @@ class StateManager:
             status.set_api(api)
 
     def add_observer(self, observer: Callable[[str, Dict[str, Any]], None]) -> None:
-        """Add an observer to be notified of state changes."""
+        """
+        Add an observer to be notified of state changes.
+
+        Args:
+            observer: Callback function that takes (serial_number, status_data)
+        """
         self._observers.append(observer)
 
     def get_status(self, serial_number: str) -> Optional[ActronAirStatus]:
-        """Get the status for a specific system."""
+        """
+        Get the status for a specific system.
+
+        Args:
+            serial_number: Serial number of the AC system
+
+        Returns:
+            ActronAirStatus object if found, None otherwise
+        """
         return self.status.get(serial_number)
 
     def process_status_update(
         self, serial_number: str, status_data: Dict[str, Any]
     ) -> ActronAirStatus:
-        """Process a full status update for a system."""
+        """
+        Process a full status update for a system.
+
+        Args:
+            serial_number: Serial number of the AC system
+            status_data: Complete status data from API
+
+        Returns:
+            Updated ActronAirStatus object
+
+        Note:
+            This parses nested components, maps peripheral data to zones,
+            and notifies all registered observers.
+        """
         status = ActronAirStatus.model_validate(status_data)
         status.parse_nested_components()
 
@@ -122,7 +154,15 @@ class StateManager:
         return None
 
     def _get_changed_paths(self, incremental_data: Dict[str, Any]) -> Set[str]:
-        """Get the paths (dot notation) of changed fields in the incremental update."""
+        """
+        Get the paths (dot notation) of changed fields in the incremental update.
+
+        Args:
+            incremental_data: Dictionary containing incremental update data
+
+        Returns:
+            Set of field paths that have changed
+        """
         paths = set()
         for key in incremental_data:
             if not key.startswith("@"):
@@ -132,7 +172,16 @@ class StateManager:
     def _merge_incremental_update(
         self, full_state: Dict[str, Any], incremental_data: Dict[str, Any]
     ) -> None:
-        """Merge incremental updates into the full state."""
+        """
+        Merge incremental updates into the full state.
+
+        Args:
+            full_state: The complete state dictionary to update
+            incremental_data: Dictionary containing partial updates with dot notation paths
+
+        Note:
+            Handles nested paths and array indices in dot notation (e.g., "Zone[0].Temperature")
+        """
         for key, value in incremental_data.items():
             if key.startswith("@"):
                 continue

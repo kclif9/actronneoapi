@@ -12,6 +12,14 @@ from .zone import ActronAirPeripheral, ActronAirZone
 
 
 class ActronAirStatus(BaseModel):
+    """
+    Complete status model for an Actron Air AC system.
+
+    Contains all system data including settings, live data, zones, and peripherals.
+    Provides properties to access common status information and methods to parse
+    nested components from the API response.
+    """
+
     is_online: bool = Field(False, alias="isOnline")
     last_known_state: Dict[str, Any] = Field({}, alias="lastKnownState")
     ac_system: Optional[ActronAirACSystem] = None
@@ -89,7 +97,13 @@ class ActronAirStatus(BaseModel):
         return 0
 
     def parse_nested_components(self):
-        """Parse nested components from the last_known_state"""
+        """
+        Parse nested components from the last_known_state.
+
+        Extracts and validates nested objects like AirconSystem, UserAirconSettings,
+        MasterInfo, LiveAircon, Alerts, and RemoteZoneInfo from the raw API response.
+        Sets parent references on all child objects to enable bidirectional navigation.
+        """
         if "AirconSystem" in self.last_known_state:
             self.ac_system = ActronAirACSystem.model_validate(self.last_known_state["AirconSystem"])
             # Set the system name from NV_SystemSettings if available
@@ -159,7 +173,13 @@ class ActronAirStatus(BaseModel):
         return self.last_known_state["NV_Limits"]["UserSetpoint_oC"]["setCool_Max"]
 
     def _process_peripherals(self) -> None:
-        """Process peripheral devices from the last_known_state and extract their sensor data"""
+        """
+        Process peripheral devices from the last_known_state and extract their sensor data.
+
+        Peripherals are additional sensors (temperature, humidity) that can be assigned
+        to zones. This method creates ActronAirPeripheral objects from the raw data
+        and maps their readings to the appropriate zones.
+        """
         aircon_system = self.last_known_state.get("AirconSystem") or {}
         peripherals_data = aircon_system.get("Peripherals")
 
@@ -183,7 +203,13 @@ class ActronAirStatus(BaseModel):
         self._map_peripheral_data_to_zones()
 
     def _map_peripheral_data_to_zones(self) -> None:
-        """Map peripheral sensor data to their assigned zones"""
+        """
+        Map peripheral sensor data to their assigned zones.
+
+        Updates zone objects with actual humidity readings from their assigned
+        peripheral devices, replacing the default system-wide humidity value
+        with zone-specific sensor data.
+        """
         if not self.peripherals or not self.remote_zone_info:
             return
 

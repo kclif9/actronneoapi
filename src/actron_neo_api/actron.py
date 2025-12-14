@@ -94,7 +94,16 @@ class ActronAirAPI:
         return self.oauth2_auth.authenticated_platform
 
     def _get_system_link(self, serial_number: str, rel: str) -> Optional[str]:
-        """Return a HAL link for a cached system if available."""
+        """
+        Return a HAL link for a cached system if available.
+
+        Args:
+            serial_number: Serial number of the AC system
+            rel: The relationship name of the link to retrieve
+
+        Returns:
+            The href URL string with leading slash removed, or None if not found
+        """
         for system in self.systems:
             if system.get("serial") != serial_number:
                 continue
@@ -116,10 +125,29 @@ class ActronAirAPI:
 
     @staticmethod
     def _is_nx_gen_system(system: Dict[str, Any]) -> bool:
+        """
+        Check if a system is an NX Gen type.
+
+        Args:
+            system: System dictionary containing type information
+
+        Returns:
+            True if the system is NX Gen type, False otherwise
+        """
         system_type = str(system.get("type") or "").replace("-", "").lower()
         return system_type == "nxgen"
 
     def _set_base_url(self, base_url: str) -> None:
+        """
+        Update the base URL and preserve existing authentication tokens.
+
+        Args:
+            base_url: New base URL to switch to
+
+        Note:
+            This preserves tokens but they may not work if switching between
+            incompatible platforms (Neo vs Que).
+        """
         if self.base_url == base_url:
             return
 
@@ -149,6 +177,16 @@ class ActronAirAPI:
         )
 
     def _maybe_update_base_url_from_systems(self, systems: List[Dict[str, Any]]) -> None:
+        """
+        Automatically update base URL based on system types if auto-management is enabled.
+
+        Args:
+            systems: List of AC systems to analyze
+
+        Note:
+            Switches to QUE platform if any NX Gen systems are found,
+            otherwise uses NIMBUS platform.
+        """
         if not self._auto_manage_base_url or not systems:
             return
 

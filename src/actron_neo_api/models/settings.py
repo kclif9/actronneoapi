@@ -9,6 +9,14 @@ if TYPE_CHECKING:
 
 
 class ActronAirUserAirconSettings(BaseModel):
+    """
+    User-configurable settings for an Actron Air AC system.
+
+    Contains all user-adjustable parameters including power state, mode,
+    temperature setpoints, fan settings, and special modes (quiet, turbo, away).
+    Provides async methods to send commands to modify these settings.
+    """
+
     is_on: bool = Field(False, alias="isOn")
     mode: str = Field("", alias="Mode")
     fan_mode: str = Field("", alias="FanMode")
@@ -23,29 +31,60 @@ class ActronAirUserAirconSettings(BaseModel):
     _parent_status: Optional["ActronAirStatus"] = None
 
     def set_parent_status(self, parent: "ActronAirStatus") -> None:
-        """Set reference to parent ActronStatus object"""
+        """
+        Set reference to parent ActronStatus object.
+
+        Args:
+            parent: Parent ActronAirStatus instance
+        """
         self._parent_status = parent
 
     @property
     def turbo_supported(self) -> bool:
-        """Check if turbo mode is supported, handling both the boolean and object representation"""
+        """
+        Check if turbo mode is supported by this system.
+
+        Returns:
+            True if turbo mode is supported, False otherwise
+
+        Note:
+            Handles both boolean and dictionary representations of turbo mode data
+        """
         return self.turbo_mode_enabled.get("Supported", False)
 
     @property
     def turbo_enabled(self) -> bool:
-        """Get the turbo mode status, handling both the boolean and object representation"""
+        """
+        Get the current turbo mode status.
+
+        Returns:
+            True if turbo mode is currently enabled, False otherwise
+
+        Note:
+            Handles both boolean and dictionary representations from API
+        """
         if isinstance(self.turbo_mode_enabled, dict):
             return self.turbo_mode_enabled.get("Enabled", False)
         return self.turbo_mode_enabled
 
     @property
     def continuous_fan_enabled(self) -> bool:
-        """Check if continuous fan mode is currently enabled"""
+        """
+        Check if continuous fan mode is currently enabled.
+
+        Returns:
+            True if fan will run continuously, False if it cycles with compressor
+        """
         return "CONT" in self.fan_mode
 
     @property
     def base_fan_mode(self) -> str:
-        """Get the base fan mode without the continuous mode suffix"""
+        """
+        Get the base fan mode without the continuous mode suffix.
+
+        Returns:
+            Fan mode string (e.g., "AUTO", "LOW", "HIGH") without "+CONT" suffix
+        """
         if self.continuous_fan_enabled:
             if "+CONT" in self.fan_mode:
                 return self.fan_mode.split("+CONT")[0]
