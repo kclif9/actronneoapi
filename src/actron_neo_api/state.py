@@ -1,6 +1,5 @@
 import logging
-import re
-from typing import Any, Callable, Dict, List, Optional, Set
+from typing import Any, Callable, Dict, List, Optional
 
 from .models import ActronAirStatus
 
@@ -152,76 +151,3 @@ class StateManager:
                 return float(humidity)
 
         return None
-
-    def _get_changed_paths(self, incremental_data: Dict[str, Any]) -> Set[str]:
-        """
-        Get the paths (dot notation) of changed fields in the incremental update.
-
-        Args:
-            incremental_data: Dictionary containing incremental update data
-
-        Returns:
-            Set of field paths that have changed
-        """
-        paths = set()
-        for key in incremental_data:
-            if not key.startswith("@"):
-                paths.add(key)
-        return paths
-
-    def _merge_incremental_update(
-        self, full_state: Dict[str, Any], incremental_data: Dict[str, Any]
-    ) -> None:
-        """
-        Merge incremental updates into the full state.
-
-        Args:
-            full_state: The complete state dictionary to update
-            incremental_data: Dictionary containing partial updates with dot notation paths
-
-        Note:
-            Handles nested paths and array indices in dot notation (e.g., "Zone[0].Temperature")
-        """
-        for key, value in incremental_data.items():
-            if key.startswith("@"):
-                continue
-
-            keys = key.split(".")
-            current = full_state
-
-            for part in keys[:-1]:
-                match = re.match(r"(.+)\[(\d+)\]$", part)
-                if match:
-                    array_key, index = match.groups()
-                    index = int(index)
-
-                    if array_key not in current:
-                        current[array_key] = []
-
-                    while len(current[array_key]) <= index:
-                        current[array_key].append({})
-
-                    current = current[array_key][index]
-                else:
-                    if part not in current:
-                        current[part] = {}
-                    current = current[part]
-
-            final_key = keys[-1]
-            match = re.match(r"(.+)\[(\d+)\]$", final_key)
-            if match:
-                array_key, index = match.groups()
-                index = int(index)
-
-                if array_key not in current:
-                    current[array_key] = []
-
-                while len(current[array_key]) <= index:
-                    current[array_key].append({})
-
-                if isinstance(current[array_key][index], dict) and isinstance(value, dict):
-                    current[array_key][index].update(value)
-                else:
-                    current[array_key][index] = value
-            else:
-                current[final_key] = value
