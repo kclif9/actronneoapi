@@ -30,7 +30,7 @@ jobs:
 
       - name: Run tests with pytest
         run: |
-          pytest tests/ -v --cov=src/actron_neo_api --cov-report=xml --cov-report=term
+          pytest tests/ -v --cov=src/actron_neo_api --cov-report=xml --cov-report=term --junitxml=junit.xml
 
       - name: Upload coverage reports to Codecov
         if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
