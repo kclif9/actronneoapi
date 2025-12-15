@@ -2,3 +2,4 @@ aiohttp
 pydantic
 pytest
 pytest-asyncio
+pytest-cov
