@@ -112,14 +112,15 @@ class ActronAirUserAirconSettings(BaseModel):
         command = {
             "command": {
                 "UserAirconSettings.isOn": is_on,
-                "UserAirconSettings.Mode": mode,
                 "type": "set-settings",
             }
         }
 
-        # When turning off, preserve the current mode
+        # When turning off, preserve the current mode, otherwise set the new mode
         if not is_on:
             command["command"]["UserAirconSettings.Mode"] = self.mode
+        else:
+            command["command"]["UserAirconSettings.Mode"] = mode
 
         return command
 
