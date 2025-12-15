@@ -77,11 +77,12 @@ class TestUserAirconSettings:
 
     def test_set_system_mode_off(self):
         """Test set_system_mode_command for turning off."""
-        settings = ActronAirUserAirconSettings()
+        settings = ActronAirUserAirconSettings(Mode="COOL")
         command = settings._set_system_mode_command("OFF")
 
         assert command["command"]["UserAirconSettings.isOn"] is False
-        assert "UserAirconSettings.Mode" not in command["command"]
+        # Mode is preserved when turning off so it remembers what mode to use when turning back on
+        assert command["command"]["UserAirconSettings.Mode"] == "COOL"
 
     def test_set_fan_mode_preserves_cont(self):
         """Test set_fan_mode_command preserves continuous mode."""
