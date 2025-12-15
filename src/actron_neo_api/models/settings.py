@@ -1,6 +1,5 @@
 """Settings models for Actron Air API."""
 
-import logging
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 from pydantic import BaseModel, Field
@@ -274,13 +273,9 @@ class ActronAirUserAirconSettings(BaseModel):
             and self._parent_status.api
             and hasattr(self._parent_status, "serial_number")
         ):
-            response = await self._parent_status.api.send_command(
+            return await self._parent_status.api.send_command(
                 self._parent_status.serial_number, command
             )
-
-            _LOGGER = logging.getLogger(__name__)
-            _LOGGER.error(f"API RESPONSE for mode {mode}: {response}")
-            return response
         raise ValueError("No API reference available to send command")
 
     async def set_fan_mode(self, fan_mode: str) -> Dict[str, Any]:

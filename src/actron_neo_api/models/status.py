@@ -1,6 +1,5 @@
 """Status models for Actron Air API."""
 
-import logging
 from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
@@ -10,8 +9,6 @@ from .system import ActronAirACSystem, ActronAirAlerts, ActronAirLiveAircon, Act
 
 # Forward references for imports from other modules
 from .zone import ActronAirPeripheral, ActronAirZone
-
-_LOGGER = logging.getLogger(__name__)
 
 
 class ActronAirStatus(BaseModel):
@@ -209,15 +206,11 @@ class ActronAirStatus(BaseModel):
             if not peripheral_data:
                 continue
 
-            try:
-                peripheral = ActronAirPeripheral.from_peripheral_data(peripheral_data)
-                if peripheral:
-                    # Set parent reference so zones property can work
-                    peripheral.set_parent_status(self)
-                    self.peripherals.append(peripheral)
-            except (ValueError, TypeError, KeyError) as e:
-                # Skip invalid peripheral data but log warning
-                _LOGGER.warning("Failed to parse peripheral data: %s", e)
+            peripheral = ActronAirPeripheral.from_peripheral_data(peripheral_data)
+            if peripheral:
+                # Set parent reference so zones property can work
+                peripheral.set_parent_status(self)
+                self.peripherals.append(peripheral)
 
         # Map peripheral sensor data to zones
         self._map_peripheral_data_to_zones()
