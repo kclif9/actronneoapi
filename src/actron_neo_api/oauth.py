@@ -1,14 +1,11 @@
 """OAuth2 Device Code Flow authentication for Actron Air API."""
 
-import logging
 import time
 from typing import Any, Dict, Optional, Tuple
 
 import aiohttp
 
 from .exceptions import ActronAirAuthError
-
-_LOGGER = logging.getLogger(__name__)
 
 
 class ActronAirOAuth2DeviceCodeAuth:
@@ -149,8 +146,6 @@ class ActronAirOAuth2DeviceCodeAuth:
         current_interval = interval
         attempt = 0
 
-        _LOGGER.info("Starting token polling (interval=%ds, timeout=%ds)", interval, timeout)
-
         async with aiohttp.ClientSession() as session:
             while time.time() - start_time < timeout:
                 attempt += 1
@@ -173,14 +168,6 @@ class ActronAirOAuth2DeviceCodeAuth:
                             expires_in = data.get("expires_in", 3600)
                             self.token_expiry = time.time() + expires_in
 
-                            _LOGGER.info(
-                                "OAuth2 token obtained successfully after %d attempts. "
-                                "Expires in %s seconds. Platform: %s",
-                                attempt,
-                                expires_in,
-                                self.base_url,
-                            )
-
                             return data
 
                         elif response.status == 400:
@@ -188,22 +175,12 @@ class ActronAirOAuth2DeviceCodeAuth:
 
                             if error == "authorization_pending":
                                 # Still waiting for user authorization - continue polling
-                                _LOGGER.debug(
-                                    "Authorization pending (attempt %d). "
-                                    "Continuing to poll in %ds.",
-                                    attempt,
-                                    current_interval,
-                                )
                                 await asyncio.sleep(current_interval)
                                 continue
 
                             elif error == "slow_down":
                                 # Server requests slower polling - increase interval
                                 current_interval += 5  # Add 5 seconds as per OAuth2 spec
-                                _LOGGER.warning(
-                                    "Server requested slow down - increasing interval to %ds",
-                                    current_interval,
-                                )
                                 await asyncio.sleep(current_interval)
                                 continue
 
@@ -221,16 +198,13 @@ class ActronAirOAuth2DeviceCodeAuth:
                                 f"Response: {response_text}."
                             )
 
-                except aiohttp.ClientError as e:
-                    _LOGGER.warning("Network error during polling attempt %d: %s", attempt, e)
+                except aiohttp.ClientError:
                     await asyncio.sleep(current_interval)
                     continue
                 except (ValueError, KeyError, TypeError) as e:
-                    _LOGGER.error("Data parsing error during polling: %s", e)
                     raise ActronAirAuthError(f"Polling failed: {str(e)}") from e
 
         # Timeout reached
-        _LOGGER.error("Token polling timed out after %d seconds (%d attempts)", timeout, attempt)
         return None
 
     async def refresh_access_token(self) -> Tuple[str, float]:
@@ -275,12 +249,6 @@ class ActronAirOAuth2DeviceCodeAuth:
 
                     # Store expiry time as Unix timestamp
                     self.token_expiry = time.time() + expires_in
-
-                    _LOGGER.info(
-                        "OAuth2 token refreshed successfully. Expires in %s seconds. Platform: %s",
-                        expires_in,
-                        self.base_url,
-                    )
 
                     if self.access_token is None or self.token_expiry is None:
                         raise ActronAirAuthError("Access token or expiry missing after refresh")
@@ -331,11 +299,6 @@ class ActronAirOAuth2DeviceCodeAuth:
 
         """
         if not self.is_token_valid:
-            if self.is_token_expiring_soon:
-                _LOGGER.info("OAuth2 access token is expiring soon. Refreshing...")
-            else:
-                _LOGGER.info("OAuth2 access token is invalid or missing. Refreshing...")
-
             await self.refresh_access_token()
 
         if not self.access_token:
@@ -367,5 +330,3 @@ class ActronAirOAuth2DeviceCodeAuth:
         else:
             # Default to 1 hour if not specified
             self.token_expiry = time.time() + 3600
-
-        _LOGGER.info("OAuth2 tokens set manually")

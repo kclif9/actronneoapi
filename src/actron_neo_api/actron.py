@@ -1,7 +1,6 @@
 """Actron Air API client module."""
 
 import asyncio
-import logging
 from typing import Any, Dict, List, Literal, Optional
 
 import aiohttp
@@ -10,8 +9,6 @@ from .const import BASE_URL_DEFAULT, BASE_URL_NIMBUS, BASE_URL_QUE, PLATFORM_NEO
 from .exceptions import ActronAirAPIError, ActronAirAuthError
 from .oauth import ActronAirOAuth2DeviceCodeAuth
 from .state import StateManager
-
-_LOGGER = logging.getLogger(__name__)
 
 
 class ActronAirAPI:
@@ -156,8 +153,6 @@ class ActronAirAPI:
         if self.base_url == base_url:
             return
 
-        _LOGGER.info("Switching API base URL from %s to %s", self.base_url, base_url)
-
         # Preserve existing tokens
         old_access_token = self.oauth2_auth.access_token
         old_refresh_token = self.oauth2_auth.refresh_token
@@ -173,13 +168,6 @@ class ActronAirAPI:
         self.oauth2_auth.refresh_token = old_refresh_token
         self.oauth2_auth.token_expiry = old_token_expiry
         self.oauth2_auth.authenticated_platform = old_authenticated_platform
-
-        _LOGGER.warning(
-            "Platform switched - tokens obtained from %s may not work with %s. "
-            "Re-authentication may be required.",
-            old_authenticated_platform or "unknown platform",
-            base_url,
-        )
 
     def _maybe_update_base_url_from_systems(self, systems: List[Dict[str, Any]]) -> None:
         """Automatically update base URL based on system types if auto-management is enabled.
@@ -315,16 +303,12 @@ class ActronAirAPI:
 
                     # If we have a refresh token and haven't retried yet, attempt refresh
                     if _retry and self.oauth2_auth.refresh_token:
-                        _LOGGER.info("Received 401, attempting to refresh token and retry")
                         try:
                             await self.oauth2_auth.refresh_access_token()
-                            # Retry the request once with the new token
                             return await self._make_request(
                                 method, endpoint, params, json_data, data, headers, _retry=False
                             )
                         except ActronAirAuthError:
-                            # Token refresh failed - re-raise as-is for proper handling
-                            _LOGGER.error("Token refresh failed due to authentication error")
                             raise
                         except (
                             aiohttp.ClientError,
@@ -332,8 +316,6 @@ class ActronAirAPI:
                             TypeError,
                             KeyError,
                         ) as refresh_error:
-                            # Unexpected error during refresh (network, parsing, etc.)
-                            _LOGGER.error("Token refresh failed: %s", refresh_error)
                             raise ActronAirAuthError(
                                 f"Authentication failed and token refresh failed: {response_text}"
                             ) from refresh_error

@@ -42,3 +42,7 @@ line-length = 100
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I"]
+
+[tool.pytest.ini_options]
+junit_family = "xunit2"
+addopts = "-v --strict-markers"
