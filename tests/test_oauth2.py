@@ -79,8 +79,8 @@ class TestActronAirOAuth2DeviceCodeAuth:
 
         with patch("aiohttp.ClientSession.post") as mock_post, patch("time.time") as mock_time:
             # Simulate timeout by advancing time past the threshold
-            # start_time, first check, second check (past timeout)
-            mock_time.side_effect = [0, 0, 601]
+            # Provide enough values for: start_time, while condition checks, and logging
+            mock_time.side_effect = [0, 0, 601, 601, 601]
 
             mock_post.return_value.__aenter__.return_value.status = 400
             mock_post.return_value.__aenter__.return_value.json.return_value = mock_response
