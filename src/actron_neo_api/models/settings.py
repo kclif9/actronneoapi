@@ -1,5 +1,6 @@
 """Settings models for Actron Air API."""
 
+import logging
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 from pydantic import BaseModel, Field
@@ -108,10 +109,17 @@ class ActronAirUserAirconSettings(BaseModel):
         # Determine if system should be on or off based on mode
         is_on = mode.upper() != "OFF"
 
-        command = {"command": {"UserAirconSettings.isOn": is_on, "type": "set-settings"}}
+        command = {
+            "command": {
+                "UserAirconSettings.isOn": is_on,
+                "UserAirconSettings.Mode": mode,
+                "type": "set-settings",
+            }
+        }
 
-        if is_on:
-            command["command"]["UserAirconSettings.Mode"] = mode
+        # When turning off, preserve the current mode
+        if not is_on:
+            command["command"]["UserAirconSettings.Mode"] = self.mode
 
         return command
 
@@ -265,9 +273,13 @@ class ActronAirUserAirconSettings(BaseModel):
             and self._parent_status.api
             and hasattr(self._parent_status, "serial_number")
         ):
-            return await self._parent_status.api.send_command(
+            response = await self._parent_status.api.send_command(
                 self._parent_status.serial_number, command
             )
+
+            _LOGGER = logging.getLogger(__name__)
+            _LOGGER.error(f"API RESPONSE for mode {mode}: {response}")
+            return response
         raise ValueError("No API reference available to send command")
 
     async def set_fan_mode(self, fan_mode: str) -> Dict[str, Any]:
