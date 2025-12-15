@@ -1,8 +1,11 @@
 """Zone models for Actron Air API."""
 
+import logging
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
+
+_LOGGER = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from .status import ActronAirStatus
@@ -77,9 +80,17 @@ class ActronAirPeripheral(BaseModel):
             shtc1 = sensor_inputs.get("SHTC1", {})
             if shtc1:
                 if "Temperature_oC" in shtc1:
-                    peripheral.temperature = float(shtc1["Temperature_oC"])
+                    try:
+                        peripheral.temperature = float(shtc1["Temperature_oC"])
+                    except (ValueError, TypeError) as e:
+                        _LOGGER.warning("Invalid temperature value in peripheral data: %s", e)
+                        peripheral.temperature = None
                 if "RelativeHumidity_pc" in shtc1:
-                    peripheral.humidity = float(shtc1["RelativeHumidity_pc"])
+                    try:
+                        peripheral.humidity = float(shtc1["RelativeHumidity_pc"])
+                    except (ValueError, TypeError) as e:
+                        _LOGGER.warning("Invalid humidity value in peripheral data: %s", e)
+                        peripheral.humidity = None
         return peripheral
 
     def set_parent_status(self, parent: "ActronAirStatus") -> None:
