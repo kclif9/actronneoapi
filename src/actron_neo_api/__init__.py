@@ -1,3 +1,5 @@
+"""Actron Air API client library for Neo and Que systems."""
+
 from .actron import ActronAirAPI
 from .exceptions import ActronAirAPIError, ActronAirAuthError
 from .models.status import ActronAirStatus

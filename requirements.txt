@@ -1,4 +1,6 @@
-pydantic
 aiohttp
+mypy
+pydantic
 pytest
 pytest-asyncio
+pytest-cov
