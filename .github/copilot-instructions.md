@@ -265,20 +265,46 @@ Before proposing any code changes:
 
 ---
 
+## Development Workflow
+
+### Virtual Environment
+**CRITICAL**: Always activate the virtual environment before running any commands:
+```bash
+source .venv/bin/activate
+```
+
+### Before Completing Any Work
+**MANDATORY**: Before considering any work complete, you MUST:
+1. ✅ Activate the virtual environment (`source .venv/bin/activate`)
+2. ✅ Run the full test suite with coverage (`pytest --cov=src --cov-report=term-missing`)
+3. ✅ Verify test coverage has not regressed
+4. ✅ Run all pre-commit checks (`pre-commit run --all-files`)
+5. ✅ Ensure ALL tests pass and ALL checks pass
+
+**Do NOT claim work is complete until all tests pass, all checks pass, and coverage is maintained.**
+
+---
+
 ## Quick Reference Commands
 
 ```bash
+# Activate virtual environment (ALWAYS DO THIS FIRST)
+source .venv/bin/activate
+
 # Install development dependencies
 pip install -e ".[dev]"
 
-# Run pre-commit checks
+# Run ALL tests (required before completing work)
+pytest
+
+# Run tests with coverage report (required before completing work)
+pytest --cov=src --cov-report=term-missing
+
+# Run pre-commit checks (required before completing work)
 pre-commit run --all-files
 
 # Install pre-commit hooks
 pre-commit install
-
-# Run tests (if available)
-pytest
 
 # Type checking
 mypy src/
@@ -300,5 +326,12 @@ ruff check --fix .
 3. Will this pass all pre-commit checks?
 4. Is the code type-safe and well-documented?
 5. Does this maintain backward compatibility?
+
+**Completion Checklist (MANDATORY):**
+1. ✅ Virtual environment activated
+2. ✅ All tests pass (`pytest` returns 0 exit code)
+3. ✅ Test coverage verified and not regressed (`pytest --cov=src --cov-report=term-missing`)
+4. ✅ All pre-commit checks pass
+5. ✅ No new warnings or errors introduced
 
 **Remember**: This library is used in production environments controlling real HVAC systems. Reliability and correctness are paramount. When in doubt, fail fast and provide clear error messages.
