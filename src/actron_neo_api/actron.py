@@ -526,9 +526,9 @@ class ActronAirAPI:
         """
         # Get current status using the status/latest endpoint
         status = await self.get_ac_status(serial_number)
-        if status:
-            # Store the status object in the state manager
-            self.state_manager.status[serial_number] = status
+        if status is not None:
+            # Process and store the status via the state manager so observers are notified
+            self.state_manager.process_status_update(serial_number, status)
 
     @property
     def access_token(self) -> str | None:
