@@ -113,7 +113,7 @@ async def api_usage_example(refresh_token: str) -> None:
         # Get user information
         logger.info("Getting user information...")
         user_info = await api.get_user_info()
-        logger.info("Authenticated as: %s", user_info.get("name", "Unknown"))
+        logger.info("Authenticated as: %s", user_info.name or "Unknown")
 
         # Get AC systems
         logger.info("Fetching AC systems...")
