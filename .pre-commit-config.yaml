@@ -45,3 +45,13 @@ repos:
     rev: v5.0.0
     hooks:
       - id: requirements-txt-fixer
+
+  # Run tests
+  - repo: local
+    hooks:
+      - id: pytest
+        name: pytest
+        entry: bash -c 'source .venv/bin/activate && pytest --cov=src --cov-report=term-missing -q'
+        language: system
+        pass_filenames: false
+        always_run: true
