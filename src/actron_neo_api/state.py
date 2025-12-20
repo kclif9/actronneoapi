@@ -1,8 +1,11 @@
 """State management module for Actron Air systems."""
 
+import logging
 from typing import Any, Callable, Dict, List, Optional
 
 from .models import ActronAirStatus
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class StateManager:
@@ -89,7 +92,15 @@ class StateManager:
 
         # Notify observers - don't let observer errors break the update
         for observer in self._observers:
-            observer(serial_number, status_data)
+            try:
+                observer(serial_number, status_data)
+            except Exception as e:
+                _LOGGER.warning(
+                    "Observer callback failed for %s: %s",
+                    serial_number,
+                    e,
+                    exc_info=True,
+                )
 
         return status
 
