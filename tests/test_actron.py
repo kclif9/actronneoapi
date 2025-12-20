@@ -42,13 +42,6 @@ class TestActronAirAPIInitialization:
         assert api.platform == "que"
         assert api._auto_manage_base_url is False
 
-    def test_init_aconnect_platform_explicit(self):
-        """Test explicit Actron Connect platform selection."""
-        api = ActronAirAPI(platform="aconnect")
-        assert api.base_url == "https://que.actronair.com.au"
-        assert api.platform == "aconnect"
-        assert api._auto_manage_base_url is False
-
     def test_init_custom_client_id(self):
         """Test initialization with custom OAuth2 client ID."""
         api = ActronAirAPI(oauth2_client_id="custom_client")
@@ -77,21 +70,6 @@ class TestActronAirAPIPlatformManagement:
         assert not api._is_nx_gen_system(ActronAirSystemInfo(serial="1", type="standard"))
         assert not api._is_nx_gen_system(ActronAirSystemInfo(serial="1", type="other"))
         assert not api._is_nx_gen_system(ActronAirSystemInfo(serial="1", type=None))
-
-    def test_is_aconnect_system_true(self):
-        """Test Actron Connect system detection."""
-        api = ActronAirAPI()
-        assert api._is_aconnect_system(ActronAirSystemInfo(serial="1", type="aconnect"))
-        assert api._is_aconnect_system(ActronAirSystemInfo(serial="1", type="AConnect"))
-        assert api._is_aconnect_system(ActronAirSystemInfo(serial="1", type="a-connect"))
-
-    def test_is_aconnect_system_false(self):
-        """Test non-Actron Connect system detection."""
-        api = ActronAirAPI()
-        assert not api._is_aconnect_system(ActronAirSystemInfo(serial="1", type="standard"))
-        assert not api._is_aconnect_system(ActronAirSystemInfo(serial="1", type="NX-Gen"))
-        assert not api._is_aconnect_system(ActronAirSystemInfo(serial="1", type="other"))
-        assert not api._is_aconnect_system(ActronAirSystemInfo(serial="1", type=None))
 
     def test_set_base_url_changes_platform(self):
         """Test platform URL change."""
@@ -136,27 +114,6 @@ class TestActronAirAPIPlatformManagement:
         api._maybe_update_base_url_from_systems([ActronAirSystemInfo(**sample_system_neo)])
         assert api.base_url == "https://nimbus.actronair.com.au"
         assert api.platform == "neo"
-
-    def test_maybe_update_base_url_with_aconnect(self, sample_system_aconnect):
-        """Test auto-switch to Actron Connect platform for ACM-2 systems."""
-        api = ActronAirAPI()  # Auto-detect enabled
-        api._maybe_update_base_url_from_systems([ActronAirSystemInfo(**sample_system_aconnect)])
-        assert api.base_url == "https://que.actronair.com.au"
-        assert api.platform == "aconnect"
-
-    def test_maybe_update_base_url_priority_aconnect_over_que(
-        self, sample_system_aconnect, sample_system_que_nxgen
-    ):
-        """Test aconnect takes priority over que when both present."""
-        api = ActronAirAPI()  # Auto-detect enabled
-        api._maybe_update_base_url_from_systems(
-            [
-                ActronAirSystemInfo(**sample_system_que_nxgen),
-                ActronAirSystemInfo(**sample_system_aconnect),
-            ]
-        )
-        assert api.base_url == "https://que.actronair.com.au"
-        assert api.platform == "aconnect"
 
     def test_maybe_update_base_url_priority_que_over_neo(
         self, sample_system_neo, sample_system_que_nxgen

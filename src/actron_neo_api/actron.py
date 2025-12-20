@@ -8,11 +8,9 @@ from typing import Any, Literal
 import aiohttp
 
 from .const import (
-    BASE_URL_ACONNECT,
     BASE_URL_DEFAULT,
     BASE_URL_NIMBUS,
     BASE_URL_QUE,
-    PLATFORM_ACONNECT,
     PLATFORM_NEO,
     PLATFORM_QUE,
 )
@@ -39,14 +37,14 @@ class ActronAirAPI:
         self,
         oauth2_client_id: str = "home_assistant",
         refresh_token: str | None = None,
-        platform: Literal["neo", "que", "aconnect"] | None = None,
+        platform: Literal["neo", "que"] | None = None,
     ):
         """Initialize the ActronAirAPI client with OAuth2 authentication.
 
         Args:
             oauth2_client_id: OAuth2 client ID for device code flow
             refresh_token: Optional refresh token for authentication
-            platform: Platform to use ('neo', 'que', 'aconnect', or None for auto-detect).
+            platform: Platform to use ('neo', 'que', or None for auto-detect).
             If None, enables auto-detection with Neo as the initial platform.
 
         """
@@ -58,10 +56,6 @@ class ActronAirAPI:
         elif platform == PLATFORM_NEO:
             resolved_base_url = BASE_URL_NIMBUS
             self._platform = PLATFORM_NEO
-            self._auto_manage_base_url = False
-        elif platform == PLATFORM_ACONNECT:
-            resolved_base_url = BASE_URL_ACONNECT
-            self._platform = PLATFORM_ACONNECT
             self._auto_manage_base_url = False
         else:
             # Auto-detect with Neo as fallback (platform is None)
@@ -97,7 +91,6 @@ class ActronAirAPI:
 
         Returns:
             'neo' if using Nimbus platform, 'que' if using Que platform,
-            'aconnect' if using Actron Connect platform
 
         """
         return self._platform
@@ -167,28 +160,12 @@ class ActronAirAPI:
         system_type = str(system.type).replace("-", "").lower()
         return system_type == "nxgen"
 
-    @staticmethod
-    def _is_aconnect_system(system: ActronAirSystemInfo) -> bool:
-        """Check if a system is an Actron Connect (ACM-2) type.
-
-        Args:
-            system: System info model
-
-        Returns:
-            True if the system is Actron Connect type, False otherwise
-
-        """
-        if not system.type:
-            return False
-        system_type = str(system.type).replace("-", "").lower()
-        return system_type == "aconnect"
-
     def _set_base_url(self, base_url: str, platform: str) -> None:
         """Update the base URL and platform, preserving existing authentication tokens.
 
         Args:
             base_url: New base URL to switch to
-            platform: Platform identifier ('neo', 'que', 'aconnect')
+            platform: Platform identifier ('neo', 'que')
 
         Note:
             This preserves tokens but they may not work if switching between
@@ -229,13 +206,9 @@ class ActronAirAPI:
         if not self._auto_manage_base_url or not systems:
             return
 
-        has_aconnect = any(self._is_aconnect_system(system) for system in systems)
         has_nx_gen = any(self._is_nx_gen_system(system) for system in systems)
 
-        if has_aconnect:
-            target_base = BASE_URL_ACONNECT
-            target_platform = PLATFORM_ACONNECT
-        elif has_nx_gen:
+        if has_nx_gen:
             target_base = BASE_URL_QUE
             target_platform = PLATFORM_QUE
         else:

@@ -20,7 +20,6 @@
       "editor.defaultFormatter": "charliermarsh.ruff"
     },
     "cSpell.words": [
-        "ACONNECT",
         "kwargs",
         "mypy",
         "nxgen",
