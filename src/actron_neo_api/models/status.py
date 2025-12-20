@@ -1,6 +1,5 @@
 """Status models for Actron Air API."""
 
-import logging
 from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field, ValidationError
@@ -10,8 +9,6 @@ from .system import ActronAirACSystem, ActronAirAlerts, ActronAirLiveAircon, Act
 
 # Forward references for imports from other modules
 from .zone import ActronAirPeripheral, ActronAirZone
-
-_LOGGER = logging.getLogger(__name__)
 
 
 class ActronAirStatus(BaseModel):
