@@ -94,7 +94,7 @@ class TestActronAirAPIPlatformManagement:
     def test_set_base_url_changes_platform(self):
         """Test platform URL change."""
         api = ActronAirAPI(platform="neo")
-        api._set_base_url("https://que.actronair.com.au")
+        api._set_base_url("https://que.actronair.com.au", "que")
         assert api.base_url == "https://que.actronair.com.au"
         assert api.platform == "que"
 
@@ -105,7 +105,7 @@ class TestActronAirAPIPlatformManagement:
         api.oauth2_auth.refresh_token = "old_refresh"
         api.oauth2_auth.token_expiry = 1234567890.0
 
-        api._set_base_url("https://que.actronair.com.au")
+        api._set_base_url("https://que.actronair.com.au", "que")
 
         assert api.oauth2_auth.access_token == "old_token"
         assert api.oauth2_auth.refresh_token == "old_refresh"
@@ -116,7 +116,7 @@ class TestActronAirAPIPlatformManagement:
         api = ActronAirAPI(platform="neo")
         original_oauth = api.oauth2_auth
 
-        api._set_base_url("https://nimbus.actronair.com.au")
+        api._set_base_url("https://nimbus.actronair.com.au", "neo")
 
         # Should not recreate OAuth handler
         assert api.oauth2_auth is original_oauth
