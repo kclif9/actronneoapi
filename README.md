@@ -119,12 +119,12 @@ async def oauth2_flow():
         # Request device code
         device_code_response = await api.request_device_code()
 
-        device_code = device_code_response["device_code"]
-        user_code = device_code_response["user_code"]
-        verification_uri = device_code_response["verification_uri"]
-        verification_uri_complete = device_code_response["verification_uri_complete"]
-        expires_in = device_code_response["expires_in"]
-        interval = device_code_response["interval"]
+        device_code = device_code_response.device_code
+        user_code = device_code_response.user_code
+        verification_uri = device_code_response.verification_uri
+        verification_uri_complete = device_code_response.verification_uri_complete
+        expires_in = device_code_response.expires_in
+        interval = device_code_response.interval
 
         # Display instructions to user
         print("1. Open: %s" % verification_uri)

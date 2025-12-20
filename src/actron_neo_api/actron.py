@@ -1,7 +1,9 @@
 """Actron Air API client module."""
 
+from __future__ import annotations
+
 import asyncio
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Literal
 
 import aiohttp
 
@@ -15,6 +17,13 @@ from .const import (
     PLATFORM_QUE,
 )
 from .exceptions import ActronAirAPIError, ActronAirAuthError
+from .models import (
+    ActronAirDeviceCode,
+    ActronAirStatus,
+    ActronAirSystemInfo,
+    ActronAirToken,
+    ActronAirUserInfo,
+)
 from .oauth import ActronAirOAuth2DeviceCodeAuth
 from .state import StateManager
 
@@ -29,8 +38,8 @@ class ActronAirAPI:
     def __init__(
         self,
         oauth2_client_id: str = "home_assistant",
-        refresh_token: Optional[str] = None,
-        platform: Optional[Literal["neo", "que", "aconnect"]] = None,
+        refresh_token: str | None = None,
+        platform: Literal["neo", "que", "aconnect"] | None = None,
     ):
         """Initialize the ActronAirAPI client with OAuth2 authentication.
 
@@ -74,11 +83,12 @@ class ActronAirAPI:
         # Set the API reference in the state manager for command execution
         self.state_manager.set_api(self)
 
-        self.systems: List[Dict[str, Any]] = []
+        # Internal cache of system info models for link resolution
+        self.systems: list[ActronAirSystemInfo] = []
         self._initialized = False
 
         # Session management
-        self._session: Optional[aiohttp.ClientSession] = None
+        self._session: aiohttp.ClientSession | None = None
         self._session_lock = asyncio.Lock()
 
     @property
@@ -93,7 +103,7 @@ class ActronAirAPI:
         return self._platform
 
     @property
-    def authenticated_platform(self) -> Optional[str]:
+    def authenticated_platform(self) -> str | None:
         """Get the platform where tokens were originally obtained.
 
         Returns:
@@ -102,7 +112,7 @@ class ActronAirAPI:
         """
         return self.oauth2_auth.authenticated_platform
 
-    def _get_system_link(self, serial_number: str, rel: str) -> Optional[str]:
+    def _get_system_link(self, serial_number: str, rel: str) -> str | None:
         """Return a HAL link for a cached system if available.
 
         Args:
@@ -117,19 +127,24 @@ class ActronAirAPI:
         serial_lower = serial_number.lower()
 
         for system in self.systems:
-            system_serial = system.get("serial")
-            if not system_serial or system_serial.lower() != serial_lower:
+            if system.serial.lower() != serial_lower:
                 continue
 
-            links = system.get("_links") or {}
+            links = system.links
+            if not links:
+                continue
+
             link_info = links.get(rel)
+            href: str | None = None
 
             if isinstance(link_info, dict):
-                href = link_info.get("href")
+                href_value = link_info.get("href")
+                href = href_value if isinstance(href_value, str) else None
             elif isinstance(link_info, list) and link_info:
-                href = link_info[0].get("href") if isinstance(link_info[0], dict) else None
-            else:
-                href = None
+                first_item = link_info[0]
+                if isinstance(first_item, dict):
+                    href_value = first_item.get("href")
+                    href = href_value if isinstance(href_value, str) else None
 
             if href:
                 return href.lstrip("/")
@@ -137,31 +152,35 @@ class ActronAirAPI:
         return None
 
     @staticmethod
-    def _is_nx_gen_system(system: Dict[str, Any]) -> bool:
+    def _is_nx_gen_system(system: ActronAirSystemInfo) -> bool:
         """Check if a system is an NX Gen type.
 
         Args:
-            system: System dictionary containing type information
+            system: System info model
 
         Returns:
             True if the system is NX Gen type, False otherwise
 
         """
-        system_type = str(system.get("type") or "").replace("-", "").lower()
+        if not system.type:
+            return False
+        system_type = str(system.type).replace("-", "").lower()
         return system_type == "nxgen"
 
     @staticmethod
-    def _is_aconnect_system(system: Dict[str, Any]) -> bool:
+    def _is_aconnect_system(system: ActronAirSystemInfo) -> bool:
         """Check if a system is an Actron Connect (ACM-2) type.
 
         Args:
-            system: System dictionary containing type information
+            system: System info model
 
         Returns:
             True if the system is Actron Connect type, False otherwise
 
         """
-        system_type = str(system.get("type") or "").replace("-", "").lower()
+        if not system.type:
+            return False
+        system_type = str(system.type).replace("-", "").lower()
         return system_type == "aconnect"
 
     def _set_base_url(self, base_url: str, platform: str) -> None:
@@ -196,7 +215,7 @@ class ActronAirAPI:
         self.oauth2_auth.token_expiry = old_token_expiry
         self.oauth2_auth.authenticated_platform = old_authenticated_platform
 
-    def _maybe_update_base_url_from_systems(self, systems: List[Dict[str, Any]]) -> None:
+    def _maybe_update_base_url_from_systems(self, systems: list[ActronAirSystemInfo]) -> None:
         """Automatically update base URL based on system types if auto-management is enabled.
 
         Args:
@@ -262,13 +281,13 @@ class ActronAirAPI:
         await self.close()
 
     # OAuth2 Device Code Flow methods - simple proxies
-    async def request_device_code(self) -> Dict[str, Any]:
+    async def request_device_code(self) -> ActronAirDeviceCode:
         """Request a device code for OAuth2 device code flow."""
         return await self.oauth2_auth.request_device_code()
 
     async def poll_for_token(
         self, device_code: str, interval: int = 5, timeout: int = 600
-    ) -> Optional[Dict[str, Any]]:
+    ) -> ActronAirToken | None:
         """Poll for access token using device code with automatic polling loop.
 
         Args:
@@ -277,12 +296,12 @@ class ActronAirAPI:
             timeout: Maximum time to wait in seconds (default: 600 = 10 minutes)
 
         Returns:
-            Token data if successful, None if timeout occurs
+            Token model if successful, None if timeout occurs
 
         """
         return await self.oauth2_auth.poll_for_token(device_code, interval, timeout)
 
-    async def get_user_info(self) -> Dict[str, Any]:
+    async def get_user_info(self) -> ActronAirUserInfo:
         """Get user information using the access token."""
         return await self.oauth2_auth.get_user_info()
 
@@ -290,12 +309,12 @@ class ActronAirAPI:
         self,
         method: str,
         endpoint: str,
-        params: Optional[Dict[str, Any]] = None,
-        json_data: Optional[Dict[str, Any]] = None,
-        data: Optional[Dict[str, Any]] = None,
-        headers: Optional[Dict[str, str]] = None,
+        params: dict[str, Any] | None = None,
+        json_data: dict[str, Any] | None = None,
+        data: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
         _retry: bool = True,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Make an API request with proper error handling.
 
         Args:
@@ -372,22 +391,42 @@ class ActronAirAPI:
 
     # API Methods
 
-    async def get_ac_systems(self) -> List[Dict[str, Any]]:
+    async def get_ac_systems(self) -> list[ActronAirSystemInfo]:
         """Retrieve all AC systems in the customer account.
 
         Returns:
-            List of AC systems
+            List of AC system information models
+
+        Raises:
+            ActronAirAPIError: If response is missing required data
 
         """
         response = await self._make_request(
             "get", "api/v0/client/ac-systems", params={"includeNeo": "true"}
         )
-        systems = response["_embedded"]["ac-system"]
-        self.systems = systems  # Auto-populate for convenience
+
+        # Validate response structure
+        if "_embedded" not in response:
+            raise ActronAirAPIError("Invalid response: missing '_embedded' key")
+
+        embedded = response["_embedded"]
+        if not isinstance(embedded, dict) or "ac-system" not in embedded:
+            raise ActronAirAPIError("Invalid response: missing 'ac-system' in '_embedded'")
+
+        systems_data = embedded["ac-system"]
+        if not isinstance(systems_data, list):
+            raise ActronAirAPIError("Invalid response: 'ac-system' is not a list")
+
+        # Convert to Pydantic models
+        systems = [ActronAirSystemInfo(**system_data) for system_data in systems_data]
+
+        # Store system info models for link resolution
+        self.systems = systems
         self._maybe_update_base_url_from_systems(systems)
+
         return systems
 
-    async def get_ac_status(self, serial_number: str) -> Dict[str, Any]:
+    async def get_ac_status(self, serial_number: str) -> ActronAirStatus:
         """Retrieve the current status for a specific AC system.
 
         This replaces the events API which was disabled by Actron in July 2025.
@@ -396,7 +435,10 @@ class ActronAirAPI:
             serial_number: Serial number of the AC system
 
         Returns:
-            Current status of the AC system
+            Typed status model for the AC system
+
+        Raises:
+            ActronAirAPIError: If system not found or request fails
 
         """
         # Normalize serial number to lowercase for consistent lookup
@@ -405,17 +447,21 @@ class ActronAirAPI:
         endpoint = self._get_system_link(serial_number, "ac-status")
         if not endpoint:
             raise ActronAirAPIError(f"No ac-status link found for system {serial_number}")
-        return await self._make_request("get", endpoint)
 
-    async def send_command(self, serial_number: str, command: Dict[str, Any]) -> Dict[str, Any]:
+        status_data = await self._make_request("get", endpoint)
+        status = ActronAirStatus(serial_number=serial_number, **status_data)
+        status._api = self  # Set API reference for command execution
+        return status
+
+    async def send_command(self, serial_number: str, command: dict[str, Any]) -> None:
         """Send a command to the specified AC system.
 
         Args:
             serial_number: Serial number of the AC system
             command: Dictionary containing the command details
 
-        Returns:
-            Command response
+        Raises:
+            ActronAirAPIError: If command fails or system not found
 
         """
         # Normalize serial number to lowercase for consistent lookup
@@ -425,14 +471,16 @@ class ActronAirAPI:
         if not endpoint:
             raise ActronAirAPIError(f"No commands link found for system {serial_number}")
 
-        return await self._make_request(
+        await self._make_request(
             "post",
             endpoint,
             json_data=command,
             headers={"Content-Type": "application/json"},
         )
 
-    async def update_status(self, serial_number: Optional[str] = None) -> Dict[str, Any]:
+    async def update_status(
+        self, serial_number: str | None = None
+    ) -> dict[str, ActronAirStatus | None]:
         """Update the status of AC systems using event-based updates.
 
         Args:
@@ -440,27 +488,25 @@ class ActronAirAPI:
                           or None to update all systems
 
         Returns:
-            Dictionary of updated status data by serial number
+            Dictionary mapping serial numbers to status models
 
         """
         if serial_number:
             # Update specific system
             await self._update_system_status(serial_number)
             status = self.state_manager.get_status(serial_number)
-            return {serial_number: status.dict() if status else None}
+            return {serial_number: status}
 
         # Update all systems
         if not self.systems:
             return {}
 
-        results = {}
+        results: dict[str, ActronAirStatus | None] = {}
         for system in self.systems:
-            serial = system.get("serial")
-            if serial:
-                await self._update_system_status(serial)
-                status = self.state_manager.get_status(serial)
-                if status:
-                    results[serial] = status.dict()
+            if system.serial:
+                await self._update_system_status(system.serial)
+                status = self.state_manager.get_status(system.serial)
+                results[system.serial] = status
 
         return results
 
@@ -479,22 +525,22 @@ class ActronAirAPI:
 
         """
         # Get current status using the status/latest endpoint
-        status_data = await self.get_ac_status(serial_number)
-        if status_data:
-            # Process the status data through the state manager
-            self.state_manager.process_status_update(serial_number, status_data)
+        status = await self.get_ac_status(serial_number)
+        if status is not None:
+            # Process and store the status via the state manager so observers are notified
+            self.state_manager.process_status_update(serial_number, status)
 
     @property
-    def access_token(self) -> Optional[str]:
+    def access_token(self) -> str | None:
         """Get the current OAuth2 access token."""
         return self.oauth2_auth.access_token
 
     @property
-    def refresh_token_value(self) -> Optional[str]:
+    def refresh_token_value(self) -> str | None:
         """Get the current OAuth2 refresh token."""
         return self.oauth2_auth.refresh_token
 
     @property
-    def latest_event_id(self) -> Dict[str, str]:
+    def latest_event_id(self) -> dict[str, str]:
         """Get the latest event ID for each system."""
         return self.state_manager.latest_event_id.copy()

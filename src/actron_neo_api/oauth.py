@@ -1,11 +1,15 @@
 """OAuth2 Device Code Flow authentication for Actron Air API."""
 
+from __future__ import annotations
+
+import asyncio
 import time
-from typing import Any, Dict, Optional, Tuple
+from typing import Final
 
 import aiohttp
 
 from .exceptions import ActronAirAuthError
+from .models import ActronAirDeviceCode, ActronAirToken, ActronAirUserInfo
 
 
 class ActronAirOAuth2DeviceCodeAuth:
@@ -16,27 +20,35 @@ class ActronAirOAuth2DeviceCodeAuth:
     is preferred.
     """
 
-    def __init__(self, base_url: str, client_id: str = "home_assistant"):
+    def __init__(self, base_url: str, client_id: str = "home_assistant") -> None:
         """Initialize the OAuth2 Device Code Flow handler.
 
         Args:
             base_url: Base URL for the Actron Air API
             client_id: OAuth2 client ID
 
+        Raises:
+            ValueError: If base_url or client_id are empty
+
         """
-        self.base_url = base_url
-        self.client_id = client_id
-        self.access_token: Optional[str] = None
-        self.refresh_token: Optional[str] = None
+        if not base_url or not base_url.strip():
+            raise ValueError("base_url cannot be empty")
+        if not client_id or not client_id.strip():
+            raise ValueError("client_id cannot be empty")
+
+        self.base_url: Final[str] = base_url.rstrip("/")
+        self.client_id: Final[str] = client_id
+        self.access_token: str | None = None
+        self.refresh_token: str | None = None
         self.token_type: str = "Bearer"
-        self.token_expiry: Optional[float] = None
-        self.authenticated_platform: Optional[str] = None  # Track which platform issued tokens
+        self.token_expiry: float | None = None
+        self.authenticated_platform: str | None = None  # Track which platform issued tokens
 
         # OAuth2 endpoints
-        self.token_url = f"{base_url}/api/v0/oauth/token"
-        self.authorize_url = f"{base_url}/authorize"
-        self.device_auth_url = f"{base_url}/connect"
-        self.user_info_url = f"{base_url}/api/v0/client/account"
+        self.token_url: Final[str] = f"{self.base_url}/api/v0/oauth/token"
+        self.authorize_url: Final[str] = f"{self.base_url}/authorize"
+        self.device_auth_url: Final[str] = f"{self.base_url}/connect"
+        self.user_info_url: Final[str] = f"{self.base_url}/api/v0/client/account"
 
     @property
     def is_token_valid(self) -> bool:
@@ -55,17 +67,17 @@ class ActronAirOAuth2DeviceCodeAuth:
         )
 
     @property
-    def authorization_header(self) -> Dict[str, str]:
+    def authorization_header(self) -> dict[str, str]:
         """Get the authorization header using the current token."""
         if not self.access_token:
             raise ActronAirAuthError("No access token available")
         return {"Authorization": f"{self.token_type} {self.access_token}"}
 
-    async def request_device_code(self) -> Dict[str, Any]:
+    async def request_device_code(self) -> ActronAirDeviceCode:
         """Request a device code for OAuth2 device code flow.
 
         Returns:
-            Dictionary containing device code, user code, verification URI, etc.
+            Device code response model
 
         Raises:
             ActronAirAuthError: If device code request fails
@@ -84,7 +96,7 @@ class ActronAirOAuth2DeviceCodeAuth:
                     data = await response.json()
 
                     # Validate required fields
-                    required_fields = [
+                    required_fields: Final[list[str]] = [
                         "device_code",
                         "user_code",
                         "verification_uri",
@@ -92,9 +104,11 @@ class ActronAirOAuth2DeviceCodeAuth:
                         "interval",
                     ]
 
-                    for field in required_fields:
-                        if field not in data:
-                            raise ActronAirAuthError(f"Missing required field: {field}")
+                    missing_fields = [field for field in required_fields if field not in data]
+                    if missing_fields:
+                        raise ActronAirAuthError(
+                            f"Missing required fields in response: {', '.join(missing_fields)}"
+                        )
 
                     # Add verification_uri_complete if not present
                     if "verification_uri_complete" not in data:
@@ -102,7 +116,7 @@ class ActronAirOAuth2DeviceCodeAuth:
                             f"{data['verification_uri']}?user_code={data['user_code']}"
                         )
 
-                    return data
+                    return ActronAirDeviceCode(**data)
                 else:
                     response_text = await response.text()
                     raise ActronAirAuthError(
@@ -113,7 +127,7 @@ class ActronAirOAuth2DeviceCodeAuth:
 
     async def poll_for_token(
         self, device_code: str, interval: int = 5, timeout: int = 600
-    ) -> Optional[Dict[str, Any]]:
+    ) -> ActronAirToken | None:
         """Poll for access token using device code with automatic polling loop.
 
         This method implements the full OAuth2 device code flow polling logic,
@@ -122,17 +136,23 @@ class ActronAirOAuth2DeviceCodeAuth:
 
         Args:
             device_code: The device code received from request_device_code
-            interval: Polling interval in seconds (default: 5)
-            timeout: Maximum time to wait in seconds (default: 600 = 10 minutes)
+            interval: Polling interval in seconds (default: 5, minimum: 1)
+            timeout: Maximum time to wait in seconds (default: 600 = 10 minutes, minimum: 10)
 
         Returns:
-            Token data if successful, None if timeout occurs
+            Token model if successful, None if timeout occurs
 
         Raises:
             ActronAirAuthError: If authorization is denied or other errors occur
+            ValueError: If device_code is empty or interval/timeout are invalid
 
         """
-        import asyncio
+        if not device_code or not device_code.strip():
+            raise ValueError("device_code cannot be empty")
+        if interval < 1:
+            raise ValueError("interval must be at least 1 second")
+        if timeout < 10:
+            raise ValueError("timeout must be at least 10 seconds")
 
         payload = {
             "client_id": self.client_id,
@@ -168,7 +188,7 @@ class ActronAirOAuth2DeviceCodeAuth:
                             expires_in = data.get("expires_in", 3600)
                             self.token_expiry = time.time() + expires_in
 
-                            return data
+                            return ActronAirToken(**data)
 
                         elif response.status == 400:
                             error = data.get("error", "unknown_error")
@@ -207,7 +227,7 @@ class ActronAirOAuth2DeviceCodeAuth:
         # Timeout reached
         return None
 
-    async def refresh_access_token(self) -> Tuple[str, float]:
+    async def refresh_access_token(self) -> tuple[str, float]:
         """Refresh the access token using the refresh token.
 
         Returns:
@@ -233,16 +253,24 @@ class ActronAirOAuth2DeviceCodeAuth:
                 if response.status == 200:
                     data = await response.json()
 
-                    self.access_token = data.get("access_token")
-                    if not self.access_token:
-                        raise ActronAirAuthError("Access token missing in response")
+                    access_token = data.get("access_token")
+                    if not access_token or not isinstance(access_token, str):
+                        raise ActronAirAuthError("Access token missing or invalid in response")
+                    self.access_token = access_token
 
                     # Update refresh token if provided
-                    if "refresh_token" in data:
-                        self.refresh_token = data["refresh_token"]
+                    refresh_token = data.get("refresh_token")
+                    if refresh_token and isinstance(refresh_token, str):
+                        self.refresh_token = refresh_token
 
-                    self.token_type = data.get("token_type", "Bearer")
-                    expires_in = data.get("expires_in", 3600)
+                    token_type = data.get("token_type", "Bearer")
+                    self.token_type = token_type if isinstance(token_type, str) else "Bearer"
+
+                    expires_in_raw = data.get("expires_in", 3600)
+                    try:
+                        expires_in = int(expires_in_raw) if expires_in_raw else 3600
+                    except (ValueError, TypeError):
+                        expires_in = 3600
 
                     # Update authenticated platform since refresh succeeded on this endpoint
                     self.authenticated_platform = self.base_url
@@ -261,11 +289,11 @@ class ActronAirOAuth2DeviceCodeAuth:
                         f"Response: {response_text}."
                     )
 
-    async def get_user_info(self) -> Dict[str, Any]:
+    async def get_user_info(self) -> ActronAirUserInfo:
         """Get user information using the access token.
 
         Returns:
-            Dictionary containing user information
+            User information model
 
         Raises:
             ActronAirAuthError: If user info request fails
@@ -279,7 +307,8 @@ class ActronAirOAuth2DeviceCodeAuth:
         async with aiohttp.ClientSession() as session:
             async with session.get(self.user_info_url, headers=headers) as response:
                 if response.status == 200:
-                    return await response.json()
+                    data = await response.json()
+                    return ActronAirUserInfo.model_validate(data)
                 else:
                     response_text = await response.text()
                     raise ActronAirAuthError(
@@ -308,8 +337,8 @@ class ActronAirOAuth2DeviceCodeAuth:
     def set_tokens(
         self,
         access_token: str,
-        refresh_token: Optional[str] = None,
-        expires_in: Optional[int] = None,
+        refresh_token: str | None = None,
+        expires_in: int | None = None,
         token_type: str = "Bearer",
     ) -> None:
         """Set tokens manually (useful for restoring saved tokens).
@@ -320,10 +349,18 @@ class ActronAirOAuth2DeviceCodeAuth:
             expires_in: Token expiration time in seconds from now (optional)
             token_type: Token type (default: "Bearer")
 
+        Raises:
+            ValueError: If access_token is empty or expires_in is negative
+
         """
+        if not access_token or not access_token.strip():
+            raise ValueError("access_token cannot be empty")
+        if expires_in is not None and expires_in < 0:
+            raise ValueError("expires_in cannot be negative")
+
         self.access_token = access_token
-        self.refresh_token = refresh_token
-        self.token_type = token_type
+        self.refresh_token = refresh_token if refresh_token else None
+        self.token_type = token_type if token_type else "Bearer"
 
         if expires_in is not None:
             self.token_expiry = time.time() + expires_in

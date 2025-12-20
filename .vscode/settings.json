@@ -18,5 +18,13 @@
     "[python]": {
         "editor.formatOnSave": true,
       "editor.defaultFormatter": "charliermarsh.ruff"
-    }
+    },
+    "cSpell.words": [
+        "ACONNECT",
+        "kwargs",
+        "mypy",
+        "nxgen",
+        "pytest",
+        "pydocstyle"
+    ]
 }

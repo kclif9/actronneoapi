@@ -1,7 +1,9 @@
 """Status models for Actron Air API."""
 
+from __future__ import annotations
+
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from pydantic import BaseModel, Field, ValidationError
 
@@ -23,19 +25,23 @@ class ActronAirStatus(BaseModel):
     """
 
     is_online: bool = Field(False, alias="isOnline")
-    last_known_state: Dict[str, Any] = Field({}, alias="lastKnownState")
-    ac_system: Optional[ActronAirACSystem] = None
-    user_aircon_settings: Optional[ActronAirUserAirconSettings] = None
-    master_info: Optional[ActronAirMasterInfo] = None
-    live_aircon: Optional[ActronAirLiveAircon] = None
-    alerts: Optional[ActronAirAlerts] = None
-    remote_zone_info: List[ActronAirZone] = Field([], alias="RemoteZoneInfo")
-    peripherals: List[ActronAirPeripheral] = []
-    _api: Optional[Any] = None
-    serial_number: Optional[str] = None
+    last_known_state: dict[str, Any] = Field({}, alias="lastKnownState")
+    ac_system: ActronAirACSystem | None = None
+    user_aircon_settings: ActronAirUserAirconSettings | None = None
+    master_info: ActronAirMasterInfo | None = None
+    live_aircon: ActronAirLiveAircon | None = None
+    alerts: ActronAirAlerts | None = None
+    remote_zone_info: list[ActronAirZone] = Field([], alias="RemoteZoneInfo")
+    peripherals: list[ActronAirPeripheral] = []
+    _api: Any | None = None
+    serial_number: str | None = None
+
+    def model_post_init(self, __context: Any) -> None:
+        """Post-initialization hook to parse nested components."""
+        self.parse_nested_components()
 
     @property
-    def zones(self) -> Dict[int, ActronAirZone]:
+    def zones(self) -> dict[int, ActronAirZone]:
         """Return zones as a dictionary with their ID as keys.
 
         Returns:
@@ -55,17 +61,17 @@ class ActronAirStatus(BaseModel):
         return self.alerts.defrosting if self.alerts else False
 
     @property
-    def compressor_chasing_temperature(self) -> Optional[float]:
+    def compressor_chasing_temperature(self) -> float | None:
         """Compressor target temperature."""
         return self.live_aircon.compressor_chasing_temperature if self.live_aircon else None
 
     @property
-    def compressor_live_temperature(self) -> Optional[float]:
+    def compressor_live_temperature(self) -> float | None:
         """Current compressor temperature."""
         return self.live_aircon.compressor_live_temperature if self.live_aircon else None
 
     @property
-    def compressor_mode(self) -> Optional[str]:
+    def compressor_mode(self) -> str | None:
         """Current compressor mode."""
         return self.live_aircon.compressor_mode if self.live_aircon else None
 
@@ -75,24 +81,24 @@ class ActronAirStatus(BaseModel):
         return self.live_aircon.is_on if self.live_aircon else False
 
     @property
-    def outdoor_temperature(self) -> Optional[float]:
+    def outdoor_temperature(self) -> float | None:
         """Current outdoor temperature in Celsius."""
         return self.master_info.live_outdoor_temp_c if self.master_info else None
 
     @property
-    def humidity(self) -> Optional[float]:
+    def humidity(self) -> float | None:
         """Current humidity percentage."""
         return self.master_info.live_humidity_pc if self.master_info else None
 
     @property
-    def compressor_speed(self) -> Optional[float]:
+    def compressor_speed(self) -> float | None:
         """Current compressor speed."""
         if self.live_aircon and self.live_aircon.outdoor_unit:
             return self.live_aircon.outdoor_unit.comp_speed
         return 0.0
 
     @property
-    def compressor_power(self) -> Optional[int]:
+    def compressor_power(self) -> int | None:
         """Current compressor power consumption in watts."""
         if self.live_aircon and self.live_aircon.outdoor_unit:
             return self.live_aircon.outdoor_unit.comp_power
@@ -164,7 +170,7 @@ class ActronAirStatus(BaseModel):
         self._api = api
 
     @property
-    def api(self) -> Optional[Any]:
+    def api(self) -> Any | None:
         """Get the API reference for sending commands.
 
         Returns:
@@ -249,7 +255,7 @@ class ActronAirStatus(BaseModel):
                     zone.actual_humidity_pc = peripheral.humidity
                 # The temperature will be automatically used through the existing properties
 
-    def get_peripheral_for_zone(self, zone_index: int) -> Optional[ActronAirPeripheral]:
+    def get_peripheral_for_zone(self, zone_index: int) -> ActronAirPeripheral | None:
         """Get the peripheral device assigned to a specific zone.
 
         Args:
@@ -258,7 +264,13 @@ class ActronAirStatus(BaseModel):
         Returns:
             The peripheral device assigned to the zone, or None if not found
 
+        Raises:
+            ValueError: If zone_index is negative
+
         """
+        if zone_index < 0:
+            raise ValueError(f"zone_index must be non-negative, got {zone_index}")
+
         if not self.peripherals:
             return None
 

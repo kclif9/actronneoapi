@@ -6,6 +6,8 @@ import pytest
 
 from actron_neo_api import ActronAirAPI
 from actron_neo_api.exceptions import ActronAirAPIError, ActronAirAuthError
+from actron_neo_api.models import ActronAirDeviceCode, ActronAirToken
+from actron_neo_api.models.system import ActronAirSystemInfo
 
 
 class TestActronAirAPIInitialization:
@@ -65,31 +67,31 @@ class TestActronAirAPIPlatformManagement:
     def test_is_nx_gen_system_true(self):
         """Test NX Gen system detection."""
         api = ActronAirAPI()
-        assert api._is_nx_gen_system({"type": "NX-Gen"})
-        assert api._is_nx_gen_system({"type": "nx-gen"})
-        assert api._is_nx_gen_system({"type": "nxgen"})
+        assert api._is_nx_gen_system(ActronAirSystemInfo(serial="1", type="NX-Gen"))
+        assert api._is_nx_gen_system(ActronAirSystemInfo(serial="1", type="nx-gen"))
+        assert api._is_nx_gen_system(ActronAirSystemInfo(serial="1", type="nxgen"))
 
     def test_is_nx_gen_system_false(self):
         """Test non-NX Gen system detection."""
         api = ActronAirAPI()
-        assert not api._is_nx_gen_system({"type": "standard"})
-        assert not api._is_nx_gen_system({"type": "other"})
-        assert not api._is_nx_gen_system({"type": None})
+        assert not api._is_nx_gen_system(ActronAirSystemInfo(serial="1", type="standard"))
+        assert not api._is_nx_gen_system(ActronAirSystemInfo(serial="1", type="other"))
+        assert not api._is_nx_gen_system(ActronAirSystemInfo(serial="1", type=None))
 
     def test_is_aconnect_system_true(self):
         """Test Actron Connect system detection."""
         api = ActronAirAPI()
-        assert api._is_aconnect_system({"type": "aconnect"})
-        assert api._is_aconnect_system({"type": "AConnect"})
-        assert api._is_aconnect_system({"type": "a-connect"})
+        assert api._is_aconnect_system(ActronAirSystemInfo(serial="1", type="aconnect"))
+        assert api._is_aconnect_system(ActronAirSystemInfo(serial="1", type="AConnect"))
+        assert api._is_aconnect_system(ActronAirSystemInfo(serial="1", type="a-connect"))
 
     def test_is_aconnect_system_false(self):
         """Test non-Actron Connect system detection."""
         api = ActronAirAPI()
-        assert not api._is_aconnect_system({"type": "standard"})
-        assert not api._is_aconnect_system({"type": "NX-Gen"})
-        assert not api._is_aconnect_system({"type": "other"})
-        assert not api._is_aconnect_system({"type": None})
+        assert not api._is_aconnect_system(ActronAirSystemInfo(serial="1", type="standard"))
+        assert not api._is_aconnect_system(ActronAirSystemInfo(serial="1", type="NX-Gen"))
+        assert not api._is_aconnect_system(ActronAirSystemInfo(serial="1", type="other"))
+        assert not api._is_aconnect_system(ActronAirSystemInfo(serial="1", type=None))
 
     def test_set_base_url_changes_platform(self):
         """Test platform URL change."""
@@ -124,21 +126,21 @@ class TestActronAirAPIPlatformManagement:
     def test_maybe_update_base_url_with_nx_gen(self, sample_system_que_nxgen):
         """Test auto-switch to Que platform for NX Gen systems."""
         api = ActronAirAPI()  # Auto-detect enabled
-        api._maybe_update_base_url_from_systems([sample_system_que_nxgen])
+        api._maybe_update_base_url_from_systems([ActronAirSystemInfo(**sample_system_que_nxgen)])
         assert api.base_url == "https://que.actronair.com.au"
         assert api.platform == "que"
 
     def test_maybe_update_base_url_without_nx_gen(self, sample_system_neo):
         """Test stays on Neo platform for standard systems."""
         api = ActronAirAPI()  # Auto-detect enabled
-        api._maybe_update_base_url_from_systems([sample_system_neo])
+        api._maybe_update_base_url_from_systems([ActronAirSystemInfo(**sample_system_neo)])
         assert api.base_url == "https://nimbus.actronair.com.au"
         assert api.platform == "neo"
 
     def test_maybe_update_base_url_with_aconnect(self, sample_system_aconnect):
         """Test auto-switch to Actron Connect platform for ACM-2 systems."""
         api = ActronAirAPI()  # Auto-detect enabled
-        api._maybe_update_base_url_from_systems([sample_system_aconnect])
+        api._maybe_update_base_url_from_systems([ActronAirSystemInfo(**sample_system_aconnect)])
         assert api.base_url == "https://que.actronair.com.au"
         assert api.platform == "aconnect"
 
@@ -147,7 +149,12 @@ class TestActronAirAPIPlatformManagement:
     ):
         """Test aconnect takes priority over que when both present."""
         api = ActronAirAPI()  # Auto-detect enabled
-        api._maybe_update_base_url_from_systems([sample_system_que_nxgen, sample_system_aconnect])
+        api._maybe_update_base_url_from_systems(
+            [
+                ActronAirSystemInfo(**sample_system_que_nxgen),
+                ActronAirSystemInfo(**sample_system_aconnect),
+            ]
+        )
         assert api.base_url == "https://que.actronair.com.au"
         assert api.platform == "aconnect"
 
@@ -156,14 +163,19 @@ class TestActronAirAPIPlatformManagement:
     ):
         """Test que takes priority over neo when both present."""
         api = ActronAirAPI()  # Auto-detect enabled
-        api._maybe_update_base_url_from_systems([sample_system_neo, sample_system_que_nxgen])
+        api._maybe_update_base_url_from_systems(
+            [
+                ActronAirSystemInfo(**sample_system_neo),
+                ActronAirSystemInfo(**sample_system_que_nxgen),
+            ]
+        )
         assert api.base_url == "https://que.actronair.com.au"
         assert api.platform == "que"
 
     def test_maybe_update_base_url_disabled(self, sample_system_que_nxgen):
         """Test no auto-switch when platform explicitly set."""
         api = ActronAirAPI(platform="neo")  # Explicit, no auto-detect
-        api._maybe_update_base_url_from_systems([sample_system_que_nxgen])
+        api._maybe_update_base_url_from_systems([ActronAirSystemInfo(**sample_system_que_nxgen)])
         assert api.base_url == "https://nimbus.actronair.com.au"  # Should not change
 
     def test_maybe_update_base_url_empty_systems(self):
@@ -237,7 +249,7 @@ class TestActronAirAPISystemLinkResolution:
     def test_get_system_link_success(self, sample_system_neo):
         """Test successful link resolution."""
         api = ActronAirAPI()
-        api.systems = [sample_system_neo]
+        api.systems = [ActronAirSystemInfo(**sample_system_neo)]
 
         link = api._get_system_link("abc123", "ac-status")
 
@@ -246,7 +258,7 @@ class TestActronAirAPISystemLinkResolution:
     def test_get_system_link_case_insensitive(self, sample_system_neo):
         """Test case-insensitive serial number matching."""
         api = ActronAirAPI()
-        api.systems = [sample_system_neo]
+        api.systems = [ActronAirSystemInfo(**sample_system_neo)]
 
         link = api._get_system_link("ABC123", "ac-status")  # Uppercase
 
@@ -256,7 +268,7 @@ class TestActronAirAPISystemLinkResolution:
     def test_get_system_link_not_found(self):
         """Test link not found returns None."""
         api = ActronAirAPI()
-        api.systems = [{"serial": "abc123", "_links": {}}]
+        api.systems = [ActronAirSystemInfo(serial="abc123", links={})]
 
         link = api._get_system_link("abc123", "missing-link")
 
@@ -265,7 +277,7 @@ class TestActronAirAPISystemLinkResolution:
     def test_get_system_link_system_not_found(self):
         """Test system not found returns None."""
         api = ActronAirAPI()
-        api.systems = [{"serial": "abc123"}]
+        api.systems = [ActronAirSystemInfo(serial="abc123")]
 
         link = api._get_system_link("xyz789", "ac-status")
 
@@ -275,10 +287,10 @@ class TestActronAirAPISystemLinkResolution:
         """Test leading slash is stripped from href."""
         api = ActronAirAPI()
         api.systems = [
-            {
-                "serial": "abc123",
-                "_links": {"test": {"href": "/api/v0/test"}},
-            }
+            ActronAirSystemInfo(
+                serial="abc123",
+                links={"test": {"href": "/api/v0/test"}},
+            )
         ]
 
         link = api._get_system_link("abc123", "test")
@@ -289,10 +301,10 @@ class TestActronAirAPISystemLinkResolution:
         """Test link resolution with list format."""
         api = ActronAirAPI()
         api.systems = [
-            {
-                "serial": "abc123",
-                "_links": {"test": [{"href": "/api/v0/test"}]},
-            }
+            ActronAirSystemInfo(
+                serial="abc123",
+                links={"test": [{"href": "/api/v0/test"}]},
+            )
         ]
 
         link = api._get_system_link("abc123", "test")
@@ -320,7 +332,7 @@ class TestActronAirAPIGetSystems:
         systems = await api.get_ac_systems()
 
         assert len(systems) == 1
-        assert systems[0]["serial"] == "abc123"
+        assert systems[0].serial == "abc123"
         assert api.systems == systems
 
     @pytest.mark.asyncio
@@ -374,7 +386,7 @@ class TestActronAirAPIGetStatus:
         api._initialized = True
         api._session = mock_session
         api.oauth2_auth = mock_oauth
-        api.systems = [sample_system_neo]
+        api.systems = [ActronAirSystemInfo(**sample_system_neo)]
 
         mock_session.request.return_value.__aenter__.return_value = mock_aiohttp_response(
             status=200, json_data=sample_status_full
@@ -382,8 +394,9 @@ class TestActronAirAPIGetStatus:
 
         status = await api.get_ac_status("abc123")
 
-        assert status == sample_status_full
-        assert status["isOnline"] is True
+        assert status.is_online is True
+        assert status.serial_number.lower() == "abc123"
+        assert status.ac_system.master_serial == "ABC123"
 
     @pytest.mark.asyncio
     async def test_get_ac_status_normalizes_serial(
@@ -394,7 +407,7 @@ class TestActronAirAPIGetStatus:
         api._initialized = True
         api._session = mock_session
         api.oauth2_auth = mock_oauth
-        api.systems = [sample_system_neo]
+        api.systems = [ActronAirSystemInfo(**sample_system_neo)]
 
         mock_session.request.return_value.__aenter__.return_value = mock_aiohttp_response(
             status=200, json_data=sample_status_full
@@ -409,7 +422,7 @@ class TestActronAirAPIGetStatus:
         """Test error when status link is missing."""
         api = ActronAirAPI(refresh_token="test_token")
         api._initialized = True
-        api.systems = [{"serial": "abc123", "_links": {}}]
+        api.systems = [ActronAirSystemInfo(serial="abc123", links={})]
 
         with pytest.raises(ActronAirAPIError, match="No ac-status link found"):
             await api.get_ac_status("abc123")
@@ -432,16 +445,17 @@ class TestActronAirAPISendCommand:
         api._initialized = True
         api._session = mock_session
         api.oauth2_auth = mock_oauth
-        api.systems = [sample_system_neo]
+        api.systems = [ActronAirSystemInfo(**sample_system_neo)]
 
         mock_session.request.return_value.__aenter__.return_value = mock_aiohttp_response(
             status=200, json_data=sample_command_response
         )
 
         command = {"command": {"type": "set-settings", "UserAirconSettings.isOn": True}}
-        response = await api.send_command("abc123", command)
+        await api.send_command("abc123", command)
 
-        assert response["success"] is True
+        # Verify the command was sent (response is None for successful commands)
+        mock_session.request.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_send_command_normalizes_serial(
@@ -457,23 +471,24 @@ class TestActronAirAPISendCommand:
         api._initialized = True
         api._session = mock_session
         api.oauth2_auth = mock_oauth
-        api.systems = [sample_system_neo]
+        api.systems = [ActronAirSystemInfo(**sample_system_neo)]
 
         mock_session.request.return_value.__aenter__.return_value = mock_aiohttp_response(
             status=200, json_data=sample_command_response
         )
 
         command = {"command": {"type": "set-settings"}}
-        response = await api.send_command("ABC123", command)  # Uppercase
+        await api.send_command("ABC123", command)  # Uppercase
 
-        assert response is not None
+        # Verify command was sent successfully (returns None)
+        mock_session.request.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_send_command_missing_link_raises(self):
         """Test error when commands link is missing."""
         api = ActronAirAPI(refresh_token="test_token")
         api._initialized = True
-        api.systems = [{"serial": "abc123", "_links": {}}]
+        api.systems = [ActronAirSystemInfo(serial="abc123", links={})]
 
         with pytest.raises(ActronAirAPIError, match="No commands link found"):
             await api.send_command("abc123", {})
@@ -492,7 +507,7 @@ class TestActronAirAPISendCommand:
         api._initialized = True
         api._session = mock_session
         api.oauth2_auth = mock_oauth
-        api.systems = [sample_system_neo]
+        api.systems = [ActronAirSystemInfo(**sample_system_neo)]
 
         mock_session.request.return_value.__aenter__.return_value = mock_aiohttp_response(
             status=200, json_data=sample_command_response
@@ -631,7 +646,7 @@ class TestActronAirAPIUpdateStatus:
         api._initialized = True
         api._session = mock_session
         api.oauth2_auth = mock_oauth
-        api.systems = [sample_system_neo]
+        api.systems = [ActronAirSystemInfo(**sample_system_neo)]
 
         mock_session.request.return_value.__aenter__.return_value = mock_aiohttp_response(
             status=200, json_data=sample_status_full
@@ -651,7 +666,7 @@ class TestActronAirAPIUpdateStatus:
         api._initialized = True
         api._session = mock_session
         api.oauth2_auth = mock_oauth
-        api.systems = [sample_system_neo]
+        api.systems = [ActronAirSystemInfo(**sample_system_neo)]
 
         mock_session.request.return_value.__aenter__.return_value = mock_aiohttp_response(
             status=200, json_data=sample_status_full
@@ -718,22 +733,30 @@ class TestActronAirAPIOAuth2Methods:
     async def test_request_device_code_proxy(self):
         """Test request_device_code proxies to OAuth2 handler."""
         api = ActronAirAPI()
-        api.oauth2_auth.request_device_code = AsyncMock(return_value={"device_code": "test"})
+        mock_response = ActronAirDeviceCode(
+            device_code="test",
+            user_code="TEST",
+            verification_uri="http://test",
+            expires_in=600,
+            interval=5,
+        )
+        api.oauth2_auth.request_device_code = AsyncMock(return_value=mock_response)
 
         result = await api.request_device_code()
 
-        assert result["device_code"] == "test"
+        assert result.device_code == "test"
         api.oauth2_auth.request_device_code.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_poll_for_token_proxy(self):
         """Test poll_for_token proxies to OAuth2 handler."""
         api = ActronAirAPI()
-        api.oauth2_auth.poll_for_token = AsyncMock(return_value={"access_token": "test"})
+        mock_response = ActronAirToken(access_token="test")
+        api.oauth2_auth.poll_for_token = AsyncMock(return_value=mock_response)
 
         result = await api.poll_for_token("device_code")
 
-        assert result["access_token"] == "test"
+        assert result.access_token == "test"
         api.oauth2_auth.poll_for_token.assert_called_once_with("device_code", 5, 600)
 
     @pytest.mark.asyncio

@@ -1,6 +1,8 @@
 """Settings models for Actron Air API."""
 
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field
 
@@ -22,12 +24,12 @@ class ActronAirUserAirconSettings(BaseModel):
     away_mode: bool = Field(False, alias="AwayMode")
     temperature_setpoint_cool_c: float = Field(0.0, alias="TemperatureSetpoint_Cool_oC")
     temperature_setpoint_heat_c: float = Field(0.0, alias="TemperatureSetpoint_Heat_oC")
-    enabled_zones: List[bool] = Field([], alias="EnabledZones")
+    enabled_zones: list[bool] = Field([], alias="EnabledZones")
     quiet_mode_enabled: bool = Field(False, alias="QuietModeEnabled")
-    turbo_mode_enabled: Union[bool, Dict[str, bool]] = Field(
+    turbo_mode_enabled: bool | dict[str, bool] = Field(
         default_factory=lambda: {"Enabled": False}, alias="TurboMode"
     )
-    _parent_status: Optional["ActronAirStatus"] = None
+    _parent_status: "ActronAirStatus | None" = None
 
     def set_parent_status(self, parent: "ActronAirStatus") -> None:
         """Set reference to parent ActronStatus object.
@@ -94,7 +96,7 @@ class ActronAirUserAirconSettings(BaseModel):
         return self.fan_mode
 
     # Command generation methods
-    def _set_system_mode_command(self, mode: str) -> Dict[str, Any]:
+    def _set_system_mode_command(self, mode: str) -> dict[str, Any]:
         """Create a command to set the AC system mode.
 
         Args:
@@ -123,7 +125,7 @@ class ActronAirUserAirconSettings(BaseModel):
 
         return command
 
-    def _set_fan_mode_command(self, fan_mode: str) -> Dict[str, Any]:
+    def _set_fan_mode_command(self, fan_mode: str) -> dict[str, Any]:
         """Create a command to set the fan mode, preserving continuous mode setting.
 
         Args:
@@ -145,7 +147,7 @@ class ActronAirUserAirconSettings(BaseModel):
             }
         }
 
-    def _set_continuous_mode_command(self, enabled: bool) -> Dict[str, Any]:
+    def _set_continuous_mode_command(self, enabled: bool) -> dict[str, Any]:
         """Create a command to enable/disable continuous fan mode.
 
         Args:
@@ -165,7 +167,7 @@ class ActronAirUserAirconSettings(BaseModel):
             }
         }
 
-    def _set_temperature_command(self, temperature: float) -> Dict[str, Any]:
+    def _set_temperature_command(self, temperature: float) -> dict[str, Any]:
         """Create a command to set temperature for the system based on the current AC mode.
 
         Args:
@@ -179,7 +181,7 @@ class ActronAirUserAirconSettings(BaseModel):
             raise ValueError("No mode available in settings")
 
         mode = self.mode.upper()
-        command: Dict[str, Any] = {"command": {"type": "set-settings"}}
+        command: dict[str, Any] = {"command": {"type": "set-settings"}}
 
         if mode == "COOL":
             command["command"]["UserAirconSettings.TemperatureSetpoint_Cool_oC"] = float(
@@ -205,7 +207,7 @@ class ActronAirUserAirconSettings(BaseModel):
 
         return command
 
-    def _set_away_mode_command(self, enabled: bool = False) -> Dict[str, Any]:
+    def _set_away_mode_command(self, enabled: bool = False) -> dict[str, Any]:
         """Create a command to enable/disable away mode.
 
         Args:
@@ -222,7 +224,7 @@ class ActronAirUserAirconSettings(BaseModel):
             }
         }
 
-    def _set_quiet_mode_command(self, enabled: bool = False) -> Dict[str, Any]:
+    def _set_quiet_mode_command(self, enabled: bool = False) -> dict[str, Any]:
         """Create a command to enable/disable quiet mode.
 
         Args:
@@ -239,7 +241,7 @@ class ActronAirUserAirconSettings(BaseModel):
             }
         }
 
-    def _set_turbo_mode_command(self, enabled: bool = False) -> Dict[str, Any]:
+    def _set_turbo_mode_command(self, enabled: bool = False) -> dict[str, Any]:
         """Create a command to enable/disable turbo mode.
 
         Args:
@@ -256,15 +258,12 @@ class ActronAirUserAirconSettings(BaseModel):
             }
         }
 
-    async def set_system_mode(self, mode: str) -> Dict[str, Any]:
+    async def set_system_mode(self, mode: str) -> None:
         """Set the AC system mode and send the command.
 
         Args:
             mode: Mode to set ('AUTO', 'COOL', 'FAN', 'HEAT', 'OFF')
                  Use 'OFF' to turn the system off.
-
-        Returns:
-            API response dictionary
 
         """
         command = self._set_system_mode_command(mode)
@@ -273,19 +272,15 @@ class ActronAirUserAirconSettings(BaseModel):
             and self._parent_status.api
             and hasattr(self._parent_status, "serial_number")
         ):
-            return await self._parent_status.api.send_command(
-                self._parent_status.serial_number, command
-            )
-        raise ValueError("No API reference available to send command")
+            await self._parent_status.api.send_command(self._parent_status.serial_number, command)
+        else:
+            raise ValueError("No API reference available to send command")
 
-    async def set_fan_mode(self, fan_mode: str) -> Dict[str, Any]:
+    async def set_fan_mode(self, fan_mode: str) -> None:
         """Set the fan mode and send the command. Preserves current continuous mode setting.
 
         Args:
             fan_mode: The fan mode (e.g., "AUTO", "LOW", "MEDIUM", "HIGH")
-
-        Returns:
-            API response dictionary
 
         """
         command = self._set_fan_mode_command(fan_mode)
@@ -294,19 +289,15 @@ class ActronAirUserAirconSettings(BaseModel):
             and self._parent_status.api
             and hasattr(self._parent_status, "serial_number")
         ):
-            return await self._parent_status.api.send_command(
-                self._parent_status.serial_number, command
-            )
-        raise ValueError("No API reference available to send command")
+            await self._parent_status.api.send_command(self._parent_status.serial_number, command)
+        else:
+            raise ValueError("No API reference available to send command")
 
-    async def set_continuous_mode(self, enabled: bool) -> Dict[str, Any]:
+    async def set_continuous_mode(self, enabled: bool) -> None:
         """Enable or disable continuous fan mode and send the command.
 
         Args:
             enabled: True to enable continuous mode, False to disable
-
-        Returns:
-            API response dictionary
 
         """
         command = self._set_continuous_mode_command(enabled)
@@ -315,21 +306,28 @@ class ActronAirUserAirconSettings(BaseModel):
             and self._parent_status.api
             and hasattr(self._parent_status, "serial_number")
         ):
-            return await self._parent_status.api.send_command(
-                self._parent_status.serial_number, command
-            )
-        raise ValueError("No API reference available to send command")
+            await self._parent_status.api.send_command(self._parent_status.serial_number, command)
+        else:
+            raise ValueError("No API reference available to send command")
 
-    async def set_temperature(self, temperature: float) -> Dict[str, Any]:
+    async def set_temperature(self, temperature: float) -> None:
         """Set temperature for the system based on the current AC mode and send the command.
 
         Args:
-            temperature: The temperature to set
+            temperature: The temperature to set (in degrees Celsius)
 
-        Returns:
-            API response dictionary
+        Raises:
+            ValueError: If temperature is invalid or no API reference available
 
         """
+        # Validate temperature is a reasonable value
+        if not isinstance(temperature, (int, float)):
+            raise ValueError(f"Temperature must be a number, got {type(temperature).__name__}")
+        if not -50 <= temperature <= 100:  # Reasonable physical limits
+            raise ValueError(
+                f"Temperature {temperature}°C is outside reasonable range (-50 to 100)"
+            )
+
         # Apply limits if they are available
         if self._parent_status and self._parent_status.last_known_state:
             limits = self._parent_status.last_known_state.get("NV_Limits", {}).get(
@@ -351,19 +349,15 @@ class ActronAirUserAirconSettings(BaseModel):
             and self._parent_status.api
             and hasattr(self._parent_status, "serial_number")
         ):
-            return await self._parent_status.api.send_command(
-                self._parent_status.serial_number, command
-            )
-        raise ValueError("No API reference available to send command")
+            await self._parent_status.api.send_command(self._parent_status.serial_number, command)
+        else:
+            raise ValueError("No API reference available to send command")
 
-    async def set_away_mode(self, enabled: bool = False) -> Dict[str, Any]:
+    async def set_away_mode(self, enabled: bool = False) -> None:
         """Enable/disable away mode and send the command.
 
         Args:
             enabled: True to enable, False to disable
-
-        Returns:
-            API response dictionary
 
         """
         command = self._set_away_mode_command(enabled)
@@ -372,19 +366,15 @@ class ActronAirUserAirconSettings(BaseModel):
             and self._parent_status.api
             and hasattr(self._parent_status, "serial_number")
         ):
-            return await self._parent_status.api.send_command(
-                self._parent_status.serial_number, command
-            )
-        raise ValueError("No API reference available to send command")
+            await self._parent_status.api.send_command(self._parent_status.serial_number, command)
+        else:
+            raise ValueError("No API reference available to send command")
 
-    async def set_quiet_mode(self, enabled: bool = False) -> Dict[str, Any]:
+    async def set_quiet_mode(self, enabled: bool = False) -> None:
         """Enable/disable quiet mode and send the command.
 
         Args:
             enabled: True to enable, False to disable
-
-        Returns:
-            API response dictionary
 
         """
         command = self._set_quiet_mode_command(enabled)
@@ -393,19 +383,15 @@ class ActronAirUserAirconSettings(BaseModel):
             and self._parent_status.api
             and hasattr(self._parent_status, "serial_number")
         ):
-            return await self._parent_status.api.send_command(
-                self._parent_status.serial_number, command
-            )
-        raise ValueError("No API reference available to send command")
+            await self._parent_status.api.send_command(self._parent_status.serial_number, command)
+        else:
+            raise ValueError("No API reference available to send command")
 
-    async def set_turbo_mode(self, enabled: bool = False) -> Dict[str, Any]:
+    async def set_turbo_mode(self, enabled: bool = False) -> None:
         """Enable/disable turbo mode and send the command.
 
         Args:
             enabled: True to enable, False to disable
-
-        Returns:
-            API response dictionary
 
         """
         command = self._set_turbo_mode_command(enabled)
@@ -414,7 +400,6 @@ class ActronAirUserAirconSettings(BaseModel):
             and self._parent_status.api
             and hasattr(self._parent_status, "serial_number")
         ):
-            return await self._parent_status.api.send_command(
-                self._parent_status.serial_number, command
-            )
-        raise ValueError("No API reference available to send command")
+            await self._parent_status.api.send_command(self._parent_status.serial_number, command)
+        else:
+            raise ValueError("No API reference available to send command")

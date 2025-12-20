@@ -1,9 +1,14 @@
 """State management module for Actron Air systems."""
 
+from __future__ import annotations
+
 import logging
-from typing import Any, Callable, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Callable
 
 from .models import ActronAirStatus
+
+if TYPE_CHECKING:
+    from .actron import ActronAirAPI
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -17,12 +22,12 @@ class StateManager:
         Creates empty dictionaries for system status tracking and event IDs,
         and initializes observer list for state change notifications.
         """
-        self.status: Dict[str, ActronAirStatus] = {}
-        self.latest_event_id: Dict[str, str] = {}
-        self._observers: List[Callable[[str, Dict[str, Any]], None]] = []
-        self._api: Optional[Any] = None
+        self.status: dict[str, ActronAirStatus] = {}
+        self.latest_event_id: dict[str, str] = {}
+        self._observers: list[Callable[[str, dict[str, Any]], None]] = []
+        self._api: "ActronAirAPI | None" = None
 
-    def set_api(self, api: Any) -> None:
+    def set_api(self, api: "ActronAirAPI") -> None:
         """Set the API reference to be passed to status objects.
 
         Args:
@@ -35,7 +40,7 @@ class StateManager:
         for status in self.status.values():
             status.set_api(api)
 
-    def add_observer(self, observer: Callable[[str, Dict[str, Any]], None]) -> None:
+    def add_observer(self, observer: Callable[[str, dict[str, Any]], None]) -> None:
         """Add an observer to be notified of state changes.
 
         Args:
@@ -44,7 +49,7 @@ class StateManager:
         """
         self._observers.append(observer)
 
-    def get_status(self, serial_number: str) -> Optional[ActronAirStatus]:
+    def get_status(self, serial_number: str) -> ActronAirStatus | None:
         """Get the status for a specific system.
 
         Args:
@@ -58,13 +63,13 @@ class StateManager:
         return self.status.get(serial_number.lower())
 
     def process_status_update(
-        self, serial_number: str, status_data: Dict[str, Any]
+        self, serial_number: str, status_data: dict[str, Any] | ActronAirStatus
     ) -> ActronAirStatus:
         """Process a full status update for a system.
 
         Args:
             serial_number: Serial number of the AC system
-            status_data: Complete status data from API
+            status_data: Complete status data from API or ActronAirStatus object
 
         Returns:
             Updated ActronAirStatus object
@@ -74,8 +79,13 @@ class StateManager:
             and notifies all registered observers.
 
         """
-        status = ActronAirStatus.model_validate(status_data)
-        status.parse_nested_components()
+        if isinstance(status_data, ActronAirStatus):
+            status = status_data
+            raw_data = status.last_known_state
+        else:
+            status = ActronAirStatus.model_validate(status_data)
+            status.parse_nested_components()
+            raw_data = status_data
 
         # Normalize serial number to lowercase for consistent storage
         serial_number = serial_number.lower()
@@ -93,7 +103,7 @@ class StateManager:
         # Notify observers - don't let observer errors break the update
         for observer in self._observers:
             try:
-                observer(serial_number, status_data)
+                observer(serial_number, raw_data)
             except Exception as e:
                 _LOGGER.warning(
                     "Observer callback failed for %s: %s",
@@ -139,7 +149,7 @@ class StateManager:
             if i in zone_humidity_map:
                 zone.actual_humidity_pc = zone_humidity_map[i]
 
-    def _extract_peripheral_humidity(self, peripheral: Dict[str, Any]) -> Optional[float]:
+    def _extract_peripheral_humidity(self, peripheral: dict[str, Any]) -> float | None:
         """Extract humidity reading from a peripheral device.
 
         Args:
@@ -149,15 +159,29 @@ class StateManager:
             Humidity value as float or None if not available
 
         """
-        sensor_inputs = peripheral.get("SensorInputs", {})
-        if not sensor_inputs:
+        sensor_inputs = peripheral.get("SensorInputs")
+        if not sensor_inputs or not isinstance(sensor_inputs, dict):
             return None
 
         # Extract humidity from SHTC1 sensor if available
-        shtc1 = sensor_inputs.get("SHTC1", {})
-        if shtc1:
-            humidity = shtc1.get("RelativeHumidity_pc")
-            if humidity and isinstance(humidity, (int, float)) and 0 <= humidity <= 100:
-                return float(humidity)
+        shtc1 = sensor_inputs.get("SHTC1")
+        if not shtc1 or not isinstance(shtc1, dict):
+            return None
 
-        return None
+        humidity = shtc1.get("RelativeHumidity_pc")
+        if humidity is None:
+            return None
+
+        # Validate humidity value type and range
+        if not isinstance(humidity, (int, float)):
+            _LOGGER.warning(
+                "Invalid humidity type: expected number, got %s", type(humidity).__name__
+            )
+            return None
+
+        humidity_float = float(humidity)
+        if not (0 <= humidity_float <= 100):
+            _LOGGER.warning("Humidity value %s is outside valid range (0-100)", humidity_float)
+            return None
+
+        return humidity_float

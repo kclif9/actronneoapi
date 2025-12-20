@@ -1,7 +1,9 @@
 """Zone models for Actron Air API."""
 
+from __future__ import annotations
+
 import logging
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field
 
@@ -22,9 +24,9 @@ class ActronAirZoneSensor(BaseModel):
     kind: str = Field("", alias="NV_Kind")
     is_paired: bool = Field(False, alias="NV_isPaired")
     signal_strength: str = str(Field("NA", alias="Signal_of3"))
-    temperature: Optional[float] = Field(None, alias="Temperature_oC")
-    humidity: Optional[float] = Field(None, alias="RelativeHumidity_pc")
-    battery_level: Optional[float] = Field(None, alias="RemainingBatteryCapacity_pc")
+    temperature: float | None = Field(None, alias="Temperature_oC")
+    humidity: float | None = Field(None, alias="RelativeHumidity_pc")
+    battery_level: float | None = Field(None, alias="RemainingBatteryCapacity_pc")
 
 
 class ActronAirPeripheral(BaseModel):
@@ -37,15 +39,15 @@ class ActronAirPeripheral(BaseModel):
 
     logical_address: int = Field(0, alias="LogicalAddress")
     device_type: str = Field("", alias="DeviceType")
-    zone_assignments: List[int] = Field([], alias="ZoneAssignment")
+    zone_assignments: list[int] = Field([], alias="ZoneAssignment")
     serial_number: str = Field("", alias="SerialNumber")
-    battery_level: Optional[float] = Field(None, alias="RemainingBatteryCapacity_pc")
-    temperature: Optional[float] = None
-    humidity: Optional[float] = None
-    _parent_status: Optional["ActronAirStatus"] = None
+    battery_level: float | None = Field(None, alias="RemainingBatteryCapacity_pc")
+    temperature: float | None = None
+    humidity: float | None = None
+    _parent_status: "ActronAirStatus | None" = None
 
     @property
-    def zones(self) -> List["ActronAirZone"]:
+    def zones(self) -> list["ActronAirZone"]:
         """Get the actual zone objects assigned to this peripheral.
 
         Returns:
@@ -63,7 +65,7 @@ class ActronAirPeripheral(BaseModel):
         return result
 
     @classmethod
-    def from_peripheral_data(cls, peripheral_data: Dict[str, Any]) -> "ActronAirPeripheral":
+    def from_peripheral_data(cls, peripheral_data: dict[str, Any]) -> "ActronAirPeripheral":
         """Create a peripheral instance from raw peripheral data.
 
         Args:
@@ -72,22 +74,32 @@ class ActronAirPeripheral(BaseModel):
         Returns:
             ActronAirPeripheral instance with extracted sensor data
 
+        Raises:
+            ValueError: If peripheral_data is None or empty
+
         """
+        if not peripheral_data:
+            raise ValueError("peripheral_data cannot be None or empty")
+
         peripheral = cls.model_validate(peripheral_data)
 
-        sensor_inputs = peripheral_data.get("SensorInputs", {})
-        if sensor_inputs:
-            shtc1 = sensor_inputs.get("SHTC1", {})
-            if shtc1:
+        sensor_inputs = peripheral_data.get("SensorInputs")
+        if sensor_inputs and isinstance(sensor_inputs, dict):
+            shtc1 = sensor_inputs.get("SHTC1")
+            if shtc1 and isinstance(shtc1, dict):
                 if "Temperature_oC" in shtc1:
                     try:
-                        peripheral.temperature = float(shtc1["Temperature_oC"])
+                        temp_value = shtc1["Temperature_oC"]
+                        if isinstance(temp_value, (int, float)):
+                            peripheral.temperature = float(temp_value)
                     except (ValueError, TypeError) as e:
                         _LOGGER.warning("Invalid temperature value in peripheral data: %s", e)
                         peripheral.temperature = None
                 if "RelativeHumidity_pc" in shtc1:
                     try:
-                        peripheral.humidity = float(shtc1["RelativeHumidity_pc"])
+                        humidity_value = shtc1["RelativeHumidity_pc"]
+                        if isinstance(humidity_value, (int, float)):
+                            peripheral.humidity = float(humidity_value)
                     except (ValueError, TypeError) as e:
                         _LOGGER.warning("Invalid humidity value in peripheral data: %s", e)
                         peripheral.humidity = None
@@ -120,10 +132,10 @@ class ActronAirZone(BaseModel):
     exists: bool = Field(False, alias="NV_Exists")
     temperature_setpoint_cool_c: float = Field(0.0, alias="TemperatureSetpoint_Cool_oC")
     temperature_setpoint_heat_c: float = Field(0.0, alias="TemperatureSetpoint_Heat_oC")
-    sensors: Dict[str, ActronAirZoneSensor] = Field({}, alias="Sensors")
-    actual_humidity_pc: Optional[float] = None
-    zone_id: Optional[int] = None
-    _parent_status: Optional["ActronAirStatus"] = None
+    sensors: dict[str, ActronAirZoneSensor] = Field({}, alias="Sensors")
+    actual_humidity_pc: float | None = None
+    zone_id: int | None = None
+    _parent_status: "ActronAirStatus | None" = None
 
     @property
     def is_active(self) -> bool:
@@ -177,7 +189,7 @@ class ActronAirZone(BaseModel):
         return self.live_humidity_pc
 
     @property
-    def battery_level(self) -> Optional[float]:
+    def battery_level(self) -> float | None:
         """Get the battery level of the peripheral sensor assigned to this zone.
 
         Returns:
@@ -191,7 +203,7 @@ class ActronAirZone(BaseModel):
         return peripheral.battery_level if peripheral else None
 
     @property
-    def peripheral_temperature(self) -> Optional[float]:
+    def peripheral_temperature(self) -> float | None:
         """Get the temperature reading from the peripheral sensor assigned to this zone.
 
         Returns:
@@ -205,7 +217,7 @@ class ActronAirZone(BaseModel):
         return peripheral.temperature if peripheral else None
 
     @property
-    def peripheral_humidity(self) -> Optional[float]:
+    def peripheral_humidity(self) -> float | None:
         """Get the humidity reading from the peripheral sensor assigned to this zone.
 
         Returns:
@@ -219,7 +231,7 @@ class ActronAirZone(BaseModel):
         return peripheral.humidity if peripheral else None
 
     @property
-    def peripheral(self) -> Optional["ActronAirPeripheral"]:
+    def peripheral(self) -> "ActronAirPeripheral | None":
         """Get the peripheral device assigned to this zone.
 
         Returns:
@@ -272,7 +284,7 @@ class ActronAirZone(BaseModel):
         return target_setpoint - temp_variance
 
     # Command generation methods
-    def set_temperature_command(self, temperature: float) -> Dict[str, Any]:
+    def set_temperature_command(self, temperature: float) -> dict[str, Any]:
         """Create a command to set temperature for this zone based on the current AC mode.
 
         Args:
@@ -289,7 +301,7 @@ class ActronAirZone(BaseModel):
             raise ValueError("No parent AC status available to determine mode")
 
         mode = self._parent_status.user_aircon_settings.mode.upper()
-        command: Dict[str, Any] = {"type": "set-settings"}
+        command: dict[str, Any] = {"type": "set-settings"}
 
         if mode == "COOL":
             command[f"RemoteZoneInfo[{self.zone_id}].TemperatureSetpoint_Cool_oC"] = float(
@@ -318,7 +330,7 @@ class ActronAirZone(BaseModel):
 
         return {"command": command}
 
-    def set_enable_command(self, is_enabled: bool) -> Dict[str, Any]:
+    def set_enable_command(self, is_enabled: bool) -> dict[str, Any]:
         """Create a command to enable or disable this zone.
 
         Args:
@@ -348,24 +360,42 @@ class ActronAirZone(BaseModel):
         }
 
     def set_parent_status(self, parent: "ActronAirStatus", zone_index: int) -> None:
-        """Set reference to parent ActronStatus object and this zone's index."""
+        """Set reference to parent ActronStatus object and this zone's index.
+
+        Args:
+            parent: Parent ActronAirStatus instance
+            zone_index: Zone index (must be non-negative)
+
+        Raises:
+            ValueError: If zone_index is negative
+        """
+        if zone_index < 0:
+            raise ValueError(f"zone_index must be non-negative, got {zone_index}")
         self._parent_status = parent
         self.zone_id = zone_index
 
-    async def set_temperature(self, temperature: float) -> Dict[str, Any]:
+    async def set_temperature(self, temperature: float) -> None:
         """Set temperature for this zone based on the current AC mode and send the command.
 
         Args:
-            temperature: The temperature to set
+            temperature: The temperature to set (in degrees Celsius)
 
-        Returns:
-            API response dictionary
+        Raises:
+            ValueError: If zone_id is not set, temperature is invalid, or no API reference
 
         """
         if self.zone_id is None:
             raise ValueError("Zone index not set")
 
-        # Ensure temperature is within valid range
+        # Validate temperature is a reasonable value
+        if not isinstance(temperature, (int, float)):
+            raise ValueError(f"Temperature must be a number, got {type(temperature).__name__}")
+        if not -50 <= temperature <= 100:  # Reasonable physical limits
+            raise ValueError(
+                f"Temperature {temperature}°C is outside reasonable range (-50 to 100)"
+            )
+
+        # Ensure temperature is within valid range for this zone
         temperature = max(self.min_temp, min(self.max_temp, temperature))
 
         command = self.set_temperature_command(temperature)
@@ -374,19 +404,15 @@ class ActronAirZone(BaseModel):
             and self._parent_status.api
             and hasattr(self._parent_status, "serial_number")
         ):
-            return await self._parent_status.api.send_command(
-                self._parent_status.serial_number, command
-            )
-        raise ValueError("No API reference available to send command")
+            await self._parent_status.api.send_command(self._parent_status.serial_number, command)
+        else:
+            raise ValueError("No API reference available to send command")
 
-    async def enable(self, is_enabled: bool = True) -> Dict[str, Any]:
+    async def enable(self, is_enabled: bool = True) -> None:
         """Enable or disable this zone and send the command.
 
         Args:
             is_enabled: True to enable, False to disable
-
-        Returns:
-            API response dictionary
 
         """
         command = self.set_enable_command(is_enabled)
@@ -395,7 +421,6 @@ class ActronAirZone(BaseModel):
             and self._parent_status.api
             and hasattr(self._parent_status, "serial_number")
         ):
-            return await self._parent_status.api.send_command(
-                self._parent_status.serial_number, command
-            )
-        raise ValueError("No API reference available to send command")
+            await self._parent_status.api.send_command(self._parent_status.serial_number, command)
+        else:
+            raise ValueError("No API reference available to send command")
