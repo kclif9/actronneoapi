@@ -17,9 +17,7 @@ class ActronAirSystemInfo(BaseModel):
     """
 
     serial: str = Field(..., description="System serial number")
-    type: str | None = Field(
-        None, description="System type (e.g., 'standard', 'NX-Gen', 'aconnect')"
-    )
+    type: str | None = Field(None, description="System type (e.g., 'standard', 'NX-Gen')")
     links: dict[str, Any] = Field(default_factory=dict, alias="_links")
 
     class Config:

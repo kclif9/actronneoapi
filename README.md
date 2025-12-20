@@ -58,7 +58,6 @@ api = ActronAirAPI(refresh_token="your_token")
 # Or explicitly specify platform
 api = ActronAirAPI(refresh_token="your_token", platform="neo")      # Neo platform
 api = ActronAirAPI(refresh_token="your_token", platform="que")      # NX-Gen platform
-api = ActronAirAPI(refresh_token="your_token", platform="aconnect") # ACM-2 platform
 ```
 
 ---

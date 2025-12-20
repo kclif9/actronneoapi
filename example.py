@@ -15,9 +15,9 @@ Environment Variables:
     ACTRON_DEMO_CONTROLS    - Set to 'true' to enable control demonstrations
 
 Platform Support:
-    The API supports Neo, Que (NX-Gen), and Actron Connect (ACM-2) platforms.
+    The API supports Neo and Que (NX-Gen) platforms.
     The platform is automatically detected based on your system type.
-    You can explicitly specify the platform: ActronAirAPI(platform="neo|que|aconnect")
+    You can explicitly specify the platform: ActronAirAPI(platform="neo|que")
 
 The example will guide you through authentication and then display your AC system
 information. Control demonstrations are disabled by default to avoid accidentally
