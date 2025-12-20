@@ -80,7 +80,7 @@ class TestZoneAsyncSetTemperature:
         """Test setting zone temperature with API reference."""
         result = await zone_with_api.set_temperature(24.0)
 
-        assert result == {"success": True}
+        assert result is None  # Commands return None on success
         assert mock_api.last_serial == "TEST123"
         assert mock_api.last_command["command"]["type"] == "set-settings"
 
@@ -89,13 +89,13 @@ class TestZoneAsyncSetTemperature:
         """Test temperature clamping to zone limits."""
         # Try to set below minimum
         result = await zone_with_api.set_temperature(10.0)
-        assert result == {"success": True}
+        assert result is None  # Commands return None on success
         # Command should be sent successfully
         assert mock_api.last_command is not None
 
         # Try to set above maximum
         result = await zone_with_api.set_temperature(35.0)
-        assert result == {"success": True}
+        assert result is None  # Commands return None on success
         assert mock_api.last_command is not None
 
     @pytest.mark.asyncio
@@ -126,7 +126,7 @@ class TestZoneAsyncEnable:
         """Test enabling zone with API reference."""
         result = await zone_with_api.enable(True)
 
-        assert result == {"success": True}
+        assert result is None  # Commands return None on success
         assert mock_api.last_serial == "TEST123"
         assert mock_api.last_command["command"]["type"] == "set-settings"
         # Zone 0 should be enabled (True)
@@ -137,7 +137,7 @@ class TestZoneAsyncEnable:
         """Test disabling zone with API reference."""
         result = await zone_with_api.enable(False)
 
-        assert result == {"success": True}
+        assert result is None  # Commands return None on success
         assert mock_api.last_serial == "TEST123"
         # Zone 0 should be disabled (False)
         assert mock_api.last_command["command"]["UserAirconSettings.EnabledZones"][0] is False

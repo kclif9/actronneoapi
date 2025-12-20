@@ -59,7 +59,7 @@ class TestSettingsAsyncSetSystemMode:
         """Test setting system mode with API reference."""
         result = await settings_with_api.set_system_mode("HEAT")
 
-        assert result == {"success": True}
+        assert result is None  # Commands return None on success
         assert mock_api.last_serial == "TEST123"
         assert mock_api.last_command["command"]["UserAirconSettings.Mode"] == "HEAT"
 
@@ -78,7 +78,7 @@ class TestSettingsAsyncSetFanMode:
         """Test setting fan mode with API reference."""
         result = await settings_with_api.set_fan_mode("HIGH")
 
-        assert result == {"success": True}
+        assert result is None  # Commands return None on success
         assert mock_api.last_serial == "TEST123"
         assert mock_api.last_command["command"]["UserAirconSettings.FanMode"] == "HIGH"
 
@@ -97,7 +97,7 @@ class TestSettingsAsyncSetContinuousMode:
         """Test enabling continuous mode with API reference."""
         result = await settings_with_api.set_continuous_mode(True)
 
-        assert result == {"success": True}
+        assert result is None  # Commands return None on success
         assert mock_api.last_serial == "TEST123"
         assert mock_api.last_command["command"]["UserAirconSettings.FanMode"] == "AUTO+CONT"
 
@@ -106,7 +106,7 @@ class TestSettingsAsyncSetContinuousMode:
         """Test disabling continuous mode with API reference."""
         result = await settings_with_api.set_continuous_mode(False)
 
-        assert result == {"success": True}
+        assert result is None  # Commands return None on success
         assert mock_api.last_serial == "TEST123"
         assert mock_api.last_command["command"]["UserAirconSettings.FanMode"] == "AUTO"
 
@@ -125,7 +125,7 @@ class TestSettingsAsyncSetTemperature:
         """Test setting temperature with API reference."""
         result = await settings_with_api.set_temperature(24.0)
 
-        assert result == {"success": True}
+        assert result is None  # Commands return None on success
         assert mock_api.last_serial == "TEST123"
         # Temperature command uses mode-specific fields
         assert "UserAirconSettings.TemperatureSetpoint_Cool_oC" in mock_api.last_command["command"]
@@ -182,7 +182,7 @@ class TestSettingsAsyncSetAwayMode:
         """Test enabling away mode with API reference."""
         result = await settings_with_api.set_away_mode(True)
 
-        assert result == {"success": True}
+        assert result is None  # Commands return None on success
         assert mock_api.last_serial == "TEST123"
         assert mock_api.last_command["command"]["UserAirconSettings.AwayMode"] is True
 
@@ -191,7 +191,7 @@ class TestSettingsAsyncSetAwayMode:
         """Test disabling away mode with API reference."""
         result = await settings_with_api.set_away_mode(False)
 
-        assert result == {"success": True}
+        assert result is None  # Commands return None on success
         assert mock_api.last_serial == "TEST123"
         assert mock_api.last_command["command"]["UserAirconSettings.AwayMode"] is False
 
@@ -210,7 +210,7 @@ class TestSettingsAsyncSetQuietMode:
         """Test enabling quiet mode with API reference."""
         result = await settings_with_api.set_quiet_mode(True)
 
-        assert result == {"success": True}
+        assert result is None  # Commands return None on success
         assert mock_api.last_serial == "TEST123"
         assert mock_api.last_command["command"]["UserAirconSettings.QuietModeEnabled"] is True
 
@@ -219,7 +219,7 @@ class TestSettingsAsyncSetQuietMode:
         """Test disabling quiet mode with API reference."""
         result = await settings_with_api.set_quiet_mode(False)
 
-        assert result == {"success": True}
+        assert result is None  # Commands return None on success
         assert mock_api.last_serial == "TEST123"
         assert mock_api.last_command["command"]["UserAirconSettings.QuietModeEnabled"] is False
 
@@ -238,7 +238,7 @@ class TestSettingsAsyncSetTurboMode:
         """Test enabling turbo mode with API reference."""
         result = await settings_with_api.set_turbo_mode(True)
 
-        assert result == {"success": True}
+        assert result is None  # Commands return None on success
         assert mock_api.last_serial == "TEST123"
         assert mock_api.last_command["command"]["UserAirconSettings.TurboMode.Enabled"] is True
 
@@ -247,7 +247,7 @@ class TestSettingsAsyncSetTurboMode:
         """Test disabling turbo mode with API reference."""
         result = await settings_with_api.set_turbo_mode(False)
 
-        assert result == {"success": True}
+        assert result is None  # Commands return None on success
         assert mock_api.last_serial == "TEST123"
         assert mock_api.last_command["command"]["UserAirconSettings.TurboMode.Enabled"] is False
 

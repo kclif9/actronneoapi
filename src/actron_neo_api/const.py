@@ -1,10 +1,12 @@
 """Const definition for the Actron Air module."""
 
-PLATFORM_NEO = "neo"
-PLATFORM_QUE = "que"
-PLATFORM_ACONNECT = "aconnect"
+from typing import Final
 
-BASE_URL_NIMBUS = "https://nimbus.actronair.com.au"
-BASE_URL_QUE = "https://que.actronair.com.au"
-BASE_URL_ACONNECT = "https://que.actronair.com.au"
-BASE_URL_DEFAULT = BASE_URL_NIMBUS
+PLATFORM_NEO: Final[str] = "neo"
+PLATFORM_QUE: Final[str] = "que"
+PLATFORM_ACONNECT: Final[str] = "aconnect"
+
+BASE_URL_NIMBUS: Final[str] = "https://nimbus.actronair.com.au"
+BASE_URL_QUE: Final[str] = "https://que.actronair.com.au"
+BASE_URL_ACONNECT: Final[str] = "https://que.actronair.com.au"
+BASE_URL_DEFAULT: Final[str] = BASE_URL_NIMBUS

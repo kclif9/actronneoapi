@@ -48,12 +48,12 @@ async def oauth2_authentication_example() -> Tuple[Optional[str], Optional[str]]
             logger.info("Requesting device code...")
             device_code_response = await api.request_device_code()
 
-            device_code = device_code_response["device_code"]
-            user_code = device_code_response["user_code"]
-            verification_uri = device_code_response["verification_uri"]
-            verification_uri_complete = device_code_response["verification_uri_complete"]
-            expires_in = device_code_response["expires_in"]
-            interval = device_code_response["interval"]
+            device_code = device_code_response.device_code
+            user_code = device_code_response.user_code
+            verification_uri = device_code_response.verification_uri
+            verification_uri_complete = device_code_response.verification_uri_complete
+            expires_in = device_code_response.expires_in
+            interval = device_code_response.interval
 
             # Step 2: Display instructions to user
             print("\n" + "=" * 60)
@@ -130,11 +130,10 @@ async def api_usage_example(refresh_token: str) -> None:
 
         # Work with the first system
         system = systems[0]
-        serial = system.get("serial")
-        family = system.get("family")
-        name = system.get("name", "Unknown System")
+        serial = system.serial
+        name = getattr(system, "name", "Unknown System") or f"System {serial}"
 
-        logger.info("Working with system: %s (Serial: %s)", name, serial)
+        logger.info("Working with system: %s (Serial: %s, Type: %s)", name, serial, system.type)
 
         # Get the typed status object
         if not serial:
@@ -151,7 +150,7 @@ async def api_usage_example(refresh_token: str) -> None:
             print("=" * 60)
             print(f"System Name: {name}")
             print(f"Serial: {serial}")
-            print(f"Family: {family}")
+            print(f"Type: {system.type}")
             print("Status: Events API not accessible - limited information available")
             print("=" * 60)
         else:

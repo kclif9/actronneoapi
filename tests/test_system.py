@@ -32,7 +32,7 @@ class TestACSystemSetMode:
         """Test setting AC mode to COOL."""
         result = await ac_system_with_api.set_system_mode("COOL")
 
-        assert result == {"success": True}
+        assert result is None  # Commands return None on success
         assert mock_api.last_serial == "TEST123"
         assert mock_api.last_command["command"]["UserAirconSettings.isOn"] is True
         assert mock_api.last_command["command"]["UserAirconSettings.Mode"] == "COOL"
@@ -42,7 +42,7 @@ class TestACSystemSetMode:
         """Test setting AC mode to OFF."""
         result = await ac_system_with_api.set_system_mode("OFF")
 
-        assert result == {"success": True}
+        assert result is None  # Commands return None on success
         assert mock_api.last_serial == "TEST123"
         assert mock_api.last_command["command"]["UserAirconSettings.isOn"] is False
         # Mode should not be set when turning off

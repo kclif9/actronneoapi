@@ -1,11 +1,45 @@
 """System models for Actron Air API."""
 
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from typing import TYPE_CHECKING, Any
+
+from pydantic import BaseModel, Field, field_validator
 
 if TYPE_CHECKING:
     from .status import ActronAirStatus
+
+
+class ActronAirSystemInfo(BaseModel):
+    """Basic system information from get_ac_systems API.
+
+    Contains system identification and API endpoint links.
+    """
+
+    serial: str = Field(..., description="System serial number")
+    type: str | None = Field(
+        None, description="System type (e.g., 'standard', 'NX-Gen', 'aconnect')"
+    )
+    links: dict[str, Any] = Field(default_factory=dict, alias="_links")
+
+    class Config:
+        """Pydantic configuration."""
+
+        populate_by_name = True
+
+    @field_validator("serial")
+    @classmethod
+    def normalize_serial(cls, v: str) -> str:
+        """Normalize serial number to lowercase.
+
+        Args:
+            v: Serial number string
+
+        Returns:
+            Lowercase serial number
+
+        """
+        return v.lower() if v else v
 
 
 class ActronAirOutdoorUnit(BaseModel):
@@ -15,15 +49,15 @@ class ActronAirOutdoorUnit(BaseModel):
     compressor speed, power consumption, and operational status.
     """
 
-    model_number: Optional[str] = str(Field(None, alias="ModelNumber"))
-    serial_number: Optional[str] = Field(None, alias="SerialNumber")
-    software_version: Optional[str] = str(Field(None, alias="SoftwareVersion"))
-    comp_speed: Optional[float] = Field(None, alias="CompSpeed")
-    comp_power: Optional[int] = Field(None, alias="CompPower")
-    comp_running_pwm: Optional[int] = Field(None, alias="CompRunningPWM")
-    compressor_on: Optional[bool] = Field(None, alias="CompressorOn")
-    amb_temp: Optional[float] = Field(None, alias="AmbTemp")
-    family: Optional[str] = Field(None, alias="Family")
+    model_number: str | None = str(Field(None, alias="ModelNumber"))
+    serial_number: str | None = Field(None, alias="SerialNumber")
+    software_version: str | None = str(Field(None, alias="SoftwareVersion"))
+    comp_speed: float | None = Field(None, alias="CompSpeed")
+    comp_power: int | None = Field(None, alias="CompPower")
+    comp_running_pwm: int | None = Field(None, alias="CompRunningPWM")
+    compressor_on: bool | None = Field(None, alias="CompressorOn")
+    amb_temp: float | None = Field(None, alias="AmbTemp")
+    family: str | None = Field(None, alias="Family")
 
 
 class ActronAirLiveAircon(BaseModel):
@@ -38,11 +72,9 @@ class ActronAirLiveAircon(BaseModel):
     compressor_capacity: int = Field(0, alias="CompressorCapacity")
     fan_rpm: int = Field(0, alias="FanRPM")
     defrost: bool = Field(False, alias="Defrost")
-    compressor_chasing_temperature: Optional[float] = Field(
-        None, alias="CompressorChasingTemperature"
-    )
-    compressor_live_temperature: Optional[float] = Field(None, alias="CompressorLiveTemperature")
-    outdoor_unit: Optional[ActronAirOutdoorUnit] = Field(None, alias="OutdoorUnit")
+    compressor_chasing_temperature: float | None = Field(None, alias="CompressorChasingTemperature")
+    compressor_live_temperature: float | None = Field(None, alias="CompressorLiveTemperature")
+    outdoor_unit: ActronAirOutdoorUnit | None = Field(None, alias="OutdoorUnit")
 
 
 class ActronAirMasterInfo(BaseModel):
@@ -80,8 +112,8 @@ class ActronAirACSystem(BaseModel):
     master_serial: str = Field("", alias="MasterSerial")
     master_wc_firmware_version: str = Field("", alias="MasterWCFirmwareVersion")
     system_name: str = Field("", alias="SystemName")
-    outdoor_unit: Optional[ActronAirOutdoorUnit] = Field(None, alias="OutdoorUnit")
-    _parent_status: Optional["ActronAirStatus"] = None
+    outdoor_unit: ActronAirOutdoorUnit | None = Field(None, alias="OutdoorUnit")
+    _parent_status: "ActronAirStatus | None" = None
 
     def set_parent_status(self, parent: "ActronAirStatus") -> None:
         """Set reference to parent ActronStatus object.
@@ -92,26 +124,36 @@ class ActronAirACSystem(BaseModel):
         """
         self._parent_status = parent
 
-    async def set_system_mode(self, mode: str) -> Dict[str, Any]:
+    async def set_system_mode(self, mode: str) -> None:
         """Set the system mode for this AC unit.
 
         Args:
             mode: Mode to set ('AUTO', 'COOL', 'FAN', 'HEAT', 'OFF')
                  Use 'OFF' to turn the system off.
 
-        Returns:
-            API response dictionary
+        Raises:
+            ValueError: If mode is invalid or no API reference available
 
         """
+        if not mode or not isinstance(mode, str):
+            raise ValueError("Mode must be a non-empty string")
+
+        valid_modes = {"AUTO", "COOL", "FAN", "HEAT", "OFF"}
+        mode_upper = mode.upper().strip()
+        if mode_upper not in valid_modes:
+            raise ValueError(
+                f"Invalid mode '{mode}'. Must be one of: {', '.join(sorted(valid_modes))}"
+            )
+
         if not self._parent_status or not self._parent_status.api:
             raise ValueError("No API reference available")
 
         # Determine if system should be on or off based on mode
-        is_on = mode.upper() != "OFF"
+        is_on = mode_upper != "OFF"
 
         command = {"command": {"UserAirconSettings.isOn": is_on, "type": "set-settings"}}
 
         if is_on:
-            command["command"]["UserAirconSettings.Mode"] = mode
+            command["command"]["UserAirconSettings.Mode"] = mode_upper
 
-        return await self._parent_status.api.send_command(self.master_serial, command)
+        await self._parent_status.api.send_command(self.master_serial, command)

@@ -44,10 +44,10 @@ class TestActronAirOAuth2DeviceCodeAuth:
 
             result = await auth.request_device_code()
 
-            assert result["device_code"] == "test_device_code"
-            assert result["user_code"] == "TEST123"
-            assert result["verification_uri"] == "https://example.com/device"
-            assert "verification_uri_complete" in result
+            assert result.device_code == "test_device_code"
+            assert result.user_code == "TEST123"
+            assert result.verification_uri == "https://example.com/device"
+            assert result.verification_uri_complete is not None
 
     @pytest.mark.asyncio
     async def test_poll_for_token_success(self):
@@ -67,7 +67,7 @@ class TestActronAirOAuth2DeviceCodeAuth:
 
             result = await auth.poll_for_token("test_device_code")
 
-            assert result["access_token"] == "test_access_token"
+            assert result.access_token == "test_access_token"
             assert auth.access_token == "test_access_token"
             assert auth.refresh_token == "test_refresh_token"
             assert auth.is_token_valid
@@ -87,7 +87,7 @@ class TestActronAirOAuth2DeviceCodeAuth:
             mock_post.return_value.__aenter__.return_value.status = 400
             mock_post.return_value.__aenter__.return_value.json.return_value = mock_response
 
-            result = await auth.poll_for_token("test_device_code", interval=1, timeout=1)
+            result = await auth.poll_for_token("test_device_code", interval=1, timeout=10)
 
             assert result is None
 
@@ -233,7 +233,9 @@ class TestActronAirOAuth2DeviceCodeAuth:
         mock_session.__aexit__ = AsyncMock(return_value=None)
 
         with patch("aiohttp.ClientSession", return_value=mock_session):
-            with pytest.raises(ActronAirAuthError, match="Missing required field: device_code"):
+            with pytest.raises(
+                ActronAirAuthError, match="Missing required fields in response: device_code"
+            ):
                 await auth.request_device_code()
 
     @pytest.mark.asyncio
@@ -294,7 +296,7 @@ class TestActronAirOAuth2DeviceCodeAuth:
         mock_session.__aexit__ = AsyncMock(return_value=None)
 
         with patch("aiohttp.ClientSession", return_value=mock_session):
-            result = await auth.poll_for_token("test_device", interval=0.01, timeout=0.1)
+            result = await auth.poll_for_token("test_device", interval=1, timeout=10)
             assert result is None  # Timeout
 
     @pytest.mark.asyncio
@@ -421,7 +423,7 @@ class TestActronAirOAuth2DeviceCodeAuth:
         mock_session.__aexit__ = AsyncMock(return_value=None)
 
         with patch("aiohttp.ClientSession", return_value=mock_session):
-            result = await auth.poll_for_token("test_device", interval=0.01, timeout=0.1)
+            result = await auth.poll_for_token("test_device", interval=1, timeout=10)
             assert result is None  # Should timeout
 
     @pytest.mark.asyncio
@@ -485,7 +487,9 @@ class TestActronAirOAuth2DeviceCodeAuth:
         mock_session.__aexit__ = AsyncMock(return_value=None)
 
         with patch("aiohttp.ClientSession", return_value=mock_session):
-            with pytest.raises(ActronAirAuthError, match="Access token missing in response"):
+            with pytest.raises(
+                ActronAirAuthError, match="Access token missing or invalid in response"
+            ):
                 await auth.refresh_access_token()
 
     @pytest.mark.asyncio
@@ -636,7 +640,9 @@ class TestActronAirOAuth2DeviceCodeAuth:
         mock_session.__aexit__ = AsyncMock(return_value=None)
 
         with patch("aiohttp.ClientSession", return_value=mock_session):
-            with pytest.raises(ActronAirAuthError, match="Access token missing in response"):
+            with pytest.raises(
+                ActronAirAuthError, match="Access token missing or invalid in response"
+            ):
                 await auth.ensure_token_valid()
 
 

@@ -219,7 +219,9 @@ class TestOAuthEdgeCases:
         )
 
         with patch("aiohttp.ClientSession", return_value=mock_aiohttp_session(mock_resp)):
-            with pytest.raises(ActronAirAuthError, match="Access token missing in response"):
+            with pytest.raises(
+                ActronAirAuthError, match="Access token missing or invalid in response"
+            ):
                 await auth.refresh_access_token()
 
     @pytest.mark.asyncio
