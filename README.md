@@ -1,5 +1,10 @@
 # ActronAirAPI
 
+[![CI](https://github.com/kclif9/actronneoapi/actions/workflows/ci.yml/badge.svg)](https://github.com/kclif9/actronneoapi/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/kclif9/actronneoapi/graph/badge.svg?token=EAL2PMIL5M)](https://codecov.io/gh/kclif9/actronneoapi)
+[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 The `ActronAirAPI` library provides an interface to communicate with Actron Air systems, enabling integration with Home Assistant or other platforms. This Python library offers methods for authentication, token management, and interacting with AC systems, zones, and settings.
 
 ---
