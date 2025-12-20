@@ -10,7 +10,7 @@ authors = [
 ]
 description="Python API wrapper for the Actron Neo API."
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.12"
 classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: MIT License",

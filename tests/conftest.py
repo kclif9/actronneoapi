@@ -188,3 +188,61 @@ def mock_session(mock_aiohttp_response):
     session.request = MagicMock(return_value=mock_ctx)
 
     return session
+
+
+@pytest.fixture
+def mock_api():
+    """Create a reusable mock API for testing async methods."""
+
+    class MockAPI:
+        def __init__(self):
+            self.last_command = None
+            self.last_serial = None
+
+        async def send_command(self, serial_number, command):
+            self.last_serial = serial_number
+            self.last_command = command
+            return {"success": True}
+
+    return MockAPI()
+
+
+@pytest.fixture
+def mock_aiohttp_session():
+    """Factory for creating properly mocked aiohttp ClientSession.
+
+    This fixture provides a helper function to create properly structured
+    async context manager mocks for aiohttp.ClientSession, reducing
+    repetitive boilerplate in OAuth and API tests.
+
+    Returns:
+        Callable that accepts a mock response and returns configured session mock
+    """
+
+    def _create_session(mock_response: AsyncMock):
+        """Create a mocked session with proper async context managers.
+
+        Args:
+            mock_response: AsyncMock object with status, json, text attributes
+
+        Returns:
+            Configured session mock ready for use with aiohttp.ClientSession patch
+        """
+        # Create async context manager for HTTP method (post/get/etc)
+        mock_method = AsyncMock()
+        mock_method.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_method.__aexit__ = AsyncMock(return_value=None)
+
+        # Create session instance with methods
+        mock_session_instance = AsyncMock()
+        mock_session_instance.post = MagicMock(return_value=mock_method)
+        mock_session_instance.get = MagicMock(return_value=mock_method)
+
+        # Create session context manager
+        mock_session = AsyncMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session_instance)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+
+        return mock_session
+
+    return _create_session

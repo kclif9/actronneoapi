@@ -216,11 +216,11 @@ def method(self, param: str, optional: bool = False) -> Dict[str, Any]:
 
 ### 9. Version Compatibility
 
-- **Python**: >= 3.8 (maintain backward compatibility)
+- **Python**: >= 3.12 (Home Assistant 2024.2+ requirement)
 - **Dependencies**:
   - `aiohttp >= 3.8.0`: Async HTTP client
   - `pydantic >= 2.0.0`: Data validation
-- Test against multiple Python versions (3.8, 3.9, 3.10, 3.11, 3.12)
+- Test against Python versions 3.12 and 3.13 (current and upcoming HA versions)
 
 ### 10. API Client Best Practices
 
