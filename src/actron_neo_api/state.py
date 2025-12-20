@@ -63,13 +63,13 @@ class StateManager:
         return self.status.get(serial_number.lower())
 
     def process_status_update(
-        self, serial_number: str, status_data: dict[str, Any]
+        self, serial_number: str, status_data: dict[str, Any] | ActronAirStatus
     ) -> ActronAirStatus:
         """Process a full status update for a system.
 
         Args:
             serial_number: Serial number of the AC system
-            status_data: Complete status data from API
+            status_data: Complete status data from API or ActronAirStatus object
 
         Returns:
             Updated ActronAirStatus object
@@ -79,8 +79,13 @@ class StateManager:
             and notifies all registered observers.
 
         """
-        status = ActronAirStatus.model_validate(status_data)
-        status.parse_nested_components()
+        if isinstance(status_data, ActronAirStatus):
+            status = status_data
+            raw_data = status.last_known_state
+        else:
+            status = ActronAirStatus.model_validate(status_data)
+            status.parse_nested_components()
+            raw_data = status_data
 
         # Normalize serial number to lowercase for consistent storage
         serial_number = serial_number.lower()
@@ -98,7 +103,7 @@ class StateManager:
         # Notify observers - don't let observer errors break the update
         for observer in self._observers:
             try:
-                observer(serial_number, status_data)
+                observer(serial_number, raw_data)
             except Exception as e:
                 _LOGGER.warning(
                     "Observer callback failed for %s: %s",
