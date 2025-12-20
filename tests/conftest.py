@@ -40,7 +40,7 @@ def sample_systems_response_neo(sample_system_neo) -> Dict[str, Any]:
 
 
 @pytest.fixture
-def sample_systems_response_que(sample_system_que_nxgen) -> Dict[str, Any]:
+def sample_systems_response_que(sample_system_que_nxgen: Dict[str, Any]) -> Dict[str, Any]:
     """Sample get_ac_systems response with NX Gen system."""
     return {"_embedded": {"ac-system": [sample_system_que_nxgen]}}
 
@@ -124,7 +124,7 @@ def sample_command_response() -> Dict[str, Any]:
 
 # Mock OAuth2 Fixtures
 @pytest.fixture
-def mock_oauth():
+def mock_oauth() -> MagicMock:
     """Mock OAuth2 authentication handler."""
     oauth = MagicMock()
     oauth.access_token = "test_access_token"
@@ -141,10 +141,10 @@ def mock_oauth():
 
 # Mock API Response Fixtures
 @pytest.fixture
-def mock_aiohttp_response():
+def mock_aiohttp_response() -> Any:
     """Factory for creating mock aiohttp responses."""
 
-    def _create_response(status=200, json_data=None, text=""):
+    def _create_response(status: int = 200, json_data: Any = None, text: str = "") -> AsyncMock:
         mock_resp = AsyncMock()
         mock_resp.status = status
         mock_resp.json = AsyncMock(return_value=json_data or {})
@@ -155,7 +155,7 @@ def mock_aiohttp_response():
 
 
 @pytest.fixture
-def mock_session(mock_aiohttp_response):
+def mock_session(mock_aiohttp_response: Any) -> MagicMock:
     """Mock aiohttp ClientSession."""
     session = MagicMock()
     session.closed = False
@@ -172,15 +172,15 @@ def mock_session(mock_aiohttp_response):
 
 
 @pytest.fixture
-def mock_api():
+def mock_api() -> Any:
     """Create a reusable mock API for testing async methods."""
 
     class MockAPI:
-        def __init__(self):
-            self.last_command = None
-            self.last_serial = None
+        def __init__(self) -> None:
+            self.last_command: Any = None
+            self.last_serial: Any = None
 
-        async def send_command(self, serial_number, command):
+        async def send_command(self, serial_number: str, command: Dict[str, Any]) -> Dict[str, Any]:
             self.last_serial = serial_number
             self.last_command = command
             return {"success": True}
@@ -189,7 +189,7 @@ def mock_api():
 
 
 @pytest.fixture
-def mock_aiohttp_session():
+def mock_aiohttp_session() -> Any:
     """Factory for creating properly mocked aiohttp ClientSession.
 
     This fixture provides a helper function to create properly structured
@@ -200,7 +200,7 @@ def mock_aiohttp_session():
         Callable that accepts a mock response and returns configured session mock
     """
 
-    def _create_session(mock_response: AsyncMock):
+    def _create_session(mock_response: AsyncMock) -> AsyncMock:
         """Create a mocked session with proper async context managers.
 
         Args:

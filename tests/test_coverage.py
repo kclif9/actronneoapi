@@ -1,6 +1,7 @@
 """Tests to achieve 100% coverage for remaining uncovered lines."""
 
 import time
+from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -14,7 +15,7 @@ class TestActronAPIContextManagerExit:
     """Test __aexit__ method (line 260)."""
 
     @pytest.mark.asyncio
-    async def test_aexit_closes_session(self):
+    async def test_aexit_closes_session(self) -> None:
         """Test __aexit__ calls close on context manager exit."""
         api = ActronAirAPI()
         # Create a mock session
@@ -35,7 +36,7 @@ class TestActronAPIAuthErrors:
     """Test authentication error paths (lines 349-361)."""
 
     @pytest.mark.asyncio
-    async def test_401_refresh_token_network_error(self):
+    async def test_401_refresh_token_network_error(self) -> None:
         """Test 401 response with refresh token that fails with network error."""
         api = ActronAirAPI(refresh_token="test_refresh")
 
@@ -62,7 +63,7 @@ class TestActronAPIAuthErrors:
         mock_session.request = lambda *args, **kwargs: mock_context
 
         # Patch _get_session to return our mock
-        async def mock_get_session():
+        async def mock_get_session() -> AsyncMock:
             return mock_session
 
         api._get_session = mock_get_session
@@ -76,7 +77,7 @@ class TestActronAPIAuthErrors:
 class TestSettingsTurboUnsupported:
     """Test turbo_supported property edge case (line 54)."""
 
-    def test_turbo_supported_false_for_bool_false(self):
+    def test_turbo_supported_false_for_bool_false(self) -> None:
         """Test turbo_supported returns False when turbo_mode_enabled is bool False."""
         status_data = {
             "isOnline": True,
@@ -98,7 +99,7 @@ class TestSettingsTurboUnsupported:
 class TestStatusPeripheralEdgeCases:
     """Test peripheral processing edge cases (lines 218-220, 236-249)."""
 
-    def test_process_peripherals_with_invalid_structure(self):
+    def test_process_peripherals_with_invalid_structure(self) -> None:
         """Test peripheral processing with invalid nested structure."""
         status_data = {
             "isOnline": True,
@@ -118,7 +119,7 @@ class TestStatusPeripheralEdgeCases:
         status.parse_nested_components()
         assert len(status.peripherals) == 0
 
-    def test_map_peripheral_data_zone_out_of_range(self):
+    def test_map_peripheral_data_zone_out_of_range(self) -> None:
         """Test mapping peripheral data when zone index is out of range."""
         status_data = {
             "isOnline": True,
@@ -154,7 +155,7 @@ class TestStatusPeripheralEdgeCases:
         assert len(status.peripherals) == 1
         assert status.remote_zone_info[0].actual_humidity_pc is None
 
-    def test_map_peripheral_data_updates_zone_humidity(self):
+    def test_map_peripheral_data_updates_zone_humidity(self) -> None:
         """Test _map_peripheral_data_to_zones updates actual_humidity_pc."""
         status_data = {
             "isOnline": True,
@@ -200,7 +201,7 @@ class TestOAuthEdgeCases:
     """Test OAuth edge cases (lines 254, 305)."""
 
     @pytest.mark.asyncio
-    async def test_refresh_token_none_check(self, mock_aiohttp_session):
+    async def test_refresh_token_none_check(self, mock_aiohttp_session: Any) -> None:
         """Test refresh check for None access_token and token_expiry after refresh."""
         from actron_neo_api.oauth import ActronAirOAuth2DeviceCodeAuth
 
@@ -225,7 +226,7 @@ class TestOAuthEdgeCases:
                 await auth.refresh_access_token()
 
     @pytest.mark.asyncio
-    async def test_ensure_token_valid_no_token_raises(self):
+    async def test_ensure_token_valid_no_token_raises(self) -> None:
         """Test ensure_token_valid raises when no token available."""
         from actron_neo_api.oauth import ActronAirOAuth2DeviceCodeAuth
 
@@ -240,7 +241,7 @@ class TestOAuthEdgeCases:
 class TestStateManagerPeripheralMapping:
     """Test state manager peripheral mapping (line 129)."""
 
-    def test_map_peripheral_humidity_skips_none(self):
+    def test_map_peripheral_humidity_skips_none(self) -> None:
         """Test that peripheral humidity mapping skips None humidity values."""
         from actron_neo_api.state import StateManager
 
@@ -282,7 +283,7 @@ class TestStateManagerPeripheralMapping:
 class TestZoneEdgeCases:
     """Test zone property edge cases."""
 
-    def test_is_active_zone_id_out_of_range(self):
+    def test_is_active_zone_id_out_of_range(self) -> None:
         """Test is_active when zone_id is out of range (line 144)."""
         from actron_neo_api.models import ActronAirZone
 
@@ -307,7 +308,7 @@ class TestZoneEdgeCases:
         # Should return False due to out of range
         assert zone.is_active is False
 
-    def test_peripheral_temperature_no_parent(self):
+    def test_peripheral_temperature_no_parent(self) -> None:
         """Test peripheral_temperature returns None without parent (line 202)."""
         from actron_neo_api.models import ActronAirZone
 
@@ -315,7 +316,7 @@ class TestZoneEdgeCases:
         # No parent status
         assert zone.peripheral_temperature is None
 
-    def test_peripheral_humidity_no_parent(self):
+    def test_peripheral_humidity_no_parent(self) -> None:
         """Test peripheral_humidity returns None without parent (line 216)."""
         from actron_neo_api.models import ActronAirZone
 
@@ -323,7 +324,7 @@ class TestZoneEdgeCases:
         # No parent status
         assert zone.peripheral_humidity is None
 
-    def test_peripheral_no_parent(self):
+    def test_peripheral_no_parent(self) -> None:
         """Test peripheral property returns None without parent (line 230)."""
         from actron_neo_api.models import ActronAirZone
 
@@ -331,7 +332,7 @@ class TestZoneEdgeCases:
         # No parent status
         assert zone.peripheral is None
 
-    def test_max_temp_returns_clamped_value(self):
+    def test_max_temp_returns_clamped_value(self) -> None:
         """Test max_temp returns clamped value when limit is lower (line 251)."""
         status_data = {
             "isOnline": True,
@@ -362,7 +363,7 @@ class TestZoneEdgeCases:
         # Should return the limit instead of target + variance
         assert status.remote_zone_info[0].max_temp == 28.0
 
-    def test_min_temp_returns_clamped_value(self):
+    def test_min_temp_returns_clamped_value(self) -> None:
         """Test min_temp returns clamped value when limit is higher (line 271)."""
         status_data = {
             "isOnline": True,
@@ -394,7 +395,7 @@ class TestZoneEdgeCases:
         assert status.remote_zone_info[0].min_temp == 16.0
 
     @pytest.mark.asyncio
-    async def test_set_temperature_no_api_raises(self):
+    async def test_set_temperature_no_api_raises(self) -> None:
         """Test set_temperature raises without API (line 380)."""
         status_data = {
             "isOnline": True,
@@ -419,7 +420,7 @@ class TestZoneEdgeCases:
             await status.remote_zone_info[0].set_temperature(24.0)
 
     @pytest.mark.asyncio
-    async def test_enable_no_api_raises(self, mock_api):
+    async def test_enable_no_api_raises(self, mock_api: Any) -> None:
         """Test enable raises without API (line 401)."""
         status_data = {
             "isOnline": True,
