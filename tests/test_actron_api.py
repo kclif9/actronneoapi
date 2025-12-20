@@ -43,7 +43,7 @@ class TestActronAirAPIInitialization:
     def test_init_aconnect_platform_explicit(self):
         """Test explicit Actron Connect platform selection."""
         api = ActronAirAPI(platform="aconnect")
-        assert api.base_url == "https://actron-connect.actronair.com.au"
+        assert api.base_url == "https://que.actronair.com.au"
         assert api.platform == "aconnect"
         assert api._auto_manage_base_url is False
 
@@ -139,7 +139,7 @@ class TestActronAirAPIPlatformManagement:
         """Test auto-switch to Actron Connect platform for ACM-2 systems."""
         api = ActronAirAPI()  # Auto-detect enabled
         api._maybe_update_base_url_from_systems([sample_system_aconnect])
-        assert api.base_url == "https://actron-connect.actronair.com.au"
+        assert api.base_url == "https://que.actronair.com.au"
         assert api.platform == "aconnect"
 
     def test_maybe_update_base_url_priority_aconnect_over_que(
@@ -148,7 +148,7 @@ class TestActronAirAPIPlatformManagement:
         """Test aconnect takes priority over que when both present."""
         api = ActronAirAPI()  # Auto-detect enabled
         api._maybe_update_base_url_from_systems([sample_system_que_nxgen, sample_system_aconnect])
-        assert api.base_url == "https://actron-connect.actronair.com.au"
+        assert api.base_url == "https://que.actronair.com.au"
         assert api.platform == "aconnect"
 
     def test_maybe_update_base_url_priority_que_over_neo(
