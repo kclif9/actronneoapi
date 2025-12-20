@@ -36,6 +36,28 @@ pip install actron-neo-api
 
 ---
 
+## Supported Platforms
+
+The library supports multiple Actron Air product lines:
+
+- **Neo**: Standard Actron Air systems (default platform)
+- **Que (NX-Gen)**: NX Gen systems using the Que platform
+- **Actron Connect (ACM-2)**: ACM-2 systems using the Actron Connect platform
+
+The API automatically detects the correct platform based on your system type. You can also explicitly specify the platform:
+
+```python
+# Auto-detect platform (recommended)
+api = ActronAirAPI(refresh_token="your_token")
+
+# Or explicitly specify platform
+api = ActronAirAPI(refresh_token="your_token", platform="neo")      # Neo platform
+api = ActronAirAPI(refresh_token="your_token", platform="que")      # NX-Gen platform
+api = ActronAirAPI(refresh_token="your_token", platform="aconnect") # ACM-2 platform
+```
+
+---
+
 ## Quick Start
 
 See `example.py` for a comprehensive demonstration including OAuth2 authentication and API usage.

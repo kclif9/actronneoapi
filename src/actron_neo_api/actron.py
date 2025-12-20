@@ -5,7 +5,15 @@ from typing import Any, Dict, List, Literal, Optional
 
 import aiohttp
 
-from .const import BASE_URL_DEFAULT, BASE_URL_NIMBUS, BASE_URL_QUE, PLATFORM_NEO, PLATFORM_QUE
+from .const import (
+    BASE_URL_ACONNECT,
+    BASE_URL_DEFAULT,
+    BASE_URL_NIMBUS,
+    BASE_URL_QUE,
+    PLATFORM_ACONNECT,
+    PLATFORM_NEO,
+    PLATFORM_QUE,
+)
 from .exceptions import ActronAirAPIError, ActronAirAuthError
 from .oauth import ActronAirOAuth2DeviceCodeAuth
 from .state import StateManager
@@ -22,27 +30,34 @@ class ActronAirAPI:
         self,
         oauth2_client_id: str = "home_assistant",
         refresh_token: Optional[str] = None,
-        platform: Optional[Literal["neo", "que"]] = None,
+        platform: Optional[Literal["neo", "que", "aconnect"]] = None,
     ):
         """Initialize the ActronAirAPI client with OAuth2 authentication.
 
         Args:
             oauth2_client_id: OAuth2 client ID for device code flow
             refresh_token: Optional refresh token for authentication
-            platform: Platform to use ('neo', 'que', or None for auto-detect).
+            platform: Platform to use ('neo', 'que', 'aconnect', or None for auto-detect).
             If None, enables auto-detection with Neo as the initial platform.
 
         """
         # Determine base URL from platform parameter
         if platform == PLATFORM_QUE:
             resolved_base_url = BASE_URL_QUE
+            self._platform = PLATFORM_QUE
             self._auto_manage_base_url = False
         elif platform == PLATFORM_NEO:
             resolved_base_url = BASE_URL_NIMBUS
+            self._platform = PLATFORM_NEO
+            self._auto_manage_base_url = False
+        elif platform == PLATFORM_ACONNECT:
+            resolved_base_url = BASE_URL_ACONNECT
+            self._platform = PLATFORM_ACONNECT
             self._auto_manage_base_url = False
         else:
             # Auto-detect with Neo as fallback (platform is None)
             resolved_base_url = BASE_URL_DEFAULT
+            self._platform = PLATFORM_NEO
             self._auto_manage_base_url = True
 
         self.base_url = resolved_base_url
@@ -71,15 +86,11 @@ class ActronAirAPI:
         """Get the current platform being used.
 
         Returns:
-            'neo' if using Nimbus platform, 'que' if using Que platform
+            'neo' if using Nimbus platform, 'que' if using Que platform,
+            'aconnect' if using Actron Connect platform
 
         """
-        if self.base_url == BASE_URL_NIMBUS:
-            return PLATFORM_NEO
-        elif self.base_url == BASE_URL_QUE:
-            return PLATFORM_QUE
-        else:
-            return "unknown"
+        return self._platform
 
     @property
     def authenticated_platform(self) -> Optional[str]:
@@ -139,18 +150,33 @@ class ActronAirAPI:
         system_type = str(system.get("type") or "").replace("-", "").lower()
         return system_type == "nxgen"
 
-    def _set_base_url(self, base_url: str) -> None:
-        """Update the base URL and preserve existing authentication tokens.
+    @staticmethod
+    def _is_aconnect_system(system: Dict[str, Any]) -> bool:
+        """Check if a system is an Actron Connect (ACM-2) type.
+
+        Args:
+            system: System dictionary containing type information
+
+        Returns:
+            True if the system is Actron Connect type, False otherwise
+
+        """
+        system_type = str(system.get("type") or "").replace("-", "").lower()
+        return system_type == "aconnect"
+
+    def _set_base_url(self, base_url: str, platform: str) -> None:
+        """Update the base URL and platform, preserving existing authentication tokens.
 
         Args:
             base_url: New base URL to switch to
+            platform: Platform identifier ('neo', 'que', 'aconnect')
 
         Note:
             This preserves tokens but they may not work if switching between
             incompatible platforms (Neo vs Que).
 
         """
-        if self.base_url == base_url:
+        if self.base_url == base_url and self._platform == platform:
             return
 
         # Preserve existing tokens
@@ -159,8 +185,9 @@ class ActronAirAPI:
         old_token_expiry = self.oauth2_auth.token_expiry
         old_authenticated_platform = self.oauth2_auth.authenticated_platform
 
-        # Update base URL and recreate OAuth2 handler to match new platform
+        # Update base URL and platform, recreate OAuth2 handler to match new platform
         self.base_url = base_url
+        self._platform = platform
         self.oauth2_auth = ActronAirOAuth2DeviceCodeAuth(base_url, self._oauth2_client_id)
 
         # Restore tokens
@@ -176,16 +203,27 @@ class ActronAirAPI:
             systems: List of AC systems to analyze
 
         Note:
-            Switches to QUE platform if any NX Gen systems are found,
-            otherwise uses NIMBUS platform.
+            Platform priority: Actron Connect > QUE (NX Gen) > NIMBUS (Neo).
+            Switches to the highest priority platform found in the systems list.
 
         """
         if not self._auto_manage_base_url or not systems:
             return
 
+        has_aconnect = any(self._is_aconnect_system(system) for system in systems)
         has_nx_gen = any(self._is_nx_gen_system(system) for system in systems)
-        target_base = BASE_URL_QUE if has_nx_gen else BASE_URL_NIMBUS
-        self._set_base_url(target_base)
+
+        if has_aconnect:
+            target_base = BASE_URL_ACONNECT
+            target_platform = PLATFORM_ACONNECT
+        elif has_nx_gen:
+            target_base = BASE_URL_QUE
+            target_platform = PLATFORM_QUE
+        else:
+            target_base = BASE_URL_NIMBUS
+            target_platform = PLATFORM_NEO
+
+        self._set_base_url(target_base, target_platform)
 
     async def _ensure_initialized(self) -> None:
         """Ensure the API is initialized with valid tokens."""
