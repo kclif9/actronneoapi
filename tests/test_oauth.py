@@ -694,7 +694,3 @@ class TestActronAirAPIWithOAuth2:
 
         assert api.access_token == "test_access_token"
         assert api.refresh_token_value == "test_refresh_token"
-
-
-if __name__ == "__main__":
-    pytest.main([__file__])
