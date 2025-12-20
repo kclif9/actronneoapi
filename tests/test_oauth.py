@@ -1,6 +1,7 @@
 """Test OAuth2 device code flow implementation."""
 
 import time
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiohttp
@@ -18,7 +19,7 @@ from actron_neo_api.models.auth import (
 class TestActronAirOAuth2DeviceCodeAuth:
     """Test OAuth2 device code flow authentication."""
 
-    def test_init(self):
+    def test_init(self) -> None:
         """Test ActronAirOAuth2DeviceCodeAuth initialization."""
         auth = ActronAirOAuth2DeviceCodeAuth("https://example.com", "test_client")
         assert auth.base_url == "https://example.com"
@@ -31,7 +32,7 @@ class TestActronAirOAuth2DeviceCodeAuth:
         assert not auth.is_token_expiring_soon
 
     @pytest.mark.asyncio
-    async def test_request_device_code_success(self):
+    async def test_request_device_code_success(self) -> None:
         """Test successful device code request."""
         auth = ActronAirOAuth2DeviceCodeAuth("https://example.com", "test_client")
 
@@ -55,7 +56,7 @@ class TestActronAirOAuth2DeviceCodeAuth:
             assert result.verification_uri_complete is not None
 
     @pytest.mark.asyncio
-    async def test_poll_for_token_success(self):
+    async def test_poll_for_token_success(self) -> None:
         """Test successful token polling."""
         auth = ActronAirOAuth2DeviceCodeAuth("https://example.com", "test_client")
 
@@ -72,13 +73,14 @@ class TestActronAirOAuth2DeviceCodeAuth:
 
             result = await auth.poll_for_token("test_device_code")
 
+            assert result is not None
             assert result.access_token == "test_access_token"
             assert auth.access_token == "test_access_token"
             assert auth.refresh_token == "test_refresh_token"
             assert auth.is_token_valid
 
     @pytest.mark.asyncio
-    async def test_poll_for_token_pending(self):
+    async def test_poll_for_token_pending(self) -> None:
         """Test token polling when authorization is pending and times out."""
         auth = ActronAirOAuth2DeviceCodeAuth("https://example.com", "test_client")
 
@@ -97,7 +99,7 @@ class TestActronAirOAuth2DeviceCodeAuth:
             assert result is None
 
     @pytest.mark.asyncio
-    async def test_refresh_access_token(self):
+    async def test_refresh_access_token(self) -> None:
         """Test access token refresh."""
         auth = ActronAirOAuth2DeviceCodeAuth("https://example.com", "test_client")
         auth.refresh_token = "test_refresh_token"
@@ -120,7 +122,7 @@ class TestActronAirOAuth2DeviceCodeAuth:
             assert auth.refresh_token == "new_refresh_token"
 
     @pytest.mark.asyncio
-    async def test_get_user_info(self):
+    async def test_get_user_info(self) -> None:
         """Test getting user information."""
         auth = ActronAirOAuth2DeviceCodeAuth("https://example.com", "test_client")
         auth.access_token = "test_access_token"
@@ -139,7 +141,7 @@ class TestActronAirOAuth2DeviceCodeAuth:
             assert result.email == "test@example.com"
             assert result.name == "Test User"
 
-    def test_set_tokens(self):
+    def test_set_tokens(self) -> None:
         """Test manually setting tokens."""
         auth = ActronAirOAuth2DeviceCodeAuth("https://example.com", "test_client")
 
@@ -155,7 +157,7 @@ class TestActronAirOAuth2DeviceCodeAuth:
         assert auth.token_type == "Bearer"
         assert auth.is_token_valid
 
-    def test_set_tokens_without_expires_in(self):
+    def test_set_tokens_without_expires_in(self) -> None:
         """Test setting tokens without expires_in defaults to 1 hour."""
         auth = ActronAirOAuth2DeviceCodeAuth("https://example.com", "test_client")
 
@@ -170,14 +172,14 @@ class TestActronAirOAuth2DeviceCodeAuth:
         assert auth.token_expiry is not None
         assert auth.token_expiry >= current_time + 3500  # Allow some slack
 
-    def test_authorization_header_without_token(self):
+    def test_authorization_header_without_token(self) -> None:
         """Test authorization header without token raises error."""
         auth = ActronAirOAuth2DeviceCodeAuth("https://example.com", "test_client")
 
         with pytest.raises(ActronAirAuthError, match="No access token available"):
             _ = auth.authorization_header
 
-    def test_authorization_header_with_token(self):
+    def test_authorization_header_with_token(self) -> None:
         """Test authorization header with valid token."""
         auth = ActronAirOAuth2DeviceCodeAuth("https://example.com", "test_client")
         auth.access_token = "test_token"
@@ -186,7 +188,7 @@ class TestActronAirOAuth2DeviceCodeAuth:
         header = auth.authorization_header
         assert header == {"Authorization": "Bearer test_token"}
 
-    def test_is_token_valid_properties(self):
+    def test_is_token_valid_properties(self) -> None:
         """Test token validity and expiry properties."""
         auth = ActronAirOAuth2DeviceCodeAuth("https://example.com", "test_client")
 
@@ -211,7 +213,7 @@ class TestActronAirOAuth2DeviceCodeAuth:
         assert auth.is_token_expiring_soon
 
     @pytest.mark.asyncio
-    async def test_request_device_code_missing_field(self):
+    async def test_request_device_code_missing_field(self) -> None:
         """Test device code request with missing required field."""
         auth = ActronAirOAuth2DeviceCodeAuth("https://example.com", "test_client")
 
@@ -245,7 +247,7 @@ class TestActronAirOAuth2DeviceCodeAuth:
                 await auth.request_device_code()
 
     @pytest.mark.asyncio
-    async def test_request_device_code_http_error(self):
+    async def test_request_device_code_http_error(self) -> None:
         """Test device code request with HTTP error."""
         auth = ActronAirOAuth2DeviceCodeAuth("https://example.com", "test_client")
 
@@ -269,7 +271,7 @@ class TestActronAirOAuth2DeviceCodeAuth:
                 await auth.request_device_code()
 
     @pytest.mark.asyncio
-    async def test_poll_for_token_slow_down(self):
+    async def test_poll_for_token_slow_down(self) -> None:
         """Test token polling with slow_down error."""
         auth = ActronAirOAuth2DeviceCodeAuth("https://example.com", "test_client")
 
@@ -281,7 +283,7 @@ class TestActronAirOAuth2DeviceCodeAuth:
         ]
         response_index = [0]
 
-        async def mock_json():
+        async def mock_json() -> dict[str, str]:
             result = responses[min(response_index[0], len(responses) - 1)]
             response_index[0] += 1
             return result
@@ -306,7 +308,7 @@ class TestActronAirOAuth2DeviceCodeAuth:
             assert result is None  # Timeout
 
     @pytest.mark.asyncio
-    async def test_poll_for_token_expired(self):
+    async def test_poll_for_token_expired(self) -> None:
         """Test token polling with expired_token error."""
         auth = ActronAirOAuth2DeviceCodeAuth("https://example.com", "test_client")
 
@@ -330,7 +332,7 @@ class TestActronAirOAuth2DeviceCodeAuth:
                 await auth.poll_for_token("test_device")
 
     @pytest.mark.asyncio
-    async def test_poll_for_token_access_denied(self):
+    async def test_poll_for_token_access_denied(self) -> None:
         """Test token polling with access_denied error."""
         auth = ActronAirOAuth2DeviceCodeAuth("https://example.com", "test_client")
 
@@ -354,7 +356,7 @@ class TestActronAirOAuth2DeviceCodeAuth:
                 await auth.poll_for_token("test_device")
 
     @pytest.mark.asyncio
-    async def test_poll_for_token_unknown_error(self):
+    async def test_poll_for_token_unknown_error(self) -> None:
         """Test token polling with unknown error."""
         auth = ActronAirOAuth2DeviceCodeAuth("https://example.com", "test_client")
 
@@ -378,7 +380,7 @@ class TestActronAirOAuth2DeviceCodeAuth:
                 await auth.poll_for_token("test_device")
 
     @pytest.mark.asyncio
-    async def test_poll_for_token_http_error(self):
+    async def test_poll_for_token_http_error(self) -> None:
         """Test token polling with HTTP error status."""
         auth = ActronAirOAuth2DeviceCodeAuth("https://example.com", "test_client")
 
@@ -402,13 +404,13 @@ class TestActronAirOAuth2DeviceCodeAuth:
                 await auth.poll_for_token("test_device")
 
     @pytest.mark.asyncio
-    async def test_poll_for_token_network_error(self):
+    async def test_poll_for_token_network_error(self) -> None:
         """Test token polling with network error continues polling."""
         auth = ActronAirOAuth2DeviceCodeAuth("https://example.com", "test_client")
 
         call_count = [0]
 
-        def side_effect(*args, **kwargs):
+        def side_effect(*args: Any, **kwargs: Any) -> Any:
             call_count[0] += 1
             if call_count[0] < 3:
                 raise aiohttp.ClientError("Network error")
@@ -433,7 +435,7 @@ class TestActronAirOAuth2DeviceCodeAuth:
             assert result is None  # Should timeout
 
     @pytest.mark.asyncio
-    async def test_poll_for_token_json_parsing_error(self):
+    async def test_poll_for_token_json_parsing_error(self) -> None:
         """Test token polling with JSON parsing error."""
         auth = ActronAirOAuth2DeviceCodeAuth("https://example.com", "test_client")
 
@@ -457,7 +459,7 @@ class TestActronAirOAuth2DeviceCodeAuth:
                 await auth.poll_for_token("test_device")
 
     @pytest.mark.asyncio
-    async def test_refresh_access_token_missing_token(self):
+    async def test_refresh_access_token_missing_token(self) -> None:
         """Test refresh token without refresh_token raises error."""
         auth = ActronAirOAuth2DeviceCodeAuth("https://example.com", "test_client")
         # No refresh token set
@@ -466,7 +468,7 @@ class TestActronAirOAuth2DeviceCodeAuth:
             await auth.refresh_access_token()
 
     @pytest.mark.asyncio
-    async def test_refresh_access_token_missing_access_token_in_response(self):
+    async def test_refresh_access_token_missing_access_token_in_response(self) -> None:
         """Test refresh token with missing access_token in response."""
         auth = ActronAirOAuth2DeviceCodeAuth("https://example.com", "test_client")
         auth.refresh_token = "test_refresh"
@@ -499,7 +501,7 @@ class TestActronAirOAuth2DeviceCodeAuth:
                 await auth.refresh_access_token()
 
     @pytest.mark.asyncio
-    async def test_refresh_access_token_http_error(self):
+    async def test_refresh_access_token_http_error(self) -> None:
         """Test refresh token with HTTP error."""
         auth = ActronAirOAuth2DeviceCodeAuth("https://example.com", "test_client")
         auth.refresh_token = "test_refresh"
@@ -524,7 +526,7 @@ class TestActronAirOAuth2DeviceCodeAuth:
                 await auth.refresh_access_token()
 
     @pytest.mark.asyncio
-    async def test_refresh_access_token_updates_platform(self):
+    async def test_refresh_access_token_updates_platform(self) -> None:
         """Test refresh token updates authenticated_platform."""
         auth = ActronAirOAuth2DeviceCodeAuth("https://example.com", "test_client")
         auth.refresh_token = "test_refresh"
@@ -557,7 +559,7 @@ class TestActronAirOAuth2DeviceCodeAuth:
             assert auth.authenticated_platform == "https://example.com"
 
     @pytest.mark.asyncio
-    async def test_get_user_info_http_error(self):
+    async def test_get_user_info_http_error(self) -> None:
         """Test get user info with HTTP error."""
         auth = ActronAirOAuth2DeviceCodeAuth("https://example.com", "test_client")
         auth.access_token = "test_token"
@@ -584,7 +586,7 @@ class TestActronAirOAuth2DeviceCodeAuth:
                 await auth.get_user_info()
 
     @pytest.mark.asyncio
-    async def test_ensure_token_valid_when_expired(self):
+    async def test_ensure_token_valid_when_expired(self) -> None:
         """Test ensure_token_valid refreshes expired token."""
         auth = ActronAirOAuth2DeviceCodeAuth("https://example.com", "test_client")
         auth.access_token = "old_token"
@@ -618,7 +620,7 @@ class TestActronAirOAuth2DeviceCodeAuth:
             assert auth.access_token == "new_token"
 
     @pytest.mark.asyncio
-    async def test_ensure_token_valid_no_token_after_refresh(self):
+    async def test_ensure_token_valid_no_token_after_refresh(self) -> None:
         """Test ensure_token_valid when no token available after refresh."""
         auth = ActronAirOAuth2DeviceCodeAuth("https://example.com", "test_client")
         auth.access_token = None
@@ -655,7 +657,7 @@ class TestActronAirOAuth2DeviceCodeAuth:
 class TestActronAirAPIWithOAuth2:
     """Test ActronAirAPI with OAuth2 integration."""
 
-    def test_init_default(self):
+    def test_init_default(self) -> None:
         """Test ActronAirAPI initialization with default parameters."""
         api = ActronAirAPI()
         assert api.oauth2_auth is not None
@@ -663,13 +665,13 @@ class TestActronAirAPIWithOAuth2:
         assert api.oauth2_auth.client_id == "home_assistant"
         assert api.oauth2_auth.refresh_token is None
 
-    def test_init_with_refresh_token(self):
+    def test_init_with_refresh_token(self) -> None:
         """Test ActronAirAPI initialization with refresh token."""
         api = ActronAirAPI(refresh_token="test_refresh_token")
         assert api.oauth2_auth is not None
         assert api.oauth2_auth.refresh_token == "test_refresh_token"
 
-    def test_init_with_custom_params(self):
+    def test_init_with_custom_params(self) -> None:
         """Test ActronAirAPI initialization with custom parameters."""
         api = ActronAirAPI(
             oauth2_client_id="custom_client",
@@ -681,7 +683,7 @@ class TestActronAirAPIWithOAuth2:
         assert api.base_url == "https://nimbus.actronair.com.au"
 
     @pytest.mark.asyncio
-    async def test_oauth2_methods_available(self):
+    async def test_oauth2_methods_available(self) -> None:
         """Test OAuth2 methods are available."""
         api = ActronAirAPI()
 
@@ -711,10 +713,11 @@ class TestActronAirAPIWithOAuth2:
         user_info = await api.get_user_info()
 
         assert device_code.device_code == "test"
+        assert token_data is not None
         assert token_data.access_token == "test"
         assert user_info.sub == "test"
 
-    def test_token_properties(self):
+    def test_token_properties(self) -> None:
         """Test token properties work correctly."""
         api = ActronAirAPI(refresh_token="test_refresh_token")
         api.oauth2_auth.access_token = "test_access_token"
