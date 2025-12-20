@@ -1,8 +1,11 @@
 """State management module for Actron Air systems."""
 
+import logging
 from typing import Any, Callable, Dict, List, Optional
 
 from .models import ActronAirStatus
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class StateManager:
