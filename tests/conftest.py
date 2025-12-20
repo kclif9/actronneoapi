@@ -34,6 +34,19 @@ def sample_system_que_nxgen() -> Dict[str, Any]:
 
 
 @pytest.fixture
+def sample_system_aconnect() -> Dict[str, Any]:
+    """Sample AC system response with Actron Connect type (ACM-2)."""
+    return {
+        "serial": "acm456",
+        "type": "aconnect",
+        "_links": {
+            "ac-status": {"href": "/api/v0/client/ac-systems/acm456/status"},
+            "commands": {"href": "/api/v0/client/ac-systems/acm456/commands"},
+        },
+    }
+
+
+@pytest.fixture
 def sample_systems_response_neo(sample_system_neo) -> Dict[str, Any]:
     """Sample get_ac_systems response for Neo platform."""
     return {"_embedded": {"ac-system": [sample_system_neo]}}
@@ -43,6 +56,12 @@ def sample_systems_response_neo(sample_system_neo) -> Dict[str, Any]:
 def sample_systems_response_que(sample_system_que_nxgen) -> Dict[str, Any]:
     """Sample get_ac_systems response with NX Gen system."""
     return {"_embedded": {"ac-system": [sample_system_que_nxgen]}}
+
+
+@pytest.fixture
+def sample_systems_response_aconnect(sample_system_aconnect) -> Dict[str, Any]:
+    """Sample get_ac_systems response with Actron Connect system."""
+    return {"_embedded": {"ac-system": [sample_system_aconnect]}}
 
 
 @pytest.fixture
