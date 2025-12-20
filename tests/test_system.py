@@ -1,5 +1,7 @@
 """Additional tests for system model methods."""
 
+from typing import Any
+
 import pytest
 
 from actron_neo_api.models import ActronAirStatus
@@ -7,7 +9,7 @@ from actron_neo_api.models.system import ActronAirACSystem
 
 
 @pytest.fixture
-def ac_system_with_api(mock_api):
+def ac_system_with_api(mock_api: Any) -> ActronAirACSystem:
     """Create AC system with API reference."""
     status = ActronAirStatus(
         isOnline=True,
@@ -21,6 +23,8 @@ def ac_system_with_api(mock_api):
     )
     status.parse_nested_components()
     status.set_api(mock_api)
+    # We know ac_system is not None after parse_nested_components
+    assert status.ac_system is not None
     return status.ac_system
 
 
@@ -28,7 +32,9 @@ class TestACSystemSetMode:
     """Test ACSystem set_mode method."""
 
     @pytest.mark.asyncio
-    async def test_set_mode_to_cool(self, ac_system_with_api, mock_api):
+    async def test_set_mode_to_cool(
+        self, ac_system_with_api: ActronAirACSystem, mock_api: Any
+    ) -> None:
         """Test setting AC mode to COOL."""
         result = await ac_system_with_api.set_system_mode("COOL")
 
@@ -38,7 +44,9 @@ class TestACSystemSetMode:
         assert mock_api.last_command["command"]["UserAirconSettings.Mode"] == "COOL"
 
     @pytest.mark.asyncio
-    async def test_set_mode_to_off(self, ac_system_with_api, mock_api):
+    async def test_set_mode_to_off(
+        self, ac_system_with_api: ActronAirACSystem, mock_api: Any
+    ) -> None:
         """Test setting AC mode to OFF."""
         result = await ac_system_with_api.set_system_mode("OFF")
 
@@ -49,7 +57,7 @@ class TestACSystemSetMode:
         assert "UserAirconSettings.Mode" not in mock_api.last_command["command"]
 
     @pytest.mark.asyncio
-    async def test_set_mode_without_api(self):
+    async def test_set_mode_without_api(self) -> None:
         """Test set_mode without API reference raises ValueError."""
         # Create AC system without API
         status = ActronAirStatus(
@@ -64,11 +72,12 @@ class TestACSystemSetMode:
         status.parse_nested_components()
         # Don't set API
 
+        assert status.ac_system is not None
         with pytest.raises(ValueError, match="No API reference available"):
             await status.ac_system.set_system_mode("COOL")
 
     @pytest.mark.asyncio
-    async def test_set_mode_without_parent(self):
+    async def test_set_mode_without_parent(self) -> None:
         """Test set_mode without parent status raises ValueError."""
         ac_system = ActronAirACSystem(master_serial="TEST123")
 

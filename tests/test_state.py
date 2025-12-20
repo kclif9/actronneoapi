@@ -1,18 +1,20 @@
 """Tests for state management module."""
 
+from typing import Any, Dict
+
 import pytest
 
 from actron_neo_api.state import StateManager
 
 
 @pytest.fixture
-def state_manager():
+def state_manager() -> StateManager:
     """Create a state manager instance."""
     return StateManager()
 
 
 @pytest.fixture
-def sample_status_data():
+def sample_status_data() -> Dict[str, Any]:
     """Sample status data for testing."""
     return {
         "isOnline": True,
@@ -67,14 +69,14 @@ def sample_status_data():
 class TestStateManager:
     """Tests for StateManager class."""
 
-    def test_init(self, state_manager):
+    def test_init(self, state_manager: StateManager) -> None:
         """Test StateManager initialization."""
         assert state_manager.status == {}
         assert state_manager.latest_event_id == {}
         assert state_manager._observers == []
         assert state_manager._api is None
 
-    def test_set_api(self, state_manager, sample_status_data):
+    def test_set_api(self, state_manager: StateManager, sample_status_data: Dict[str, Any]) -> None:
         """Test setting API reference."""
 
         # Create a mock API object
@@ -95,13 +97,13 @@ class TestStateManager:
         # Verify API is set on existing status
         assert status.api is mock_api
 
-    def test_add_observer(self, state_manager):
+    def test_add_observer(self, state_manager: StateManager) -> None:
         """Test adding observers."""
 
-        def observer1(serial, data):
+        def observer1(serial: str, data: Dict[str, Any]) -> None:
             pass
 
-        def observer2(serial, data):
+        def observer2(serial: str, data: Dict[str, Any]) -> None:
             pass
 
         state_manager.add_observer(observer1)
@@ -112,7 +114,9 @@ class TestStateManager:
         assert len(state_manager._observers) == 2
         assert observer2 in state_manager._observers
 
-    def test_get_status(self, state_manager, sample_status_data):
+    def test_get_status(
+        self, state_manager: StateManager, sample_status_data: Dict[str, Any]
+    ) -> None:
         """Test getting status by serial number."""
         # Process status update
         state_manager.process_status_update("TEST123", sample_status_data)
@@ -130,7 +134,9 @@ class TestStateManager:
         missing = state_manager.get_status("NONEXISTENT")
         assert missing is None
 
-    def test_process_status_update(self, state_manager, sample_status_data):
+    def test_process_status_update(
+        self, state_manager: StateManager, sample_status_data: Dict[str, Any]
+    ) -> None:
         """Test processing a status update."""
         status = state_manager.process_status_update("TEST123", sample_status_data)
 
@@ -146,7 +152,9 @@ class TestStateManager:
         assert status.live_aircon is not None
         assert len(status.remote_zone_info) == 2
 
-    def test_process_status_update_with_api(self, state_manager, sample_status_data):
+    def test_process_status_update_with_api(
+        self, state_manager: StateManager, sample_status_data: Dict[str, Any]
+    ) -> None:
         """Test status update sets API reference."""
 
         class MockAPI:
@@ -160,11 +168,13 @@ class TestStateManager:
         # Verify API reference was set
         assert status.api is mock_api
 
-    def test_process_status_update_notifies_observers(self, state_manager, sample_status_data):
+    def test_process_status_update_notifies_observers(
+        self, state_manager: StateManager, sample_status_data: Dict[str, Any]
+    ) -> None:
         """Test that observers are notified on status update."""
         called_with = []
 
-        def observer(serial, data):
+        def observer(serial: str, data: Dict[str, Any]) -> None:
             called_with.append((serial, data))
 
         state_manager.add_observer(observer)
@@ -177,16 +187,21 @@ class TestStateManager:
         assert called_with[0][0] == "test123"
         assert called_with[0][1] == sample_status_data
 
-    def test_process_status_update_observer_error_handling(self, state_manager, sample_status_data):
+    def test_process_status_update_observer_error_handling(
+        self, state_manager: StateManager, sample_status_data: Dict[str, Any]
+    ) -> None:
         """Test that observer errors don't break status updates."""
 
-        def failing_observer(serial, data):
+        def failing_observer(serial: str, data: Dict[str, Any]) -> None:
             raise ValueError("Observer error")
 
-        def working_observer(serial, data):
-            working_observer.called = True
+        class WorkingObserver:
+            called: bool = False
 
-        working_observer.called = False
+            def __call__(self, serial: str, data: Dict[str, Any]) -> None:
+                self.called = True
+
+        working_observer = WorkingObserver()
 
         state_manager.add_observer(failing_observer)
         state_manager.add_observer(working_observer)
@@ -201,7 +216,9 @@ class TestStateManager:
         # Verify working observer was still called
         assert working_observer.called is True
 
-    def test_map_peripheral_humidity_to_zones(self, state_manager, sample_status_data):
+    def test_map_peripheral_humidity_to_zones(
+        self, state_manager: StateManager, sample_status_data: Dict[str, Any]
+    ) -> None:
         """Test peripheral humidity mapping to zones."""
         status = state_manager.process_status_update("TEST123", sample_status_data)
 
@@ -215,9 +232,9 @@ class TestStateManager:
         assert zone0.actual_humidity_pc == 55.0
         assert zone1.actual_humidity_pc == 55.0
 
-    def test_extract_peripheral_humidity_valid(self, state_manager):
+    def test_extract_peripheral_humidity_valid(self, state_manager: StateManager) -> None:
         """Test extracting valid peripheral humidity."""
-        peripheral = {
+        peripheral: Dict[str, Any] = {
             "SensorInputs": {
                 "SHTC1": {
                     "RelativeHumidity_pc": 65.5,
@@ -228,16 +245,16 @@ class TestStateManager:
         humidity = state_manager._extract_peripheral_humidity(peripheral)
         assert humidity == 65.5
 
-    def test_extract_peripheral_humidity_no_sensor(self, state_manager):
+    def test_extract_peripheral_humidity_no_sensor(self, state_manager: StateManager) -> None:
         """Test extracting humidity from peripheral without sensor."""
-        peripheral = {"SensorInputs": {}}
+        peripheral: Dict[str, Any] = {"SensorInputs": {}}
 
         humidity = state_manager._extract_peripheral_humidity(peripheral)
         assert humidity is None
 
-    def test_extract_peripheral_humidity_invalid_range(self, state_manager):
+    def test_extract_peripheral_humidity_invalid_range(self, state_manager: StateManager) -> None:
         """Test extracting humidity with invalid range."""
-        peripheral = {
+        peripheral: Dict[str, Any] = {
             "SensorInputs": {
                 "SHTC1": {
                     "RelativeHumidity_pc": 150.0,  # Invalid: > 100
@@ -248,9 +265,9 @@ class TestStateManager:
         humidity = state_manager._extract_peripheral_humidity(peripheral)
         assert humidity is None
 
-    def test_extract_peripheral_humidity_negative(self, state_manager):
+    def test_extract_peripheral_humidity_negative(self, state_manager: StateManager) -> None:
         """Test extracting negative humidity value."""
-        peripheral = {
+        peripheral: Dict[str, Any] = {
             "SensorInputs": {
                 "SHTC1": {
                     "RelativeHumidity_pc": -10.0,  # Invalid: < 0
@@ -261,19 +278,19 @@ class TestStateManager:
         humidity = state_manager._extract_peripheral_humidity(peripheral)
         assert humidity is None
 
-    def test_extract_peripheral_humidity_missing_data(self, state_manager):
+    def test_extract_peripheral_humidity_missing_data(self, state_manager: StateManager) -> None:
         """Test extracting humidity when data is missing."""
-        peripheral = {}
+        peripheral: Dict[str, Any] = {}
 
         humidity = state_manager._extract_peripheral_humidity(peripheral)
         assert humidity is None
 
-    def test_map_peripheral_humidity_no_status(self, state_manager):
+    def test_map_peripheral_humidity_no_status(self, state_manager: StateManager) -> None:
         """Test peripheral mapping with None status."""
         # Should not raise, just return early
         state_manager._map_peripheral_humidity_to_zones(None)
 
-    def test_map_peripheral_humidity_no_peripherals(self, state_manager):
+    def test_map_peripheral_humidity_no_peripherals(self, state_manager: StateManager) -> None:
         """Test peripheral mapping without peripherals."""
         status_data = {
             "isOnline": True,
