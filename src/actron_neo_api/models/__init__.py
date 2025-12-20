@@ -4,7 +4,7 @@ This package contains all data models used in the Actron Air API
 """
 
 # Re-export all models for easy access
-from .auth import ActronAirDeviceCode, ActronAirToken
+from .auth import ActronAirDeviceCode, ActronAirToken, ActronAirUserInfo
 
 # For backward compatibility
 from .settings import ActronAirUserAirconSettings
@@ -29,4 +29,5 @@ __all__ = [
     "ActronAirACSystem",
     "ActronAirSystemInfo",
     "ActronAirStatus",
+    "ActronAirUserInfo",
 ]

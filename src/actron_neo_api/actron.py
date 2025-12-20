@@ -22,6 +22,7 @@ from .models import (
     ActronAirStatus,
     ActronAirSystemInfo,
     ActronAirToken,
+    ActronAirUserInfo,
 )
 from .oauth import ActronAirOAuth2DeviceCodeAuth
 from .state import StateManager
@@ -300,7 +301,7 @@ class ActronAirAPI:
         """
         return await self.oauth2_auth.poll_for_token(device_code, interval, timeout)
 
-    async def get_user_info(self) -> dict[str, Any]:
+    async def get_user_info(self) -> ActronAirUserInfo:
         """Get user information using the access token."""
         return await self.oauth2_auth.get_user_info()
 

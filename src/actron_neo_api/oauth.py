@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import time
-from typing import Any, Final
+from typing import Final
 
 import aiohttp
 
 from .exceptions import ActronAirAuthError
-from .models import ActronAirDeviceCode, ActronAirToken
+from .models import ActronAirDeviceCode, ActronAirToken, ActronAirUserInfo
 
 
 class ActronAirOAuth2DeviceCodeAuth:
@@ -289,11 +289,11 @@ class ActronAirOAuth2DeviceCodeAuth:
                         f"Response: {response_text}."
                     )
 
-    async def get_user_info(self) -> dict[str, Any]:
+    async def get_user_info(self) -> ActronAirUserInfo:
         """Get user information using the access token.
 
         Returns:
-            Dictionary containing user information
+            User information model
 
         Raises:
             ActronAirAuthError: If user info request fails
@@ -307,7 +307,8 @@ class ActronAirOAuth2DeviceCodeAuth:
         async with aiohttp.ClientSession() as session:
             async with session.get(self.user_info_url, headers=headers) as response:
                 if response.status == 200:
-                    return await response.json()
+                    data = await response.json()
+                    return ActronAirUserInfo.model_validate(data)
                 else:
                     response_text = await response.text()
                     raise ActronAirAuthError(

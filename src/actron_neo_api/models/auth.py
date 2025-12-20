@@ -26,3 +26,19 @@ class ActronAirToken(BaseModel):
     token_type: str = Field("Bearer", description="Token type")
     expires_in: int = Field(3600, description="Expiration time in seconds")
     scope: str | None = Field(None, description="Token scope")
+
+
+class ActronAirUserInfo(BaseModel):
+    """User information model."""
+
+    sub: str | None = Field(None, alias="id", description="User ID")
+    email: str | None = Field(None, description="User email")
+    name: str | None = Field(None, description="User full name")
+    given_name: str | None = Field(None, description="User given name")
+    family_name: str | None = Field(None, description="User family name")
+
+    class Config:
+        """Pydantic config."""
+
+        extra = "allow"
+        populate_by_name = True

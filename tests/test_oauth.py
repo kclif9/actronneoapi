@@ -8,6 +8,11 @@ import pytest
 
 from actron_neo_api import ActronAirAPI, ActronAirOAuth2DeviceCodeAuth
 from actron_neo_api.exceptions import ActronAirAuthError
+from actron_neo_api.models.auth import (
+    ActronAirDeviceCode,
+    ActronAirToken,
+    ActronAirUserInfo,
+)
 
 
 class TestActronAirOAuth2DeviceCodeAuth:
@@ -130,8 +135,9 @@ class TestActronAirOAuth2DeviceCodeAuth:
 
             result = await auth.get_user_info()
 
-            assert result["id"] == "test_user_id"
-            assert result["email"] == "test@example.com"
+            assert result.sub == "test_user_id"
+            assert result.email == "test@example.com"
+            assert result.name == "Test User"
 
     def test_set_tokens(self):
         """Test manually setting tokens."""
@@ -680,18 +686,33 @@ class TestActronAirAPIWithOAuth2:
         api = ActronAirAPI()
 
         # Mock the OAuth2 auth methods
-        api.oauth2_auth.request_device_code = AsyncMock(return_value={"device_code": "test"})
-        api.oauth2_auth.poll_for_token = AsyncMock(return_value={"access_token": "test"})
-        api.oauth2_auth.get_user_info = AsyncMock(return_value={"id": "test"})
+        mock_device_code = ActronAirDeviceCode(
+            device_code="test",
+            user_code="test",
+            verification_uri="test",
+            verification_uri_complete="test",
+            expires_in=300,
+            interval=5,
+        )
+        mock_token = ActronAirToken(
+            access_token="test",
+            refresh_token="test",
+            token_type="Bearer",
+            expires_in=3600,
+        )
+        mock_user_info = ActronAirUserInfo(id="test", email="test@example.com")
+        api.oauth2_auth.request_device_code = AsyncMock(return_value=mock_device_code)
+        api.oauth2_auth.poll_for_token = AsyncMock(return_value=mock_token)
+        api.oauth2_auth.get_user_info = AsyncMock(return_value=mock_user_info)
 
         # Test methods
         device_code = await api.request_device_code()
         token_data = await api.poll_for_token("test_device_code")
         user_info = await api.get_user_info()
 
-        assert device_code["device_code"] == "test"
-        assert token_data["access_token"] == "test"
-        assert user_info["id"] == "test"
+        assert device_code.device_code == "test"
+        assert token_data.access_token == "test"
+        assert user_info.sub == "test"
 
     def test_token_properties(self):
         """Test token properties work correctly."""
