@@ -1,5 +1,7 @@
 """Tests for status model properties and methods."""
 
+from typing import Any, Dict
+
 import pytest
 
 from actron_neo_api.models import ActronAirStatus
@@ -435,3 +437,176 @@ class TestStatusParseNestedComponents:
         assert status.master_info is None
         assert status.live_aircon is None
         assert status.alerts is None
+
+
+# ---------------------------------------------------------------------------
+# Status — new top-level fields
+# ---------------------------------------------------------------------------
+class TestActronAirStatusNewFields:
+    """Tests for the new ActronAirStatus top-level fields."""
+
+    def test_defaults(self) -> None:
+        """New fields should have correct defaults."""
+        status = ActronAirStatus.model_validate({"isOnline": True, "lastKnownState": {}})
+        assert status.last_status_update is None
+        assert status.time_since_last_contact is None
+
+    def test_from_api_aliases(self) -> None:
+        """Verify alias mapping of new fields."""
+        data: Dict[str, Any] = {
+            "isOnline": True,
+            "lastKnownState": {},
+            "lastStatusUpdate": "2026-02-20T12:00:00Z",
+            "timeSinceLastContact": "5 seconds ago",
+        }
+        status = ActronAirStatus.model_validate(data)
+        assert status.last_status_update == "2026-02-20T12:00:00Z"
+        assert status.time_since_last_contact == "5 seconds ago"
+
+
+# ---------------------------------------------------------------------------
+# Integration: full status with new fields
+# ---------------------------------------------------------------------------
+class TestFullStatusWithNewFields:
+    """End-to-end: parse a full status response containing all new fields."""
+
+    @pytest.fixture()
+    def full_status_data(self) -> Dict[str, Any]:
+        """Full status response with all new fields populated."""
+        return {
+            "isOnline": True,
+            "lastStatusUpdate": "2026-02-20T12:00:00Z",
+            "timeSinceLastContact": "2 seconds ago",
+            "lastKnownState": {
+                "AirconSystem": {
+                    "MasterWCModel": "WC3",
+                    "MasterSerial": "SYS001",
+                    "MasterWCFirmwareVersion": "2.0.0",
+                    "IndoorUnit": {
+                        "NV_AutoFanEnabled": True,
+                        "NV_SupportedFanModes": 15,
+                        "NV_ModelNumber": "ESP-Plus",
+                    },
+                    "OutdoorUnit": {
+                        "ModelNumber": "OU-X",
+                        "Capacity_kW": 10.0,
+                        "CompSpeed": 70.0,
+                        "CompPower": 3000,
+                        "SuppyCurrentRMS_A": 15.0,
+                        "SuppyPowerRMS_W": 3500.0,
+                        "ErrCode_1": 0,
+                        "ErrCode_2": 0,
+                        "ErrCode_3": 0,
+                        "ErrCode_4": 0,
+                        "ErrCode_5": 0,
+                    },
+                },
+                "UserAirconSettings": {
+                    "isOn": True,
+                    "Mode": "COOL",
+                    "FanMode": "AUTO",
+                    "AwayMode": False,
+                    "TemperatureSetpoint_Cool_oC": 24.0,
+                    "TemperatureSetpoint_Heat_oC": 20.0,
+                    "EnabledZones": [True, True],
+                    "QuietMode": False,
+                    "TurboMode": {"Enabled": False, "Supported": True},
+                },
+                "LiveAircon": {
+                    "SystemOn": True,
+                    "CompressorMode": "COOL",
+                    "CompressorCapacity": 80,
+                    "FanRPM": 500,
+                    "Defrost": False,
+                    "AmRunningFan": True,
+                    "FanPWM": 60,
+                    "CoilInlet": 10.5,
+                    "ErrCode": 0,
+                },
+                "MasterInfo": {
+                    "LiveTemp_oC": 23.0,
+                    "LiveHumidity_pc": 50.0,
+                    "LiveOutdoorTemp_oC": 30.0,
+                },
+                "Alerts": {"CleanFilter": False, "Defrosting": False},
+                "RemoteZoneInfo": [
+                    {
+                        "CanOperate": True,
+                        "CommonZone": True,
+                        "LiveHumidity_pc": 50.0,
+                        "LiveTemp_oC": 23.0,
+                        "ZonePosition": 100.0,
+                        "NV_Title": "Living Room",
+                        "NV_Exists": True,
+                        "NV_VAV": True,
+                        "NV_ITC": True,
+                        "TemperatureSetpoint_Cool_oC": 24.0,
+                        "TemperatureSetpoint_Heat_oC": 20.0,
+                        "TemperatureSetpoint_oC": 22.0,
+                        "AirflowSetpoint": 80,
+                        "AirflowControlEnabled": True,
+                        "ZoneMaxPosition": 100,
+                        "ZoneMinPosition": 20,
+                        "Sensors": {},
+                    },
+                    {
+                        "CanOperate": True,
+                        "CommonZone": False,
+                        "LiveHumidity_pc": 45.0,
+                        "LiveTemp_oC": 25.0,
+                        "ZonePosition": 0.0,
+                        "NV_Title": "Bedroom",
+                        "NV_Exists": True,
+                        "NV_VAV": True,
+                        "NV_ITC": False,
+                        "TemperatureSetpoint_Cool_oC": 22.0,
+                        "TemperatureSetpoint_Heat_oC": 18.0,
+                        "Sensors": {},
+                    },
+                ],
+                "NV_Limits": {
+                    "UserSetpoint_oC": {
+                        "setCool_Min": 16.0,
+                        "setCool_Max": 32.0,
+                    }
+                },
+            },
+        }
+
+    def test_parse_full_status(self, full_status_data: Dict[str, Any]) -> None:
+        """Full status should parse all new fields without errors."""
+        status = ActronAirStatus.model_validate(full_status_data)
+
+        # Top-level fields
+        assert status.last_status_update == "2026-02-20T12:00:00Z"
+        assert status.time_since_last_contact == "2 seconds ago"
+
+        # Indoor unit
+        assert status.ac_system is not None
+        assert status.ac_system.indoor_unit is not None
+        assert status.ac_system.indoor_unit.supported_fan_mode_list == [
+            "LOW",
+            "MED",
+            "HIGH",
+            "AUTO",
+        ]
+
+        # Outdoor unit new fields
+        assert status.ac_system.outdoor_unit is not None
+        assert status.ac_system.outdoor_unit.capacity_kw == 10.0
+
+        # LiveAircon new fields
+        assert status.live_aircon is not None
+        assert status.live_aircon.am_running_fan is True
+        assert status.live_aircon.fan_pwm == 60
+        assert status.live_aircon.coil_inlet == 10.5
+        assert status.live_aircon.err_code == 0
+
+        # Zone new fields
+        z0 = status.remote_zone_info[0]
+        assert z0.has_temp_control is True
+        assert z0.temperature_setpoint_c == 22.0
+        assert z0.airflow_setpoint == 80
+
+        z1 = status.remote_zone_info[1]
+        assert z1.has_temp_control is False  # NV_ITC is False

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 if TYPE_CHECKING:
     from .status import ActronAirStatus
@@ -20,10 +20,7 @@ class ActronAirSystemInfo(BaseModel):
     type: str | None = Field(None, description="System type (e.g., 'standard', 'NX-Gen')")
     links: dict[str, Any] = Field(default_factory=dict, alias="_links")
 
-    class Config:
-        """Pydantic configuration."""
-
-        populate_by_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
     @field_validator("serial")
     @classmethod
@@ -40,6 +37,42 @@ class ActronAirSystemInfo(BaseModel):
         return v.lower() if v else v
 
 
+class ActronAirIndoorUnit(BaseModel):
+    """Indoor unit data for an Actron Air AC system.
+
+    Contains information about the indoor unit including auto fan capability
+    and supported fan modes.
+
+    The ``nv_supported_fan_modes`` field is a bitmap where each bit represents
+    a supported fan speed: 1 = LOW, 2 = MED, 4 = HIGH, 8 = AUTO.
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    nv_auto_fan_enabled: bool = Field(False, alias="NV_AutoFanEnabled")
+    nv_supported_fan_modes: int = Field(0, alias="NV_SupportedFanModes")
+    nv_model_number: str | None = Field(None, alias="NV_ModelNumber")
+
+    @property
+    def supported_fan_mode_list(self) -> list[str]:
+        """Return human-readable fan modes derived from the bitmap.
+
+        Returns:
+            List of supported fan mode strings (e.g. ["LOW", "MED", "HIGH", "AUTO"])
+
+        """
+        modes: list[str] = []
+        if self.nv_supported_fan_modes & 1:
+            modes.append("LOW")
+        if self.nv_supported_fan_modes & 2:
+            modes.append("MED")
+        if self.nv_supported_fan_modes & 4:
+            modes.append("HIGH")
+        if self.nv_supported_fan_modes & 8:
+            modes.append("AUTO")
+        return modes
+
+
 class ActronAirOutdoorUnit(BaseModel):
     """Outdoor unit data for an Actron Air AC system.
 
@@ -47,15 +80,28 @@ class ActronAirOutdoorUnit(BaseModel):
     compressor speed, power consumption, and operational status.
     """
 
-    model_number: str | None = str(Field(None, alias="ModelNumber"))
+    model_number: str | None = Field(None, alias="ModelNumber")
     serial_number: str | None = Field(None, alias="SerialNumber")
-    software_version: str | None = str(Field(None, alias="SoftwareVersion"))
+    software_version: str | None = Field(None, alias="SoftwareVersion")
     comp_speed: float | None = Field(None, alias="CompSpeed")
     comp_power: int | None = Field(None, alias="CompPower")
     comp_running_pwm: int | None = Field(None, alias="CompRunningPWM")
     compressor_on: bool | None = Field(None, alias="CompressorOn")
     amb_temp: float | None = Field(None, alias="AmbTemp")
     family: str | None = Field(None, alias="Family")
+    capacity_kw: float | None = Field(None, alias="Capacity_kW")
+    supply_voltage_vac: float | None = Field(None, alias="SupplyVoltage_Vac")
+    supply_current_rms_a: float | None = Field(None, alias="SuppyCurrentRMS_A")
+    supply_power_rms_w: float | None = Field(None, alias="SuppyPowerRMS_W")
+    coil_temp: float | None = Field(None, alias="CoilTemp")
+    reverse_valve_position: str | None = Field(None, alias="ReverseValvePosition")
+    defrost_mode: int | None = Field(None, alias="DefrostMode")
+    drm: bool | None = Field(None, alias="DRM")
+    err_code_1: int = Field(0, alias="ErrCode_1")
+    err_code_2: int = Field(0, alias="ErrCode_2")
+    err_code_3: int = Field(0, alias="ErrCode_3")
+    err_code_4: int = Field(0, alias="ErrCode_4")
+    err_code_5: int = Field(0, alias="ErrCode_5")
 
 
 class ActronAirLiveAircon(BaseModel):
@@ -73,6 +119,10 @@ class ActronAirLiveAircon(BaseModel):
     compressor_chasing_temperature: float | None = Field(None, alias="CompressorChasingTemperature")
     compressor_live_temperature: float | None = Field(None, alias="CompressorLiveTemperature")
     outdoor_unit: ActronAirOutdoorUnit | None = Field(None, alias="OutdoorUnit")
+    am_running_fan: bool = Field(False, alias="AmRunningFan")
+    fan_pwm: int = Field(0, alias="FanPWM")
+    coil_inlet: float | None = Field(None, alias="CoilInlet")
+    err_code: int = Field(0, alias="ErrCode")
 
 
 class ActronAirMasterInfo(BaseModel):
@@ -111,6 +161,7 @@ class ActronAirACSystem(BaseModel):
     master_wc_firmware_version: str = Field("", alias="MasterWCFirmwareVersion")
     system_name: str = Field("", alias="SystemName")
     outdoor_unit: ActronAirOutdoorUnit | None = Field(None, alias="OutdoorUnit")
+    indoor_unit: ActronAirIndoorUnit | None = Field(None, alias="IndoorUnit")
     _parent_status: "ActronAirStatus | None" = None
 
     def set_parent_status(self, parent: "ActronAirStatus") -> None:

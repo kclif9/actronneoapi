@@ -1,20 +1,25 @@
 [build-system]
-requires = ["setuptools>=64", "setuptools-scm>=8"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
 
 [project]
 name = "actron-neo-api"
 dynamic = ["version"]
 authors = [
-  { name="Kurt Chrisford", email="soft.year7030@fastmail.com" },
+  { name = "Kurt Chrisford", email = "soft.year7030@fastmail.com" },
 ]
-description="Python API wrapper for the Actron Neo API."
+description = "Python API wrapper for the Actron Neo API."
 readme = "README.md"
+license = "MIT"
 requires-python = ">=3.12"
 classifiers = [
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
+    "Typing :: Typed",
+    "Framework :: Pydantic :: 2",
 ]
 dependencies = [
     "aiohttp>=3.8.0",
@@ -34,15 +39,58 @@ dev = [
 [project.urls]
 Homepage = "https://github.com/kclif9/actronneoapi"
 Issues = "https://github.com/kclif9/actronneoapi/issues"
+Changelog = "https://github.com/kclif9/actronneoapi/blob/main/CHANGELOG.md"
 
-[tool.setuptools_scm]
+# -- Build -----------------------------------------------------------------
+[tool.hatch.version]
+source = "vcs"
 
+[tool.hatch.build.targets.wheel]
+packages = ["src/actron_neo_api"]
+
+# -- Ruff ------------------------------------------------------------------
 [tool.ruff]
 line-length = 100
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I"]
 
+# -- Mypy ------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+check_untyped_defs = true
+ignore_missing_imports = true
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
+check_untyped_defs = false
+
+# -- Pydantic mypy plugin --------------------------------------------------
+[tool.pydantic-mypy]
+init_forbid_extra = true
+init_typed = true
+warn_required_dynamic_aliases = true
+warn_uninitialized = false
+
+# -- Pytest -----------------------------------------------------------------
 [tool.pytest.ini_options]
 junit_family = "xunit2"
 addopts = "-v --strict-markers"
+asyncio_mode = "auto"
+
+# -- Coverage ---------------------------------------------------------------
+[tool.coverage.run]
+source = ["actron_neo_api"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "if __name__",
+]

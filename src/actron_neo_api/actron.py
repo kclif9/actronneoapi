@@ -38,6 +38,7 @@ class ActronAirAPI:
         oauth2_client_id: str = "home_assistant",
         refresh_token: str | None = None,
         platform: Literal["neo", "que"] | None = None,
+        session: aiohttp.ClientSession | None = None,
     ):
         """Initialize the ActronAirAPI client with OAuth2 authentication.
 
@@ -45,7 +46,10 @@ class ActronAirAPI:
             oauth2_client_id: OAuth2 client ID for device code flow
             refresh_token: Optional refresh token for authentication
             platform: Platform to use ('neo', 'que', or None for auto-detect).
-            If None, enables auto-detection with Neo as the initial platform.
+                If None, enables auto-detection with Neo as the initial platform.
+            session: Optional externally managed aiohttp.ClientSession.
+                When provided, the caller owns the session lifecycle and
+                ``close()`` will **not** close it.
 
         """
         # Determine base URL from platform parameter
@@ -66,8 +70,15 @@ class ActronAirAPI:
         self.base_url = resolved_base_url
         self._oauth2_client_id = oauth2_client_id
 
-        # Initialize OAuth2 authentication
-        self.oauth2_auth = ActronAirOAuth2DeviceCodeAuth(resolved_base_url, oauth2_client_id)
+        # Session management – external sessions are never closed by us
+        self._external_session = session is not None
+        self._session: aiohttp.ClientSession | None = session
+        self._session_lock = asyncio.Lock()
+
+        # Initialize OAuth2 authentication (share session if provided)
+        self.oauth2_auth = ActronAirOAuth2DeviceCodeAuth(
+            resolved_base_url, oauth2_client_id, session=session
+        )
 
         # Set refresh token if provided
         if refresh_token:
@@ -80,10 +91,6 @@ class ActronAirAPI:
         # Internal cache of system info models for link resolution
         self.systems: list[ActronAirSystemInfo] = []
         self._initialized = False
-
-        # Session management
-        self._session: aiohttp.ClientSession | None = None
-        self._session_lock = asyncio.Lock()
 
     @property
     def platform(self) -> str:
@@ -184,7 +191,9 @@ class ActronAirAPI:
         # Update base URL and platform, recreate OAuth2 handler to match new platform
         self.base_url = base_url
         self._platform = platform
-        self.oauth2_auth = ActronAirOAuth2DeviceCodeAuth(base_url, self._oauth2_client_id)
+        self.oauth2_auth = ActronAirOAuth2DeviceCodeAuth(
+            base_url, self._oauth2_client_id, session=self._session
+        )
 
         # Restore tokens
         self.oauth2_auth.access_token = old_access_token
@@ -239,10 +248,15 @@ class ActronAirAPI:
             return self._session
 
     async def close(self) -> None:
-        """Close the API client and release resources."""
+        """Close the API client and release resources.
+
+        If an external session was injected via the constructor, it is
+        **not** closed here – the caller retains ownership.
+        """
         async with self._session_lock:
-            if self._session and not self._session.closed:
+            if self._session and not self._session.closed and not self._external_session:
                 await self._session.close()
+            if not self._external_session:
                 self._session = None
 
     async def __aenter__(self) -> "ActronAirAPI":
@@ -358,7 +372,7 @@ class ActronAirAPI:
                         f"API request failed. Status: {response.status}, Response: {response_text}"
                     )
 
-                return await response.json()
+                return dict(await response.json())
         except aiohttp.ClientError as e:
             raise ActronAirAPIError(f"Request failed: {str(e)}") from e
 

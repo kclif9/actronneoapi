@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import time
+from collections.abc import AsyncIterator
 from typing import Final
 
 import aiohttp
@@ -20,12 +22,20 @@ class ActronAirOAuth2DeviceCodeAuth:
     is preferred.
     """
 
-    def __init__(self, base_url: str, client_id: str = "home_assistant") -> None:
+    def __init__(
+        self,
+        base_url: str,
+        client_id: str = "home_assistant",
+        session: aiohttp.ClientSession | None = None,
+    ) -> None:
         """Initialize the OAuth2 Device Code Flow handler.
 
         Args:
             base_url: Base URL for the Actron Air API
             client_id: OAuth2 client ID
+            session: Optional externally managed ``aiohttp.ClientSession``.
+                When provided, this session is used for all HTTP requests
+                and the caller retains ownership of its lifecycle.
 
         Raises:
             ValueError: If base_url or client_id are empty
@@ -43,6 +53,7 @@ class ActronAirOAuth2DeviceCodeAuth:
         self.token_type: str = "Bearer"
         self.token_expiry: float | None = None
         self.authenticated_platform: str | None = None  # Track which platform issued tokens
+        self._session: aiohttp.ClientSession | None = session
 
         # OAuth2 endpoints
         self.token_url: Final[str] = f"{self.base_url}/api/v0/oauth/token"
@@ -73,6 +84,24 @@ class ActronAirOAuth2DeviceCodeAuth:
             raise ActronAirAuthError("No access token available")
         return {"Authorization": f"{self.token_type} {self.access_token}"}
 
+    @contextlib.asynccontextmanager
+    async def _get_session(self) -> AsyncIterator[aiohttp.ClientSession]:
+        """Yield an ``aiohttp.ClientSession``.
+
+        If an external session was provided at construction time it is yielded
+        directly.  Otherwise a short-lived session is created and closed after
+        the block.
+
+        Yields:
+            An active ``aiohttp.ClientSession``
+
+        """
+        if self._session is not None:
+            yield self._session
+        else:
+            async with aiohttp.ClientSession() as session:
+                yield session
+
     async def request_device_code(self) -> ActronAirDeviceCode:
         """Request a device code for OAuth2 device code flow.
 
@@ -90,7 +119,7 @@ class ActronAirOAuth2DeviceCodeAuth:
 
         headers = {"Content-Type": "application/x-www-form-urlencoded"}
 
-        async with aiohttp.ClientSession() as session:
+        async with self._get_session() as session:
             async with session.post(self.token_url, data=payload, headers=headers) as response:
                 if response.status == 200:
                     data = await response.json()
@@ -166,7 +195,7 @@ class ActronAirOAuth2DeviceCodeAuth:
         current_interval = interval
         attempt = 0
 
-        async with aiohttp.ClientSession() as session:
+        async with self._get_session() as session:
             while time.time() - start_time < timeout:
                 attempt += 1
 
@@ -248,7 +277,7 @@ class ActronAirOAuth2DeviceCodeAuth:
 
         headers = {"Content-Type": "application/x-www-form-urlencoded"}
 
-        async with aiohttp.ClientSession() as session:
+        async with self._get_session() as session:
             async with session.post(self.token_url, data=payload, headers=headers) as response:
                 if response.status == 200:
                     data = await response.json()
@@ -304,7 +333,7 @@ class ActronAirOAuth2DeviceCodeAuth:
 
         headers = self.authorization_header
 
-        async with aiohttp.ClientSession() as session:
+        async with self._get_session() as session:
             async with session.get(self.user_info_url, headers=headers) as response:
                 if response.status == 200:
                     data = await response.json()

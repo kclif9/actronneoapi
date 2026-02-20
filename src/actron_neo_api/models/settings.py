@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 if TYPE_CHECKING:
     from .status import ActronAirStatus
@@ -25,11 +25,33 @@ class ActronAirUserAirconSettings(BaseModel):
     temperature_setpoint_cool_c: float = Field(0.0, alias="TemperatureSetpoint_Cool_oC")
     temperature_setpoint_heat_c: float = Field(0.0, alias="TemperatureSetpoint_Heat_oC")
     enabled_zones: list[bool] = Field([], alias="EnabledZones")
-    quiet_mode_enabled: bool = Field(False, alias="QuietModeEnabled")
+    quiet_mode_enabled: bool = Field(False, alias="QuietMode")
     turbo_mode_enabled: bool | dict[str, bool] = Field(
         default_factory=lambda: {"Enabled": False}, alias="TurboMode"
     )
     _parent_status: "ActronAirStatus | None" = None
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _normalise_quiet_mode(cls, data: Any) -> Any:
+        """Accept both ``QuietMode`` and ``QuietModeEnabled`` from the API.
+
+        Some firmware versions return ``QuietMode`` while others return
+        ``QuietModeEnabled``.  This validator ensures either key is accepted
+        and mapped to the ``quiet_mode_enabled`` field.
+
+        Args:
+            data: Raw input data dictionary
+
+        Returns:
+            Normalised data dictionary
+
+        """
+        if isinstance(data, dict) and "QuietModeEnabled" in data and "QuietMode" not in data:
+            data["QuietMode"] = data.pop("QuietModeEnabled")
+        return data
 
     def set_parent_status(self, parent: "ActronAirStatus") -> None:
         """Set reference to parent ActronStatus object.

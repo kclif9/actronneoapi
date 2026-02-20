@@ -1,6 +1,6 @@
 """Tests for settings async command methods."""
 
-from typing import Any
+from typing import Any, Dict
 
 import pytest
 
@@ -297,3 +297,34 @@ class TestSettingsAsyncSetTurboMode:
         """Test setting turbo mode without API reference raises."""
         with pytest.raises(ValueError, match="No API reference available"):
             await settings_without_api.set_turbo_mode(True)
+
+
+# ---------------------------------------------------------------------------
+# QuietMode alias fallback
+# ---------------------------------------------------------------------------
+class TestQuietModeAlias:
+    """Ensure both QuietMode and QuietModeEnabled are accepted."""
+
+    def test_quiet_mode_key(self) -> None:
+        """Standard QuietMode key should work."""
+        data = {"QuietMode": True}
+        settings = ActronAirUserAirconSettings.model_validate(data)
+        assert settings.quiet_mode_enabled is True
+
+    def test_quiet_mode_enabled_key(self) -> None:
+        """Fallback QuietModeEnabled key should also work."""
+        data = {"QuietModeEnabled": True}
+        settings = ActronAirUserAirconSettings.model_validate(data)
+        assert settings.quiet_mode_enabled is True
+
+    def test_quiet_mode_takes_precedence(self) -> None:
+        """When both keys present, QuietMode takes precedence."""
+        data = {"QuietMode": False, "QuietModeEnabled": True}
+        settings = ActronAirUserAirconSettings.model_validate(data)
+        assert settings.quiet_mode_enabled is False
+
+    def test_quiet_mode_default(self) -> None:
+        """When neither key present, defaults to False."""
+        data: Dict[str, Any] = {}
+        settings = ActronAirUserAirconSettings.model_validate(data)
+        assert settings.quiet_mode_enabled is False

@@ -724,3 +724,43 @@ class TestActronAirAPIWithOAuth2:
 
         assert api.access_token == "test_access_token"
         assert api.refresh_token_value == "test_refresh_token"
+
+
+# ---------------------------------------------------------------------------
+# Inject websession — OAuth handler
+# ---------------------------------------------------------------------------
+class TestInjectWebsessionOAuth:
+    """ActronAirOAuth2DeviceCodeAuth must accept an external session."""
+
+    def test_init_without_session(self) -> None:
+        """No session by default."""
+        auth = ActronAirOAuth2DeviceCodeAuth("https://example.com")
+        assert auth._session is None
+
+    def test_init_with_session(self) -> None:
+        """Session stored when provided."""
+        sess = MagicMock(spec=aiohttp.ClientSession)
+        auth = ActronAirOAuth2DeviceCodeAuth("https://example.com", session=sess)
+        assert auth._session is sess
+
+    @pytest.mark.asyncio
+    async def test_get_session_uses_external(self) -> None:
+        """_get_session yields the external session without creating a new one."""
+        sess = MagicMock(spec=aiohttp.ClientSession)
+        auth = ActronAirOAuth2DeviceCodeAuth("https://example.com", session=sess)
+
+        async with auth._get_session() as s:
+            assert s is sess
+
+    @pytest.mark.asyncio
+    async def test_get_session_creates_when_none(self) -> None:
+        """_get_session creates a temporary session when none injected."""
+        auth = ActronAirOAuth2DeviceCodeAuth("https://example.com")
+
+        with patch("aiohttp.ClientSession") as mock_cls:
+            mock_instance = AsyncMock()
+            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_instance)
+            mock_cls.return_value.__aexit__ = AsyncMock(return_value=None)
+
+            async with auth._get_session() as s:
+                assert s is mock_instance

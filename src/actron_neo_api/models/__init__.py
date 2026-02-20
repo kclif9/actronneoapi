@@ -11,6 +11,7 @@ from .settings import ActronAirUserAirconSettings
 from .status import ActronAirStatus
 from .system import (
     ActronAirACSystem,
+    ActronAirIndoorUnit,
     ActronAirLiveAircon,
     ActronAirMasterInfo,
     ActronAirSystemInfo,
@@ -24,6 +25,7 @@ __all__ = [
     "ActronAirZoneSensor",
     "ActronAirPeripheral",
     "ActronAirUserAirconSettings",
+    "ActronAirIndoorUnit",
     "ActronAirLiveAircon",
     "ActronAirMasterInfo",
     "ActronAirACSystem",

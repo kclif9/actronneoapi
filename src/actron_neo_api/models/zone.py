@@ -44,6 +44,10 @@ class ActronAirPeripheral(BaseModel):
     battery_level: float | None = Field(None, alias="RemainingBatteryCapacity_pc")
     temperature: float | None = None
     humidity: float | None = None
+    rssi: dict[str, Any] | None = Field(None, alias="RSSI")
+    last_connection_time: str | None = Field(None, alias="LastConnectionTime")
+    connection_state: str | None = Field(None, alias="ConnectionState")
+    control_capabilities: dict[str, bool] | None = Field(None, alias="ControlCapabilities")
     _parent_status: "ActronAirStatus | None" = None
 
     @property
@@ -133,9 +137,31 @@ class ActronAirZone(BaseModel):
     temperature_setpoint_cool_c: float = Field(0.0, alias="TemperatureSetpoint_Cool_oC")
     temperature_setpoint_heat_c: float = Field(0.0, alias="TemperatureSetpoint_Heat_oC")
     sensors: dict[str, ActronAirZoneSensor] = Field({}, alias="Sensors")
+    nv_vav: bool = Field(False, alias="NV_VAV")
+    nv_itc: bool = Field(False, alias="NV_ITC")
+    temperature_setpoint_c: float | None = Field(None, alias="TemperatureSetpoint_oC")
+    airflow_setpoint: int | None = Field(None, alias="AirflowSetpoint")
+    airflow_control_enabled: bool = Field(False, alias="AirflowControlEnabled")
+    airflow_control_locked: bool = Field(False, alias="AirflowControlLocked")
+    zone_max_position: int | None = Field(None, alias="ZoneMaxPosition")
+    zone_min_position: int | None = Field(None, alias="ZoneMinPosition")
     actual_humidity_pc: float | None = None
     zone_id: int | None = None
     _parent_status: "ActronAirStatus | None" = None
+
+    @property
+    def has_temp_control(self) -> bool:
+        """Whether this zone supports individual temperature control.
+
+        A zone gets a climate entity in Home Assistant only when it has
+        both a VAV damper motor (``nv_vav``) **and** individual temperature
+        control (``nv_itc``).
+
+        Returns:
+            True if the zone supports individual temperature control
+
+        """
+        return self.nv_vav and self.nv_itc
 
     @property
     def is_active(self) -> bool:
@@ -260,8 +286,8 @@ class ActronAirZone(BaseModel):
         temp_variance = user_settings.get("ZoneTemperatureSetpointVariance_oC", 3.0)
 
         if max_setpoint < target_setpoint + temp_variance:
-            return max_setpoint
-        return target_setpoint + temp_variance
+            return float(max_setpoint)
+        return float(target_setpoint + temp_variance)
 
     @property
     def min_temp(self) -> float:
@@ -280,8 +306,8 @@ class ActronAirZone(BaseModel):
         temp_variance = user_settings.get("ZoneTemperatureSetpointVariance_oC", 3.0)
 
         if min_setpoint > target_setpoint - temp_variance:
-            return min_setpoint
-        return target_setpoint - temp_variance
+            return float(min_setpoint)
+        return float(target_setpoint - temp_variance)
 
     # Command generation methods
     def set_temperature_command(self, temperature: float) -> dict[str, Any]:

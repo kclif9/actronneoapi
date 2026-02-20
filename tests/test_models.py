@@ -4,8 +4,83 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from actron_neo_api import __version__
+from actron_neo_api._version import __version__ as version_from_module
 from actron_neo_api.models.settings import ActronAirUserAirconSettings
 from actron_neo_api.models.zone import ActronAirPeripheral, ActronAirZone
+
+
+# ---------------------------------------------------------------------------
+# __version__ / _version.py
+# ---------------------------------------------------------------------------
+class TestVersion:
+    """Verify single-source versioning."""
+
+    def test_version_string_exists(self) -> None:
+        """__version__ must be a non-empty string."""
+        assert isinstance(__version__, str)
+        assert len(__version__) > 0
+
+    def test_version_matches_module(self) -> None:
+        """Top-level __version__ must equal _version.__version__."""
+        assert __version__ == version_from_module
+
+
+# ---------------------------------------------------------------------------
+# py.typed marker
+# ---------------------------------------------------------------------------
+class TestPyTyped:
+    """Verify PEP 561 py.typed marker is shipped."""
+
+    def test_py_typed_exists(self) -> None:
+        """py.typed file must exist inside the package directory."""
+        import importlib.resources as resources
+
+        ref = resources.files("actron_neo_api").joinpath("py.typed")
+        assert ref.is_file()
+
+
+# ---------------------------------------------------------------------------
+# Pydantic model_config (2026 best practices)
+# ---------------------------------------------------------------------------
+class TestPydanticModelConfig:
+    """Ensure all models use model_config instead of class Config."""
+
+    def test_system_info_populate_by_name(self) -> None:
+        """ActronAirSystemInfo must support both alias and field name."""
+        from actron_neo_api.models.system import ActronAirSystemInfo
+
+        data = {"serial": "abc", "_links": {"status": {"href": "/status"}}}
+        obj = ActronAirSystemInfo(**data)
+        assert obj.serial == "abc"
+        assert obj.links == {"status": {"href": "/status"}}
+
+    def test_user_info_extra_allowed(self) -> None:
+        """ActronAirUserInfo must allow extra fields."""
+        from actron_neo_api.models.auth import ActronAirUserInfo
+
+        data = {
+            "id": "123",
+            "email": "test@test.com",
+            "custom_field": "value",
+        }
+        obj = ActronAirUserInfo(**data)
+        assert obj.sub == "123"
+        assert obj.email == "test@test.com"
+
+    def test_no_class_config_anywhere(self) -> None:
+        """No model should use the deprecated class Config pattern."""
+        import inspect
+
+        from actron_neo_api.models import auth, settings, status, system, zone
+
+        for mod in (auth, settings, status, system, zone):
+            for _name, cls in inspect.getmembers(mod, inspect.isclass):
+                if hasattr(cls, "Config") and issubclass(cls, __import__("pydantic").BaseModel):
+                    # Ensure it's not an inner Config class (deprecated)
+                    assert not hasattr(
+                        cls.Config, "populate_by_name"
+                    ), f"{cls.__name__} still uses class Config"
 
 
 class TestUserAirconSettings:

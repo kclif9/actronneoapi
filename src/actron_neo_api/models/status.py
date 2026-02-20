@@ -26,6 +26,8 @@ class ActronAirStatus(BaseModel):
 
     is_online: bool = Field(False, alias="isOnline")
     last_known_state: dict[str, Any] = Field({}, alias="lastKnownState")
+    last_status_update: str | None = Field(None, alias="lastStatusUpdate")
+    time_since_last_contact: str | None = Field(None, alias="timeSinceLastContact")
     ac_system: ActronAirACSystem | None = None
     user_aircon_settings: ActronAirUserAirconSettings | None = None
     master_info: ActronAirMasterInfo | None = None
@@ -183,7 +185,7 @@ class ActronAirStatus(BaseModel):
     def min_temp(self) -> float:
         """Return the minimum temperature that can be set."""
         try:
-            return self.last_known_state["NV_Limits"]["UserSetpoint_oC"]["setCool_Min"]
+            return float(self.last_known_state["NV_Limits"]["UserSetpoint_oC"]["setCool_Min"])
         except (KeyError, TypeError):
             return 16.0  # Sensible default minimum temperature
 
@@ -191,7 +193,7 @@ class ActronAirStatus(BaseModel):
     def max_temp(self) -> float:
         """Return the maximum temperature that can be set."""
         try:
-            return self.last_known_state["NV_Limits"]["UserSetpoint_oC"]["setCool_Max"]
+            return float(self.last_known_state["NV_Limits"]["UserSetpoint_oC"]["setCool_Max"])
         except (KeyError, TypeError):
             return 32.0  # Sensible default maximum temperature
 
