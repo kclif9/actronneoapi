@@ -78,9 +78,9 @@ class TestPydanticModelConfig:
             for _name, cls in inspect.getmembers(mod, inspect.isclass):
                 if hasattr(cls, "Config") and issubclass(cls, __import__("pydantic").BaseModel):
                     # Ensure it's not an inner Config class (deprecated)
-                    assert not hasattr(
-                        cls.Config, "populate_by_name"
-                    ), f"{cls.__name__} still uses class Config"
+                    assert not hasattr(cls.Config, "populate_by_name"), (
+                        f"{cls.__name__} still uses class Config"
+                    )
 
 
 class TestUserAirconSettings:
