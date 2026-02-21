@@ -1,11 +1,39 @@
 """Simple focused tests for settings and zone models."""
 
+import pathlib
 from unittest.mock import MagicMock
 
 import pytest
 
+from actron_neo_api import __version__
+from actron_neo_api._version import __version__ as version_from_module
 from actron_neo_api.models.settings import ActronAirUserAirconSettings
 from actron_neo_api.models.zone import ActronAirPeripheral, ActronAirZone
+
+
+# ---------------------------------------------------------------------------
+# Version & packaging
+# ---------------------------------------------------------------------------
+class TestVersion:
+    """Tests for the __version__ attribute."""
+
+    def test_version_is_string(self) -> None:
+        """__version__ should be a non-empty string."""
+        assert isinstance(__version__, str)
+        assert len(__version__) > 0
+
+    def test_version_matches_module(self) -> None:
+        """Package-level __version__ should match _version module."""
+        assert __version__ == version_from_module
+
+
+class TestPyTyped:
+    """Test that py.typed marker file exists for PEP 561."""
+
+    def test_py_typed_exists(self) -> None:
+        """py.typed marker should exist in the package directory."""
+        package_dir = pathlib.Path(__file__).resolve().parent.parent / "src" / "actron_neo_api"
+        assert (package_dir / "py.typed").exists()
 
 
 class TestUserAirconSettings:

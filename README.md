@@ -167,6 +167,7 @@ The `poll_for_token()` method now includes **automatic polling with intelligent 
 - **Logging**: Detailed logging for debugging authentication issues
 
 **New signature:**
+
 ```python
 token_data = await api.poll_for_token(
     device_code,
@@ -191,6 +192,7 @@ async def restore_session():
 ### OAuth2 Endpoints
 
 The library uses these OAuth2 endpoints:
+
 - **Token URL**: `https://nimbus.actronair.com.au/api/v0/oauth/token`
 - **Authorize URL**: `https://nimbus.actronair.com.au/authorize`
 - **Device Auth URL**: `https://nimbus.actronair.com.au/connect`
@@ -307,7 +309,6 @@ for i, zone in enumerate(zones):
     else:  # Disable other zones
         await zone.enable(is_enabled=False)
 ```
-
 
 ---
 

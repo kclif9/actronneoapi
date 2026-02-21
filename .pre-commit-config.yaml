@@ -21,7 +21,7 @@ repos:
       - id: check-builtin-literals
         args: [--no-allow-dict-kwargs]
       - id: check-merge-conflict
-      - id: debug-statements  # Catches leftover pdb, print statements
+      - id: debug-statements # Catches leftover pdb, print statements
       - id: mixed-line-ending
         args: [--fix=lf]
       - id: name-tests-test
@@ -37,6 +37,22 @@ repos:
         additional_dependencies: [pydantic>=2.0.0, aiohttp>=3.8.0]
         args: [--config-file=mypy.ini]
         exclude: ^tests/
+
+  # Security scanning with bandit
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.8.3
+    hooks:
+      - id: bandit
+        args: [-c, pyproject.toml]
+        additional_dependencies: ["bandit[toml]"]
+        exclude: ^tests/
+
+  # Prettier for markdown, YAML, and JSON formatting
+  - repo: https://github.com/pre-commit/mirrors-prettier
+    rev: v4.0.0-alpha.8
+    hooks:
+      - id: prettier
+        types_or: [markdown, yaml, json]
 
   # Docstring checking
   - repo: https://github.com/pycqa/pydocstyle

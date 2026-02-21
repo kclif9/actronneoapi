@@ -1,23 +1,28 @@
 # GitHub Copilot Instructions for ActronAirAPI
 
 ## Project Overview
+
 ActronAirAPI is a Python library providing a robust, type-safe interface to Actron Air HVAC systems. This library is designed for integration with Home Assistant and other automation platforms, emphasizing reliability, maintainability, and clean architecture.
 
 ## Core Development Principles
 
 ### 1. Code Quality Standards
+
 - **Type Safety**: Use type hints everywhere (`typing` module, Pydantic models)
 - **Error Handling**: Follow fail-fast for critical operations, graceful degradation for non-critical
 - **Documentation**: All public APIs must have Google-style docstrings
 - **Testing**: Write tests for new features and bug fixes
 
 ### 2. Pre-commit Compliance
+
 **CRITICAL**: All code must pass pre-commit checks before committing. Run:
+
 ```bash
 pre-commit run --all-files
 ```
 
 Our pre-commit pipeline includes:
+
 - **ruff**: Linting and auto-formatting (E, F, W, I rules)
 - **mypy**: Type checking with strict mode
 - **pydocstyle**: Google convention docstrings
@@ -26,6 +31,7 @@ Our pre-commit pipeline includes:
 ### 3. Exception Handling Philosophy
 
 **Fail Fast (raise exceptions):**
+
 - Authentication failures (`ActronAirAuthError`)
 - API communication errors (`ActronAirAPIError`)
 - Control command failures (turn on/off, mode changes)
@@ -33,6 +39,7 @@ Our pre-commit pipeline includes:
 - Invalid API responses that break core functionality
 
 **Graceful Degradation (log and continue):**
+
 - Observer callback failures (don't break status updates)
 - Peripheral sensor parsing errors (log warning, continue with None)
 - Invalid sensor data (temperature/humidity out of range)
@@ -40,6 +47,7 @@ Our pre-commit pipeline includes:
 - Non-critical nested component parsing
 
 **Example Pattern:**
+
 ```python
 # Critical operation - fail fast (no try-except needed, let exceptions propagate)
 async def send_command(self, command: Dict[str, Any]) -> Dict[str, Any]:
@@ -65,6 +73,7 @@ def _process_peripherals(self) -> None:
 ### 4. Code Architecture
 
 **Project Structure:**
+
 ```
 src/actron_neo_api/
 ├── __init__.py          # Public API exports
@@ -84,6 +93,7 @@ src/actron_neo_api/
 ```
 
 **Design Patterns:**
+
 - **Pydantic Models**: All API data structures use Pydantic for validation
 - **Type Safety**: Full type hints with mypy compliance
 - **Async/Await**: All I/O operations are async
@@ -93,6 +103,7 @@ src/actron_neo_api/
 ### 5. Common Patterns and Best Practices
 
 #### Pydantic Models
+
 ```python
 from pydantic import BaseModel, Field
 from typing import Optional
@@ -109,6 +120,7 @@ class ActronAirZone(BaseModel):
 ```
 
 #### Logging
+
 ```python
 import logging
 
@@ -122,6 +134,7 @@ _LOGGER.error("Serious problems", exc_info=True)  # Failures requiring attention
 ```
 
 #### Async API Methods
+
 ```python
 async def get_status(self, serial_number: str) -> Dict[str, Any]:
     """Get AC status.
@@ -141,6 +154,7 @@ async def get_status(self, serial_number: str) -> Dict[str, Any]:
 ```
 
 #### Property Accessors with Error Handling
+
 ```python
 @property
 def min_temp(self) -> float:
@@ -154,6 +168,7 @@ def min_temp(self) -> float:
 ### 6. Testing Requirements
 
 When adding new features:
+
 1. Write unit tests in `tests/`
 2. Test both success and failure paths
 3. Mock external API calls with `aiohttp`
@@ -162,6 +177,7 @@ When adding new features:
 ### 7. Documentation Standards
 
 **Module Docstrings:**
+
 ```python
 """Brief module description.
 
@@ -171,6 +187,7 @@ and how it fits into the overall architecture.
 ```
 
 **Function/Method Docstrings:**
+
 ```python
 def method(self, param: str, optional: bool = False) -> Dict[str, Any]:
     """Brief description.
@@ -198,6 +215,7 @@ def method(self, param: str, optional: bool = False) -> Dict[str, Any]:
 ### 8. Common Gotchas and Anti-Patterns
 
 **❌ DON'T:**
+
 - Catch exceptions without re-raising or logging with `exc_info=True`
 - Access dictionary keys without handling `KeyError`
 - Use bare `except:` clauses
@@ -206,6 +224,7 @@ def method(self, param: str, optional: bool = False) -> Dict[str, Any]:
 - Commit code that fails pre-commit checks
 
 **✅ DO:**
+
 - Use `dict.get()` with defaults for optional data
 - Provide sensible defaults for missing optional configuration
 - Add type hints to all function signatures
@@ -225,6 +244,7 @@ def method(self, param: str, optional: bool = False) -> Dict[str, Any]:
 ### 10. API Client Best Practices
 
 **Session Management:**
+
 ```python
 async def __aenter__(self):
     """Context manager entry."""
@@ -236,11 +256,13 @@ async def __aexit__(self, exc_type, exc_val, exc_tb):
 ```
 
 **Token Management:**
+
 - Proactively refresh tokens 15 minutes before expiry
 - Handle 401 responses with automatic token refresh and retry
 - Track which platform issued tokens (Neo vs Que)
 
 **State Updates:**
+
 - Use state manager for centralized state tracking
 - Support observer pattern for state change notifications
 - Parse nested components lazily to improve performance
@@ -248,6 +270,7 @@ async def __aexit__(self, exc_type, exc_val, exc_tb):
 ### 11. Making Changes Checklist
 
 Before proposing any code changes:
+
 1. ✅ Understand the fail-fast vs graceful degradation philosophy
 2. ✅ Check if similar patterns exist in the codebase
 3. ✅ Add appropriate type hints
@@ -268,13 +291,17 @@ Before proposing any code changes:
 ## Development Workflow
 
 ### Virtual Environment
+
 **CRITICAL**: Always activate the virtual environment before running any commands:
+
 ```bash
 source .venv/bin/activate
 ```
 
 ### Before Completing Any Work
+
 **MANDATORY**: Before considering any work complete, you MUST:
+
 1. ✅ Activate the virtual environment (`source .venv/bin/activate`)
 2. ✅ Run the full test suite with coverage (`pytest --cov=src --cov-report=term-missing`)
 3. ✅ Verify test coverage has not regressed
@@ -321,6 +348,7 @@ ruff check --fix .
 ## When Working on This Project
 
 **Always consider:**
+
 1. Will this change break existing integrations (Home Assistant)?
 2. Does this follow the project's exception handling philosophy?
 3. Will this pass all pre-commit checks?
@@ -328,6 +356,7 @@ ruff check --fix .
 5. Does this maintain backward compatibility?
 
 **Completion Checklist (MANDATORY):**
+
 1. ✅ Virtual environment activated
 2. ✅ All tests pass (`pytest` returns 0 exit code)
 3. ✅ Test coverage verified and not regressed (`pytest --cov=src --cov-report=term-missing`)
