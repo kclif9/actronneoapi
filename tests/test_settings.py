@@ -457,3 +457,13 @@ class TestOptimisticStateOff:
 
         assert settings_with_api.temperature_setpoint_cool_c == 26.0
         assert settings_with_api.temperature_setpoint_heat_c == 22.0
+
+    @pytest.mark.asyncio
+    async def test_set_turbo_mode_bool_optimistic(
+        self, settings_with_api: ActronAirUserAirconSettings, mock_api: Any
+    ) -> None:
+        """Setting turbo mode when turbo_mode_enabled is a plain bool."""
+        settings_with_api.turbo_mode_enabled = False
+        await settings_with_api.set_turbo_mode(True)
+
+        assert settings_with_api.turbo_mode_enabled is True

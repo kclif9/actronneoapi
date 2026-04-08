@@ -319,3 +319,11 @@ class TestZoneOptimisticAutoMode:
 
         assert zone_auto_mode.temperature_setpoint_cool_c == 26.0
         assert zone_auto_mode.temperature_setpoint_heat_c == 22.0
+
+    @pytest.mark.asyncio
+    async def test_set_temperature_heat_mode(self, zone_auto_mode: ActronAirZone) -> None:
+        """Setting temperature in HEAT mode updates heat setpoint only."""
+        zone_auto_mode._parent_status.user_aircon_settings.mode = "HEAT"
+        await zone_auto_mode.set_temperature(22.0)
+
+        assert zone_auto_mode.temperature_setpoint_heat_c == 22.0
