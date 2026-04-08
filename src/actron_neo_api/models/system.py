@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 if TYPE_CHECKING:
     from .status import ActronAirStatus
@@ -20,10 +20,7 @@ class ActronAirSystemInfo(BaseModel):
     type: str | None = Field(None, description="System type (e.g., 'standard', 'NX-Gen')")
     links: dict[str, Any] = Field(default_factory=dict, alias="_links")
 
-    class Config:
-        """Pydantic configuration."""
-
-        populate_by_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
     @field_validator("serial")
     @classmethod
