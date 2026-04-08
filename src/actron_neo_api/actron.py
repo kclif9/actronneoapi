@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Awaitable, Callable
 from typing import Any, Literal
 
 import aiohttp
@@ -11,6 +12,7 @@ from .const import (
     BASE_URL_DEFAULT,
     BASE_URL_NIMBUS,
     BASE_URL_QUE,
+    COMMAND_DEBOUNCE_SECONDS,
     PLATFORM_NEO,
     PLATFORM_QUE,
 )
@@ -26,6 +28,176 @@ from .oauth import ActronAirOAuth2DeviceCodeAuth
 from .state import StateManager
 
 
+class _PendingBatch:
+    """A batch of set-settings commands being coalesced for a single system."""
+
+    __slots__ = ("merged_command", "baseline_zones", "zone_overrides", "futures", "timer")
+
+    def __init__(self, baseline_zones: list[bool] | None) -> None:
+        """Initialise a pending batch.
+
+        Args:
+            baseline_zones: Current enabled-zones snapshot (for element-wise merging),
+                or None if unavailable.
+
+        """
+        self.merged_command: dict[str, Any] = {"type": "set-settings"}
+        self.baseline_zones = baseline_zones
+        self.zone_overrides: dict[int, bool] = {}
+        self.futures: list[asyncio.Future[None]] = []
+        self.timer: asyncio.TimerHandle | None = None
+
+
+class CommandCoalescer:
+    """Coalesces ``set-settings`` commands per system over a debounce window.
+
+    When multiple zone-enable or other set-settings commands arrive within
+    ``debounce_seconds``, they are deep-merged into a single API call.
+    ``EnabledZones`` lists are merged element-wise against the current state
+    so concurrent zone toggles don't overwrite each other.
+    """
+
+    def __init__(
+        self,
+        send_fn: Callable[[str, dict[str, Any]], Awaitable[None]],
+        state_manager: StateManager,
+        debounce_seconds: float = COMMAND_DEBOUNCE_SECONDS,
+    ) -> None:
+        """Initialise the command coalescer.
+
+        Args:
+            send_fn: Async callable ``(serial, command_dict) -> None`` that sends
+                a command to the API.
+            state_manager: State manager used to snapshot current zone state.
+            debounce_seconds: How long to wait for additional commands before
+                flushing the batch.
+
+        """
+        self._send_fn = send_fn
+        self._state_manager = state_manager
+        self._debounce = debounce_seconds
+        self._batches: dict[str, _PendingBatch] = {}
+
+    # -- public -----------------------------------------------------------------
+
+    async def enqueue(self, serial_number: str, command: dict[str, Any]) -> None:
+        """Enqueue a ``set-settings`` command for coalescing.
+
+        The returned coroutine completes only after the merged batch is sent.
+
+        Args:
+            serial_number: Target system serial number.
+            command: Full command dict (``{"command": {…}}``).
+
+        Raises:
+            ActronAirAuthError: If authentication fails while sending the merged
+                command.
+            ActronAirAPIError: If the eventual API call fails.
+
+        """
+        loop = asyncio.get_running_loop()
+        future: asyncio.Future[None] = loop.create_future()
+
+        batch = self._get_or_create_batch(serial_number)
+        self._merge_into_batch(batch, command)
+        batch.futures.append(future)
+
+        # Reset the debounce timer
+        if batch.timer is not None:
+            batch.timer.cancel()
+
+        def _schedule_flush(sn: str = serial_number) -> None:
+            asyncio.ensure_future(self._flush(sn))
+
+        batch.timer = loop.call_later(self._debounce, _schedule_flush)
+
+        await future
+
+    async def flush_all(self) -> None:
+        """Flush every pending batch immediately, cancelling debounce timers."""
+        serials = list(self._batches.keys())
+        for serial in serials:
+            batch = self._batches.get(serial)
+            if batch and batch.timer:
+                batch.timer.cancel()
+            await self._flush(serial)
+
+    # -- internals --------------------------------------------------------------
+
+    def _get_or_create_batch(self, serial_number: str) -> _PendingBatch:
+        """Return the pending batch for *serial_number*, creating one if needed."""
+        if serial_number not in self._batches:
+            baseline = self._get_baseline_zones(serial_number)
+            self._batches[serial_number] = _PendingBatch(baseline)
+        return self._batches[serial_number]
+
+    def _get_baseline_zones(self, serial_number: str) -> list[bool] | None:
+        """Snapshot the current ``EnabledZones`` from the state manager."""
+        status = self._state_manager.get_status(serial_number)
+        if status and status.user_aircon_settings:
+            return list(status.user_aircon_settings.enabled_zones)
+        return None
+
+    def _merge_into_batch(self, batch: _PendingBatch, command: dict[str, Any]) -> None:
+        """Merge a command's keys into the pending batch."""
+        inner = command.get("command", {})
+        for key, value in inner.items():
+            if key == "type":
+                continue
+
+            if (
+                key == "UserAirconSettings.EnabledZones"
+                and isinstance(value, list)
+                and batch.baseline_zones is not None
+            ):
+                # Element-wise merge: diff this command's list against the
+                # baseline to discover which index(es) the caller changed,
+                # then record those as overrides.  Indices that match baseline
+                # are left alone — they represent stale reads from the same
+                # snapshot, NOT intentional reverts.  (Each concurrent caller
+                # reads the same stale baseline, mutates one index, and sends
+                # the full array back.)
+                for i, val in enumerate(value):
+                    if i < len(batch.baseline_zones) and val != batch.baseline_zones[i]:
+                        batch.zone_overrides[i] = val
+            else:
+                # Scalar / non-list keys: last-write-wins
+                batch.merged_command[key] = value
+
+    async def _flush(self, serial_number: str) -> None:
+        """Send the merged batch and resolve all waiting futures."""
+        batch = self._batches.pop(serial_number, None)
+        if batch is None:
+            return
+
+        # Build the final command dict
+        final_inner: dict[str, Any] = dict(batch.merged_command)
+
+        # Apply per-index zone overrides
+        if batch.zone_overrides and batch.baseline_zones is not None:
+            final_zones = list(batch.baseline_zones)
+            for idx, val in batch.zone_overrides.items():
+                if idx < len(final_zones):
+                    final_zones[idx] = val
+            final_inner["UserAirconSettings.EnabledZones"] = final_zones
+
+        merged_command: dict[str, Any] = {"command": final_inner}
+
+        try:
+            await self._send_fn(serial_number, merged_command)
+        except BaseException as exc:
+            for future in batch.futures:
+                if not future.done():
+                    future.set_exception(exc)
+            if isinstance(exc, Exception):
+                return
+            raise
+
+        for future in batch.futures:
+            if not future.done():
+                future.set_result(None)
+
+
 class ActronAirAPI:
     """Client for the Actron Air API with improved architecture.
 
@@ -39,6 +211,7 @@ class ActronAirAPI:
         refresh_token: str | None = None,
         platform: Literal["neo", "que"] | None = None,
         session: aiohttp.ClientSession | None = None,
+        debounce_seconds: float = COMMAND_DEBOUNCE_SECONDS,
     ):
         """Initialize the ActronAirAPI client with OAuth2 authentication.
 
@@ -46,10 +219,12 @@ class ActronAirAPI:
             oauth2_client_id: OAuth2 client ID for device code flow
             refresh_token: Optional refresh token for authentication
             platform: Platform to use ('neo', 'que', or None for auto-detect).
-            If None, enables auto-detection with Neo as the initial platform.
+                If None, enables auto-detection with Neo as the initial platform.
             session: Optional externally-managed aiohttp session. When provided,
                 the session is reused for all HTTP requests (including OAuth) and
                 will NOT be closed by :meth:`close`.
+            debounce_seconds: Debounce window for coalescing ``set-settings``
+                commands (default: 0.1 s).  Set to 0 to disable coalescing.
 
         """
         # Determine base URL from platform parameter
@@ -91,6 +266,13 @@ class ActronAirAPI:
         self._session: aiohttp.ClientSession | None = session
         self._external_session = session is not None
         self._session_lock = asyncio.Lock()
+
+        # Command coalescing
+        self._coalescer = CommandCoalescer(
+            send_fn=self._send_command_direct,
+            state_manager=self.state_manager,
+            debounce_seconds=debounce_seconds,
+        )
 
     @property
     def platform(self) -> str:
@@ -257,6 +439,7 @@ class ActronAirAPI:
             closed — the caller retains ownership.
 
         """
+        await self._coalescer.flush_all()
         async with self._session_lock:
             if self._session and not self._session.closed and not self._external_session:
                 await self._session.close()
@@ -446,6 +629,10 @@ class ActronAirAPI:
     async def send_command(self, serial_number: str, command: dict[str, Any]) -> None:
         """Send a command to the specified AC system.
 
+        ``set-settings`` commands are routed through the :class:`CommandCoalescer`
+        so that concurrent zone toggles are merged into a single API call.
+        All other command types are sent immediately.
+
         Args:
             serial_number: Serial number of the AC system
             command: Dictionary containing the command details
@@ -454,9 +641,25 @@ class ActronAirAPI:
             ActronAirAPIError: If command fails or system not found
 
         """
-        # Normalize serial number to lowercase for consistent lookup
         serial_number = serial_number.lower()
 
+        inner = command.get("command", {})
+        if inner.get("type") == "set-settings" and self._coalescer._debounce > 0:
+            await self._coalescer.enqueue(serial_number, command)
+        else:
+            await self._send_command_direct(serial_number, command)
+
+    async def _send_command_direct(self, serial_number: str, command: dict[str, Any]) -> None:
+        """Send a command directly to the API without coalescing.
+
+        Args:
+            serial_number: Serial number of the AC system
+            command: Dictionary containing the command details
+
+        Raises:
+            ActronAirAPIError: If command fails or system not found
+
+        """
         endpoint = self._get_system_link(serial_number, "commands")
         if not endpoint:
             raise ActronAirAPIError(f"No commands link found for system {serial_number}")
