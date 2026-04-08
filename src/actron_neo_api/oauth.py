@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import logging
 import time
 from typing import AsyncIterator, Final
 
@@ -11,6 +12,8 @@ import aiohttp
 
 from .exceptions import ActronAirAuthError
 from .models import ActronAirDeviceCode, ActronAirToken, ActronAirUserInfo
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class ActronAirOAuth2DeviceCodeAuth:
@@ -356,22 +359,36 @@ class ActronAirOAuth2DeviceCodeAuth:
         """Ensure the token is valid, refreshing proactively if expiring soon.
 
         Uses double-check locking so that concurrent callers only trigger a
-        single refresh.
+        single refresh.  When the token is still valid but a proactive refresh
+        fails, the existing token is returned instead of raising.
 
         Returns:
             The current valid access token
 
         Raises:
-            ActronAirAuthError: If token validation fails
+            ActronAirAuthError: If token is expired and refresh fails
 
         """
         if self.is_token_valid and not self.is_token_expiring_soon:
-            return self.access_token  # type: ignore[return-value]
+            access_token = self.access_token
+            if not access_token:
+                raise ActronAirAuthError("Access token is not available")
+            return access_token
 
         async with self._token_lock:
             # Double-check after acquiring lock
             if not self.is_token_valid or self.is_token_expiring_soon:
-                await self.refresh_access_token()
+                try:
+                    await self.refresh_access_token()
+                except (ActronAirAuthError, Exception):
+                    if self.is_token_valid:
+                        _LOGGER.warning(
+                            "Proactive token refresh failed; "
+                            "using existing token (expires in %ds)",
+                            int((self.token_expiry or 0) - time.time()),
+                        )
+                    else:
+                        raise
 
         if not self.access_token:
             raise ActronAirAuthError("Access token is not available")

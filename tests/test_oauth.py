@@ -957,3 +957,37 @@ class TestTokenRefreshLock:
 
         assert not refreshed
         assert token == "good_token"
+
+    @pytest.mark.asyncio
+    async def test_proactive_refresh_failure_falls_back_to_valid_token(self) -> None:
+        """Proactive refresh failure returns existing valid token instead of raising."""
+        auth = ActronAirOAuth2DeviceCodeAuth("https://example.com", "test_client")
+        auth.access_token = "still_valid_token"
+        auth.refresh_token = "test_refresh"
+        # Token valid but expiring in 5 minutes (within 15-min window)
+        auth.token_expiry = time.time() + 300
+
+        async def mock_refresh_fail() -> tuple[str, float]:
+            raise ActronAirAuthError("refresh failed")
+
+        auth.refresh_access_token = mock_refresh_fail  # type: ignore[assignment]
+
+        token = await auth.ensure_token_valid()
+
+        assert token == "still_valid_token"
+
+    @pytest.mark.asyncio
+    async def test_expired_token_refresh_failure_raises(self) -> None:
+        """Refresh failure with an expired token raises instead of returning."""
+        auth = ActronAirOAuth2DeviceCodeAuth("https://example.com", "test_client")
+        auth.access_token = "expired_token"
+        auth.refresh_token = "test_refresh"
+        auth.token_expiry = time.time() - 100  # Expired
+
+        async def mock_refresh_fail() -> tuple[str, float]:
+            raise ActronAirAuthError("refresh failed")
+
+        auth.refresh_access_token = mock_refresh_fail  # type: ignore[assignment]
+
+        with pytest.raises(ActronAirAuthError, match="refresh failed"):
+            await auth.ensure_token_valid()
