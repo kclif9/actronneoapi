@@ -729,6 +729,7 @@ class TestActronAirOAuth2InjectableSession:
 
         mock_session = MagicMock()
         mock_session.post = MagicMock(return_value=mock_post)
+        mock_session.closed = False
 
         auth = ActronAirOAuth2DeviceCodeAuth(
             "https://example.com", "test_client", session=mock_session
@@ -763,6 +764,7 @@ class TestActronAirOAuth2InjectableSession:
         mock_session = MagicMock()
         mock_session.post = MagicMock(return_value=mock_post)
         mock_session.close = AsyncMock()
+        mock_session.closed = False
 
         auth = ActronAirOAuth2DeviceCodeAuth(
             "https://example.com", "test_client", session=mock_session
@@ -825,6 +827,7 @@ class TestActronAirOAuth2InjectableSession:
 
         mock_session = MagicMock()
         mock_session.post = MagicMock(return_value=mock_post)
+        mock_session.closed = False
 
         auth = ActronAirOAuth2DeviceCodeAuth(
             "https://example.com", "test_client", session=mock_session
@@ -852,6 +855,7 @@ class TestActronAirOAuth2InjectableSession:
 
         mock_session = MagicMock()
         mock_session.get = MagicMock(return_value=mock_get)
+        mock_session.closed = False
 
         auth = ActronAirOAuth2DeviceCodeAuth(
             "https://example.com", "test_client", session=mock_session

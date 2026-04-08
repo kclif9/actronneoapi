@@ -855,6 +855,7 @@ class TestActronAirAPIInjectableSession:
 
         assert session is not external_session
         assert api._external_session is False
+        assert api.oauth2_auth._session is session
 
     @pytest.mark.asyncio
     async def test_external_session_used_for_api_requests(

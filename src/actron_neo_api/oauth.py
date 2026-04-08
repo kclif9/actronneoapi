@@ -98,7 +98,7 @@ class ActronAirOAuth2DeviceCodeAuth:
             An aiohttp.ClientSession to use for requests.
 
         """
-        if self._session is not None:
+        if self._session is not None and not self._session.closed:
             yield self._session
         else:
             session = aiohttp.ClientSession()

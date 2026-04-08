@@ -245,6 +245,7 @@ class ActronAirAPI:
             if self._session is None or self._session.closed:
                 self._session = aiohttp.ClientSession()
                 self._external_session = False
+                self.oauth2_auth.set_session(self._session)
                 return self._session
             return self._session
 
