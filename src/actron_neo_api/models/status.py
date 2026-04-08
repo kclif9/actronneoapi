@@ -183,16 +183,16 @@ class ActronAirStatus(BaseModel):
     def min_temp(self) -> float:
         """Return the minimum temperature that can be set."""
         try:
-            return self.last_known_state["NV_Limits"]["UserSetpoint_oC"]["setCool_Min"]
-        except (KeyError, TypeError):
+            return float(self.last_known_state["NV_Limits"]["UserSetpoint_oC"]["setCool_Min"])
+        except (KeyError, TypeError, ValueError):
             return 16.0  # Sensible default minimum temperature
 
     @property
     def max_temp(self) -> float:
         """Return the maximum temperature that can be set."""
         try:
-            return self.last_known_state["NV_Limits"]["UserSetpoint_oC"]["setCool_Max"]
-        except (KeyError, TypeError):
+            return float(self.last_known_state["NV_Limits"]["UserSetpoint_oC"]["setCool_Max"])
+        except (KeyError, TypeError, ValueError):
             return 32.0  # Sensible default maximum temperature
 
     def _process_peripherals(self) -> None:

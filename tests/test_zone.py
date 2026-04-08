@@ -327,3 +327,73 @@ class TestZoneOptimisticAutoMode:
         await zone_auto_mode.set_temperature(22.0)
 
         assert zone_auto_mode.temperature_setpoint_heat_c == 22.0
+
+
+class TestZoneTempLimitsFallback:
+    """Test max_temp/min_temp fallback when API returns non-numeric values."""
+
+    @staticmethod
+    def _make_zone_with_state(last_known_state: dict[str, Any]) -> ActronAirZone:
+        """Create a zone with the given last_known_state."""
+        status = ActronAirStatus(
+            isOnline=True,
+            lastKnownState=last_known_state,
+        )
+        status.parse_nested_components()
+        return status.remote_zone_info[0]
+
+    def test_max_temp_non_numeric_setpoint(self) -> None:
+        """max_temp returns fallback when setCool_Max is non-numeric."""
+        zone = self._make_zone_with_state(
+            {
+                "NV_Limits": {"UserSetpoint_oC": {"setCool_Max": "not_a_number"}},
+                "UserAirconSettings": {"EnabledZones": [True]},
+                "RemoteZoneInfo": [
+                    {"ZoneNumber": 0, "LiveTemp_oC": 22.0, "EnabledZone": True, "CanOperate": True}
+                ],
+            }
+        )
+        assert zone.max_temp == 30.0
+
+    def test_min_temp_non_numeric_setpoint(self) -> None:
+        """min_temp returns fallback when setCool_Min is non-numeric."""
+        zone = self._make_zone_with_state(
+            {
+                "NV_Limits": {"UserSetpoint_oC": {"setCool_Min": "bad"}},
+                "UserAirconSettings": {"EnabledZones": [True]},
+                "RemoteZoneInfo": [
+                    {"ZoneNumber": 0, "LiveTemp_oC": 22.0, "EnabledZone": True, "CanOperate": True}
+                ],
+            }
+        )
+        assert zone.min_temp == 16.0
+
+    def test_max_temp_none_variance(self) -> None:
+        """max_temp returns fallback when variance is None."""
+        zone = self._make_zone_with_state(
+            {
+                "UserAirconSettings": {
+                    "EnabledZones": [True],
+                    "ZoneTemperatureSetpointVariance_oC": None,
+                },
+                "RemoteZoneInfo": [
+                    {"ZoneNumber": 0, "LiveTemp_oC": 22.0, "EnabledZone": True, "CanOperate": True}
+                ],
+            }
+        )
+        assert zone.max_temp == 30.0
+
+    def test_min_temp_none_variance(self) -> None:
+        """min_temp returns fallback when variance is None."""
+        zone = self._make_zone_with_state(
+            {
+                "UserAirconSettings": {
+                    "EnabledZones": [True],
+                    "ZoneTemperatureSetpointVariance_oC": None,
+                },
+                "RemoteZoneInfo": [
+                    {"ZoneNumber": 0, "LiveTemp_oC": 22.0, "EnabledZone": True, "CanOperate": True}
+                ],
+            }
+        )
+        assert zone.min_temp == 16.0

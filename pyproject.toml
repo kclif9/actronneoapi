@@ -37,6 +37,9 @@ Issues = "https://github.com/kclif9/actronneoapi/issues"
 
 [tool.setuptools_scm]
 
+[tool.setuptools.package-data]
+actron_neo_api = ["py.typed"]
+
 [tool.ruff]
 line-length = 100
 

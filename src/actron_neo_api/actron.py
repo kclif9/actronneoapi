@@ -567,7 +567,8 @@ class ActronAirAPI:
                         f"API request failed. Status: {response.status}, Response: {response_text}"
                     )
 
-                return await response.json()
+                result: dict[str, Any] = await response.json()
+                return result
         except aiohttp.ClientError as e:
             raise ActronAirAPIError(f"Request failed: {str(e)}") from e
 
