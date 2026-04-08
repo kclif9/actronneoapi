@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 from collections.abc import Awaitable, Callable
 from typing import Any, Literal
 
@@ -27,8 +26,6 @@ from .models import (
 )
 from .oauth import ActronAirOAuth2DeviceCodeAuth
 from .state import StateManager
-
-_LOGGER = logging.getLogger(__name__)
 
 
 class _PendingBatch:
@@ -93,6 +90,8 @@ class CommandCoalescer:
             command: Full command dict (``{"command": {…}}``).
 
         Raises:
+            ActronAirAuthError: If authentication fails while sending the merged
+                command.
             ActronAirAPIError: If the eventual API call fails.
 
         """
@@ -152,8 +151,12 @@ class CommandCoalescer:
                 and batch.baseline_zones is not None
             ):
                 # Element-wise merge: diff this command's list against the
-                # baseline to discover which single index the caller changed,
-                # then record that override.
+                # baseline to discover which index(es) the caller changed,
+                # then record those as overrides.  Indices that match baseline
+                # are left alone — they represent stale reads from the same
+                # snapshot, NOT intentional reverts.  (Each concurrent caller
+                # reads the same stale baseline, mutates one index, and sends
+                # the full array back.)
                 for i, val in enumerate(value):
                     if i < len(batch.baseline_zones) and val != batch.baseline_zones[i]:
                         batch.zone_overrides[i] = val
@@ -182,11 +185,13 @@ class CommandCoalescer:
 
         try:
             await self._send_fn(serial_number, merged_command)
-        except Exception as exc:
+        except BaseException as exc:
             for future in batch.futures:
                 if not future.done():
                     future.set_exception(exc)
-            return
+            if isinstance(exc, Exception):
+                return
+            raise
 
         for future in batch.futures:
             if not future.done():
@@ -622,7 +627,7 @@ class ActronAirAPI:
         serial_number = serial_number.lower()
 
         inner = command.get("command", {})
-        if inner.get("type") == "set-settings":
+        if inner.get("type") == "set-settings" and self._coalescer._debounce > 0:
             await self._coalescer.enqueue(serial_number, command)
         else:
             await self._send_command_direct(serial_number, command)

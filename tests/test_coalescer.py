@@ -220,27 +220,83 @@ class TestCommandCoalescer:
         sm = _state_manager_with_zones("abc", [True, True, True, True])
         coalescer = CommandCoalescer(send_fn, sm, debounce_seconds=0.08)
 
-        # Enqueue first command
-        task1 = asyncio.create_task(
-            coalescer.enqueue("abc", _make_zone_command([False, True, True, True]))
-        )
-        await asyncio.sleep(0)
+        loop = asyncio.get_running_loop()
+        scheduled: list[tuple[float, Any, tuple[Any, ...], MagicMock]] = []
 
-        # After 50ms, add another — should reset the timer
-        await asyncio.sleep(0.05)
-        task2 = asyncio.create_task(
-            coalescer.enqueue("abc", _make_zone_command([True, False, True, True]))
-        )
-        await asyncio.sleep(0)
+        def _fake_call_later(delay: float, callback: Any, *args: Any) -> MagicMock:
+            handle = MagicMock()
+            _cancelled = False
 
-        # At 50ms after first command, nothing sent yet (timer was reset)
-        send_fn.assert_not_called()
+            def _do_cancel() -> None:
+                nonlocal _cancelled
+                _cancelled = True
 
-        # Wait for debounce after second command
-        await asyncio.gather(task1, task2)
+            def _is_cancelled() -> bool:
+                return _cancelled
+
+            handle.cancel.side_effect = _do_cancel
+            handle.cancelled.side_effect = _is_cancelled
+            scheduled.append((delay, callback, args, handle))
+            return handle
+
+        with patch.object(loop, "call_later", side_effect=_fake_call_later):
+            # Enqueue first command and capture its scheduled debounce callback
+            task1 = asyncio.create_task(
+                coalescer.enqueue("abc", _make_zone_command([False, True, True, True]))
+            )
+            await asyncio.sleep(0)
+            assert len(scheduled) == 1
+            first_handle = scheduled[0][3]
+
+            # Enqueue another command before the first fires
+            task2 = asyncio.create_task(
+                coalescer.enqueue("abc", _make_zone_command([True, False, True, True]))
+            )
+            await asyncio.sleep(0)
+
+            # First timer should have been cancelled and replaced
+            assert len(scheduled) == 2
+            first_handle.cancel.assert_called_once()
+            send_fn.assert_not_called()
+
+            # Fire the active debounce callback
+            _, callback, args, last_handle = scheduled[-1]
+            assert not last_handle.cancelled()
+            result = callback(*args)
+            if asyncio.iscoroutine(result):
+                await result
+
+            await asyncio.gather(task1, task2)
 
         send_fn.assert_called_once()
         sent = send_fn.call_args[0][1]["command"]
+        assert sent["UserAirconSettings.EnabledZones"] == [False, False, True, True]
+
+    @pytest.mark.asyncio
+    async def test_stale_reads_dont_erase_prior_overrides(self) -> None:
+        """Stale-read indices matching baseline don't clear prior overrides.
+
+        Each concurrent caller reads the same stale baseline, changes one
+        index, and sends the full array.  Indices that match baseline in a
+        later command should NOT erase overrides recorded by earlier commands.
+        """
+        send_fn = AsyncMock()
+        sm = _state_manager_with_zones("abc", [True, True, True, True])
+        coalescer = CommandCoalescer(send_fn, sm, debounce_seconds=0.05)
+
+        # cmd0 disables zone 0; zone 1 is stale (matches baseline)
+        cmd0 = _make_zone_command([False, True, True, True])
+        # cmd1 disables zone 1; zone 0 is stale (matches baseline)
+        cmd1 = _make_zone_command([True, False, True, True])
+
+        await asyncio.gather(
+            coalescer.enqueue("abc", cmd0),
+            coalescer.enqueue("abc", cmd1),
+        )
+
+        send_fn.assert_called_once()
+        sent = send_fn.call_args[0][1]["command"]
+        # Both overrides must survive — stale reads don't erase them
         assert sent["UserAirconSettings.EnabledZones"] == [False, False, True, True]
 
 
@@ -308,10 +364,33 @@ class TestActronAirAPISendCommandCoalescing:
         api = ActronAirAPI(debounce_seconds=0.5)
         assert api._coalescer._debounce == 0.5
 
-    def test_zero_debounce_disables_coalescing(self) -> None:
-        """Setting debounce_seconds=0 effectively disables coalescing."""
+    @pytest.mark.asyncio
+    async def test_zero_debounce_bypasses_coalescer(
+        self,
+        mock_oauth: MagicMock,
+        mock_aiohttp_response: Any,
+        sample_system_neo: dict[str, Any],
+    ) -> None:
+        """debounce_seconds=0 sends set-settings directly without coalescing."""
         api = ActronAirAPI(debounce_seconds=0)
-        assert api._coalescer._debounce == 0
+        api.oauth2_auth = mock_oauth
+        api._initialized = True
+        api.systems = [ActronAirSystemInfo(**sample_system_neo)]
+
+        mock_resp = mock_aiohttp_response(status=200, json_data={"success": True})
+        mock_ctx = MagicMock()
+        mock_ctx.__aenter__ = AsyncMock(return_value=mock_resp)
+        mock_ctx.__aexit__ = AsyncMock(return_value=False)
+
+        mock_session = MagicMock()
+        mock_session.closed = False
+        mock_session.request = MagicMock(return_value=mock_ctx)
+        api._session = mock_session
+
+        with patch.object(api._coalescer, "enqueue", new_callable=AsyncMock) as mock_enqueue:
+            await api.send_command("abc123", _make_mode_command("COOL"))
+            mock_enqueue.assert_not_called()
+            mock_session.request.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_concurrent_zone_toggles_end_to_end(
