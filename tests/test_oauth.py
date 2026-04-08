@@ -233,12 +233,9 @@ class TestActronAirOAuth2DeviceCodeAuth:
         mock_post.__aenter__ = AsyncMock(return_value=mock_resp)
         mock_post.__aexit__ = AsyncMock(return_value=None)
 
-        mock_session_instance = AsyncMock()
-        mock_session_instance.post = MagicMock(return_value=mock_post)
-
-        mock_session = AsyncMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session_instance)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session = MagicMock()
+        mock_session.post = MagicMock(return_value=mock_post)
+        mock_session.close = AsyncMock()
 
         with patch("aiohttp.ClientSession", return_value=mock_session):
             with pytest.raises(
@@ -259,12 +256,9 @@ class TestActronAirOAuth2DeviceCodeAuth:
         mock_post.__aenter__ = AsyncMock(return_value=mock_resp)
         mock_post.__aexit__ = AsyncMock(return_value=None)
 
-        mock_session_instance = AsyncMock()
-        mock_session_instance.post = MagicMock(return_value=mock_post)
-
-        mock_session = AsyncMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session_instance)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session = MagicMock()
+        mock_session.post = MagicMock(return_value=mock_post)
+        mock_session.close = AsyncMock()
 
         with patch("aiohttp.ClientSession", return_value=mock_session):
             with pytest.raises(ActronAirAuthError, match="Failed to request device code"):
@@ -296,12 +290,9 @@ class TestActronAirOAuth2DeviceCodeAuth:
         mock_post.__aenter__ = AsyncMock(return_value=mock_resp)
         mock_post.__aexit__ = AsyncMock(return_value=None)
 
-        mock_session_instance = AsyncMock()
-        mock_session_instance.post = MagicMock(return_value=mock_post)
-
-        mock_session = AsyncMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session_instance)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session = MagicMock()
+        mock_session.post = MagicMock(return_value=mock_post)
+        mock_session.close = AsyncMock()
 
         with patch("aiohttp.ClientSession", return_value=mock_session):
             result = await auth.poll_for_token("test_device", interval=1, timeout=10)
@@ -320,12 +311,9 @@ class TestActronAirOAuth2DeviceCodeAuth:
         mock_post.__aenter__ = AsyncMock(return_value=mock_resp)
         mock_post.__aexit__ = AsyncMock(return_value=None)
 
-        mock_session_instance = AsyncMock()
-        mock_session_instance.post = MagicMock(return_value=mock_post)
-
-        mock_session = AsyncMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session_instance)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session = MagicMock()
+        mock_session.post = MagicMock(return_value=mock_post)
+        mock_session.close = AsyncMock()
 
         with patch("aiohttp.ClientSession", return_value=mock_session):
             with pytest.raises(ActronAirAuthError, match="Device code has expired"):
@@ -344,12 +332,9 @@ class TestActronAirOAuth2DeviceCodeAuth:
         mock_post.__aenter__ = AsyncMock(return_value=mock_resp)
         mock_post.__aexit__ = AsyncMock(return_value=None)
 
-        mock_session_instance = AsyncMock()
-        mock_session_instance.post = MagicMock(return_value=mock_post)
-
-        mock_session = AsyncMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session_instance)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session = MagicMock()
+        mock_session.post = MagicMock(return_value=mock_post)
+        mock_session.close = AsyncMock()
 
         with patch("aiohttp.ClientSession", return_value=mock_session):
             with pytest.raises(ActronAirAuthError, match="User denied authorization"):
@@ -368,12 +353,9 @@ class TestActronAirOAuth2DeviceCodeAuth:
         mock_post.__aenter__ = AsyncMock(return_value=mock_resp)
         mock_post.__aexit__ = AsyncMock(return_value=None)
 
-        mock_session_instance = AsyncMock()
-        mock_session_instance.post = MagicMock(return_value=mock_post)
-
-        mock_session = AsyncMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session_instance)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session = MagicMock()
+        mock_session.post = MagicMock(return_value=mock_post)
+        mock_session.close = AsyncMock()
 
         with patch("aiohttp.ClientSession", return_value=mock_session):
             with pytest.raises(ActronAirAuthError, match="Authorization error: unknown_error"):
@@ -392,12 +374,9 @@ class TestActronAirOAuth2DeviceCodeAuth:
         mock_post.__aenter__ = AsyncMock(return_value=mock_resp)
         mock_post.__aexit__ = AsyncMock(return_value=None)
 
-        mock_session_instance = AsyncMock()
-        mock_session_instance.post = MagicMock(return_value=mock_post)
-
-        mock_session = AsyncMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session_instance)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session = MagicMock()
+        mock_session.post = MagicMock(return_value=mock_post)
+        mock_session.close = AsyncMock()
 
         with patch("aiohttp.ClientSession", return_value=mock_session):
             with pytest.raises(ActronAirAuthError, match="Token polling failed"):
@@ -423,12 +402,9 @@ class TestActronAirOAuth2DeviceCodeAuth:
             mock_post.__aexit__ = AsyncMock(return_value=None)
             return mock_post
 
-        mock_session_instance = AsyncMock()
-        mock_session_instance.post = MagicMock(side_effect=side_effect)
-
-        mock_session = AsyncMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session_instance)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session = MagicMock()
+        mock_session.post = MagicMock(side_effect=side_effect)
+        mock_session.close = AsyncMock()
 
         with patch("aiohttp.ClientSession", return_value=mock_session):
             result = await auth.poll_for_token("test_device", interval=1, timeout=10)
@@ -447,12 +423,9 @@ class TestActronAirOAuth2DeviceCodeAuth:
         mock_post.__aenter__ = AsyncMock(return_value=mock_resp)
         mock_post.__aexit__ = AsyncMock(return_value=None)
 
-        mock_session_instance = AsyncMock()
-        mock_session_instance.post = MagicMock(return_value=mock_post)
-
-        mock_session = AsyncMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session_instance)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session = MagicMock()
+        mock_session.post = MagicMock(return_value=mock_post)
+        mock_session.close = AsyncMock()
 
         with patch("aiohttp.ClientSession", return_value=mock_session):
             with pytest.raises(ActronAirAuthError, match="Polling failed"):
@@ -487,12 +460,9 @@ class TestActronAirOAuth2DeviceCodeAuth:
         mock_post.__aenter__ = AsyncMock(return_value=mock_resp)
         mock_post.__aexit__ = AsyncMock(return_value=None)
 
-        mock_session_instance = AsyncMock()
-        mock_session_instance.post = MagicMock(return_value=mock_post)
-
-        mock_session = AsyncMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session_instance)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session = MagicMock()
+        mock_session.post = MagicMock(return_value=mock_post)
+        mock_session.close = AsyncMock()
 
         with patch("aiohttp.ClientSession", return_value=mock_session):
             with pytest.raises(
@@ -514,12 +484,9 @@ class TestActronAirOAuth2DeviceCodeAuth:
         mock_post.__aenter__ = AsyncMock(return_value=mock_resp)
         mock_post.__aexit__ = AsyncMock(return_value=None)
 
-        mock_session_instance = AsyncMock()
-        mock_session_instance.post = MagicMock(return_value=mock_post)
-
-        mock_session = AsyncMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session_instance)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session = MagicMock()
+        mock_session.post = MagicMock(return_value=mock_post)
+        mock_session.close = AsyncMock()
 
         with patch("aiohttp.ClientSession", return_value=mock_session):
             with pytest.raises(ActronAirAuthError, match="Failed to refresh access token"):
@@ -547,12 +514,9 @@ class TestActronAirOAuth2DeviceCodeAuth:
         mock_post.__aenter__ = AsyncMock(return_value=mock_resp)
         mock_post.__aexit__ = AsyncMock(return_value=None)
 
-        mock_session_instance = AsyncMock()
-        mock_session_instance.post = MagicMock(return_value=mock_post)
-
-        mock_session = AsyncMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session_instance)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session = MagicMock()
+        mock_session.post = MagicMock(return_value=mock_post)
+        mock_session.close = AsyncMock()
 
         with patch("aiohttp.ClientSession", return_value=mock_session):
             await auth.refresh_access_token()
@@ -574,12 +538,9 @@ class TestActronAirOAuth2DeviceCodeAuth:
         mock_get.__aenter__ = AsyncMock(return_value=mock_resp)
         mock_get.__aexit__ = AsyncMock(return_value=None)
 
-        mock_session_instance = AsyncMock()
-        mock_session_instance.get = MagicMock(return_value=mock_get)
-
-        mock_session = AsyncMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session_instance)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session = MagicMock()
+        mock_session.get = MagicMock(return_value=mock_get)
+        mock_session.close = AsyncMock()
 
         with patch("aiohttp.ClientSession", return_value=mock_session):
             with pytest.raises(ActronAirAuthError, match="Failed to get user info"):
@@ -607,12 +568,9 @@ class TestActronAirOAuth2DeviceCodeAuth:
         mock_post.__aenter__ = AsyncMock(return_value=mock_resp)
         mock_post.__aexit__ = AsyncMock(return_value=None)
 
-        mock_session_instance = AsyncMock()
-        mock_session_instance.post = MagicMock(return_value=mock_post)
-
-        mock_session = AsyncMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session_instance)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session = MagicMock()
+        mock_session.post = MagicMock(return_value=mock_post)
+        mock_session.close = AsyncMock()
 
         with patch("aiohttp.ClientSession", return_value=mock_session):
             token = await auth.ensure_token_valid()
@@ -640,12 +598,9 @@ class TestActronAirOAuth2DeviceCodeAuth:
         mock_post.__aenter__ = AsyncMock(return_value=mock_resp)
         mock_post.__aexit__ = AsyncMock(return_value=None)
 
-        mock_session_instance = AsyncMock()
-        mock_session_instance.post = MagicMock(return_value=mock_post)
-
-        mock_session = AsyncMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session_instance)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session = MagicMock()
+        mock_session.post = MagicMock(return_value=mock_post)
+        mock_session.close = AsyncMock()
 
         with patch("aiohttp.ClientSession", return_value=mock_session):
             with pytest.raises(
@@ -724,3 +679,194 @@ class TestActronAirAPIWithOAuth2:
 
         assert api.access_token == "test_access_token"
         assert api.refresh_token_value == "test_refresh_token"
+
+
+class TestActronAirOAuth2InjectableSession:
+    """Test injectable session support in OAuth2 handler."""
+
+    def test_init_with_session(self) -> None:
+        """Test OAuth2 handler accepts an external session."""
+        mock_session = MagicMock()
+        auth = ActronAirOAuth2DeviceCodeAuth(
+            "https://example.com", "test_client", session=mock_session
+        )
+        assert auth._session is mock_session
+
+    def test_init_without_session(self) -> None:
+        """Test OAuth2 handler defaults to None session."""
+        auth = ActronAirOAuth2DeviceCodeAuth("https://example.com", "test_client")
+        assert auth._session is None
+
+    def test_set_session(self) -> None:
+        """Test set_session updates the session reference."""
+        auth = ActronAirOAuth2DeviceCodeAuth("https://example.com", "test_client")
+        assert auth._session is None
+
+        mock_session = MagicMock()
+        auth.set_session(mock_session)
+        assert auth._session is mock_session
+
+        auth.set_session(None)
+        assert auth._session is None
+
+    @pytest.mark.asyncio
+    async def test_injected_session_used_for_refresh(self) -> None:
+        """Test injected session is used for token refresh (no new session created)."""
+        mock_resp = AsyncMock()
+        mock_resp.status = 200
+        mock_resp.json = AsyncMock(
+            return_value={
+                "access_token": "new_token",
+                "refresh_token": "new_refresh",
+                "token_type": "Bearer",
+                "expires_in": 3600,
+            }
+        )
+
+        mock_post = AsyncMock()
+        mock_post.__aenter__ = AsyncMock(return_value=mock_resp)
+        mock_post.__aexit__ = AsyncMock(return_value=None)
+
+        mock_session = MagicMock()
+        mock_session.post = MagicMock(return_value=mock_post)
+        mock_session.closed = False
+
+        auth = ActronAirOAuth2DeviceCodeAuth(
+            "https://example.com", "test_client", session=mock_session
+        )
+        auth.refresh_token = "test_refresh"
+
+        # Should NOT create a new aiohttp.ClientSession
+        with patch("aiohttp.ClientSession") as mock_client_session:
+            token, expiry = await auth.refresh_access_token()
+            mock_client_session.assert_not_called()
+
+        assert token == "new_token"
+        mock_session.post.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_injected_session_not_closed(self) -> None:
+        """Test injected session is not closed after operations."""
+        mock_resp = AsyncMock()
+        mock_resp.status = 200
+        mock_resp.json = AsyncMock(
+            return_value={
+                "access_token": "new_token",
+                "token_type": "Bearer",
+                "expires_in": 3600,
+            }
+        )
+
+        mock_post = AsyncMock()
+        mock_post.__aenter__ = AsyncMock(return_value=mock_resp)
+        mock_post.__aexit__ = AsyncMock(return_value=None)
+
+        mock_session = MagicMock()
+        mock_session.post = MagicMock(return_value=mock_post)
+        mock_session.close = AsyncMock()
+        mock_session.closed = False
+
+        auth = ActronAirOAuth2DeviceCodeAuth(
+            "https://example.com", "test_client", session=mock_session
+        )
+        auth.refresh_token = "test_refresh"
+
+        await auth.refresh_access_token()
+
+        # Injected session should NOT be closed
+        mock_session.close.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_no_session_creates_and_closes_temp(self) -> None:
+        """Test that without injected session, a temp session is created and closed."""
+        mock_resp = AsyncMock()
+        mock_resp.status = 200
+        mock_resp.json = AsyncMock(
+            return_value={
+                "access_token": "new_token",
+                "token_type": "Bearer",
+                "expires_in": 3600,
+            }
+        )
+
+        mock_post = AsyncMock()
+        mock_post.__aenter__ = AsyncMock(return_value=mock_resp)
+        mock_post.__aexit__ = AsyncMock(return_value=None)
+
+        mock_session = MagicMock()
+        mock_session.post = MagicMock(return_value=mock_post)
+        mock_session.close = AsyncMock()
+
+        auth = ActronAirOAuth2DeviceCodeAuth("https://example.com", "test_client")
+        auth.refresh_token = "test_refresh"
+
+        with patch("aiohttp.ClientSession", return_value=mock_session):
+            await auth.refresh_access_token()
+
+        # Temp session SHOULD be closed
+        mock_session.close.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_injected_session_used_for_device_code(self) -> None:
+        """Test injected session is used for device code request."""
+        mock_resp = AsyncMock()
+        mock_resp.status = 200
+        mock_resp.json = AsyncMock(
+            return_value={
+                "device_code": "test_code",
+                "user_code": "TEST",
+                "verification_uri": "https://example.com/device",
+                "expires_in": 600,
+                "interval": 5,
+            }
+        )
+
+        mock_post = AsyncMock()
+        mock_post.__aenter__ = AsyncMock(return_value=mock_resp)
+        mock_post.__aexit__ = AsyncMock(return_value=None)
+
+        mock_session = MagicMock()
+        mock_session.post = MagicMock(return_value=mock_post)
+        mock_session.closed = False
+
+        auth = ActronAirOAuth2DeviceCodeAuth(
+            "https://example.com", "test_client", session=mock_session
+        )
+
+        with patch("aiohttp.ClientSession") as mock_client_session:
+            result = await auth.request_device_code()
+            mock_client_session.assert_not_called()
+
+        assert result.device_code == "test_code"
+        mock_session.post.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_injected_session_used_for_user_info(self) -> None:
+        """Test injected session is used for get_user_info."""
+        mock_resp = AsyncMock()
+        mock_resp.status = 200
+        mock_resp.json = AsyncMock(
+            return_value={"id": "test_user", "email": "test@example.com", "name": "Test User"}
+        )
+
+        mock_get = AsyncMock()
+        mock_get.__aenter__ = AsyncMock(return_value=mock_resp)
+        mock_get.__aexit__ = AsyncMock(return_value=None)
+
+        mock_session = MagicMock()
+        mock_session.get = MagicMock(return_value=mock_get)
+        mock_session.closed = False
+
+        auth = ActronAirOAuth2DeviceCodeAuth(
+            "https://example.com", "test_client", session=mock_session
+        )
+        auth.access_token = "test_token"
+        auth.refresh_token = "test_refresh"
+        auth.token_expiry = time.time() + 3600
+
+        with patch("aiohttp.ClientSession") as mock_client_session:
+            result = await auth.get_user_info()
+            mock_client_session.assert_not_called()
+
+        assert result.sub == "test_user"
+        mock_session.get.assert_called_once()
