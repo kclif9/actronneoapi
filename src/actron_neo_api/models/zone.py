@@ -377,6 +377,10 @@ class ActronAirZone(BaseModel):
     async def set_temperature(self, temperature: float) -> None:
         """Set temperature for this zone based on the current AC mode and send the command.
 
+        After successful command delivery the local temperature setpoint is
+        updated optimistically so that subsequent reads reflect the change
+        before the next status poll.
+
         Args:
             temperature: The temperature to set (in degrees Celsius)
 
@@ -404,12 +408,38 @@ class ActronAirZone(BaseModel):
             and self._parent_status.api
             and hasattr(self._parent_status, "serial_number")
         ):
+            # Capture optimistic values before await to avoid races
+            settings = self._parent_status.user_aircon_settings
+            mode = settings.mode.upper() if settings else ""
+            optimistic_cool: float | None = None
+            optimistic_heat: float | None = None
+            if mode == "COOL":
+                optimistic_cool = temperature
+            elif mode == "HEAT":
+                optimistic_heat = temperature
+            elif mode == "AUTO":
+                cool = settings.temperature_setpoint_cool_c if settings else 24.0
+                heat = settings.temperature_setpoint_heat_c if settings else 20.0
+                differential = cool - heat
+                optimistic_cool = temperature
+                optimistic_heat = max(10.0, temperature - differential)
+
             await self._parent_status.api.send_command(self._parent_status.serial_number, command)
+
+            # Optimistic local state update using values captured before await
+            if optimistic_cool is not None:
+                self.temperature_setpoint_cool_c = optimistic_cool
+            if optimistic_heat is not None:
+                self.temperature_setpoint_heat_c = optimistic_heat
         else:
             raise ValueError("No API reference available to send command")
 
     async def enable(self, is_enabled: bool = True) -> None:
         """Enable or disable this zone and send the command.
+
+        After successful command delivery the local ``enabled_zones`` list is
+        updated optimistically so that subsequent reads reflect the change
+        before the next status poll.
 
         Args:
             is_enabled: True to enable, False to disable
@@ -422,5 +452,10 @@ class ActronAirZone(BaseModel):
             and hasattr(self._parent_status, "serial_number")
         ):
             await self._parent_status.api.send_command(self._parent_status.serial_number, command)
+
+            # Optimistic local state update — apply the exact EnabledZones sent
+            sent_zones = command.get("command", {}).get("UserAirconSettings.EnabledZones")
+            if self._parent_status.user_aircon_settings and isinstance(sent_zones, list):
+                self._parent_status.user_aircon_settings.enabled_zones = list(sent_zones)
         else:
             raise ValueError("No API reference available to send command")

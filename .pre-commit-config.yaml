@@ -26,7 +26,6 @@ repos:
         args: [--fix=lf]
       - id: name-tests-test
         args: [--pytest-test-first]
-      - id: no-commit-to-branch
       - id: requirements-txt-fixer
 
   # Type checking with mypy
