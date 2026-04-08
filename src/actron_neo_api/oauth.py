@@ -370,10 +370,9 @@ class ActronAirOAuth2DeviceCodeAuth:
 
         """
         if self.is_token_valid and not self.is_token_expiring_soon:
-            access_token = self.access_token
-            if not access_token:
-                raise ActronAirAuthError("Access token is not available")
-            return access_token
+            # is_token_valid guarantees access_token is not None
+            assert self.access_token is not None
+            return self.access_token
 
         async with self._token_lock:
             # Double-check after acquiring lock
