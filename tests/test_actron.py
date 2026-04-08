@@ -1,7 +1,7 @@
 """Tests for ActronAirAPI core client functionality."""
 
 from typing import Any
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -772,3 +772,129 @@ class TestActronAirAPIOAuth2Methods:
 
         assert result.sub == "test_user"
         api.oauth2_auth.get_user_info.assert_called_once()
+
+
+class TestActronAirAPIInjectableSession:
+    """Test injectable websession support."""
+
+    def test_init_with_external_session(self) -> None:
+        """Test initialization with an externally-provided session."""
+        from unittest.mock import MagicMock
+
+        external_session = MagicMock()
+        api = ActronAirAPI(session=external_session)
+
+        assert api._session is external_session
+        assert api._external_session is True
+        # OAuth handler should also receive the session
+        assert api.oauth2_auth._session is external_session
+
+    def test_init_without_session(self) -> None:
+        """Test initialization without session uses default behavior."""
+        api = ActronAirAPI()
+        assert api._session is None
+        assert api._external_session is False
+        assert api.oauth2_auth._session is None
+
+    @pytest.mark.asyncio
+    async def test_close_does_not_close_external_session(self) -> None:
+        """Test close() does NOT close an externally-provided session."""
+        from unittest.mock import MagicMock
+
+        external_session = MagicMock()
+        external_session.closed = False
+        external_session.close = AsyncMock()
+
+        api = ActronAirAPI(session=external_session)
+        await api.close()
+
+        external_session.close.assert_not_called()
+        # Session reference is kept (caller owns it)
+        assert api._session is external_session
+
+    @pytest.mark.asyncio
+    async def test_close_closes_internal_session(self) -> None:
+        """Test close() closes an internally-created session."""
+        mock_session = MagicMock()
+        mock_session.closed = False
+        mock_session.close = AsyncMock()
+
+        api = ActronAirAPI()
+        # Simulate an internally-created session
+        api._session = mock_session
+        api._external_session = False
+
+        await api.close()
+
+        mock_session.close.assert_called_once()
+        assert api._session is None
+
+    @pytest.mark.asyncio
+    async def test_get_session_returns_external_session(self) -> None:
+        """Test _get_session returns the external session."""
+        from unittest.mock import MagicMock
+
+        external_session = MagicMock()
+        external_session.closed = False
+
+        api = ActronAirAPI(session=external_session)
+        session = await api._get_session()
+
+        assert session is external_session
+
+    @pytest.mark.asyncio
+    async def test_get_session_creates_new_if_external_closed(self) -> None:
+        """Test _get_session creates a new session if external one is closed."""
+        from unittest.mock import PropertyMock
+
+        external_session = MagicMock()
+        type(external_session).closed = PropertyMock(return_value=True)
+
+        api = ActronAirAPI(session=external_session)
+        session = await api._get_session()
+
+        assert session is not external_session
+        assert api._external_session is False
+
+    @pytest.mark.asyncio
+    async def test_external_session_used_for_api_requests(
+        self,
+        sample_system_neo: dict[str, Any],
+        sample_command_response: dict[str, Any],
+        mock_aiohttp_response: Any,
+        mock_oauth: AsyncMock,
+    ) -> None:
+        """Test external session is used for API requests."""
+        from unittest.mock import MagicMock
+
+        external_session = MagicMock()
+        external_session.closed = False
+
+        mock_ctx = MagicMock()
+        mock_ctx.__aenter__ = AsyncMock(
+            return_value=mock_aiohttp_response(status=200, json_data=sample_command_response)
+        )
+        mock_ctx.__aexit__ = AsyncMock(return_value=False)
+        external_session.request = MagicMock(return_value=mock_ctx)
+
+        api = ActronAirAPI(session=external_session, refresh_token="test_token")
+        api._initialized = True
+        api.oauth2_auth = mock_oauth
+        api.systems = [ActronAirSystemInfo(**sample_system_neo)]
+
+        command = {"command": {"type": "set-settings", "UserAirconSettings.isOn": True}}
+        await api.send_command("abc123", command)
+
+        # Verify the external session was used
+        external_session.request.assert_called_once()
+
+    def test_set_base_url_passes_session_to_new_oauth(self) -> None:
+        """Test _set_base_url passes session to recreated OAuth handler."""
+        from unittest.mock import MagicMock
+
+        external_session = MagicMock()
+        api = ActronAirAPI(session=external_session)
+
+        api._set_base_url("https://que.actronair.com.au", "que")
+
+        assert api.oauth2_auth._session is external_session
