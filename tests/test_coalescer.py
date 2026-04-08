@@ -40,9 +40,7 @@ def _make_non_settings_command() -> dict[str, Any]:
     return {"command": {"type": "restart-system"}}
 
 
-def _state_manager_with_zones(
-    serial: str, zones: list[bool]
-) -> StateManager:
+def _state_manager_with_zones(serial: str, zones: list[bool]) -> StateManager:
     """Create a StateManager with a stubbed status containing *zones*."""
     sm = StateManager()
     status = MagicMock(spec=ActronAirStatus)
@@ -138,7 +136,7 @@ class TestCommandCoalescer:
         )
 
         send_fn.assert_called_once()
-        sent = sent_command = send_fn.call_args[0][1]["command"]
+        sent = send_fn.call_args[0][1]["command"]
         assert sent["UserAirconSettings.EnabledZones"] == [False, True, True, True]
         assert sent["UserAirconSettings.Mode"] == "HEAT"
         assert sent["type"] == "set-settings"
@@ -301,9 +299,7 @@ class TestActronAirAPISendCommandCoalescing:
         """API close() flushes the coalescer before closing the session."""
         api = ActronAirAPI()
 
-        with patch.object(
-            api._coalescer, "flush_all", new_callable=AsyncMock
-        ) as mock_flush:
+        with patch.object(api._coalescer, "flush_all", new_callable=AsyncMock) as mock_flush:
             await api.close()
             mock_flush.assert_called_once()
 
