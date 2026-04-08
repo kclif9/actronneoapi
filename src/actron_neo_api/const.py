@@ -8,3 +8,5 @@ PLATFORM_QUE: Final[str] = "que"
 BASE_URL_NIMBUS: Final[str] = "https://nimbus.actronair.com.au"
 BASE_URL_QUE: Final[str] = "https://que.actronair.com.au"
 BASE_URL_DEFAULT: Final[str] = BASE_URL_NIMBUS
+
+COMMAND_DEBOUNCE_SECONDS: Final[float] = 0.1
