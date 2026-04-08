@@ -261,6 +261,9 @@ class ActronAirUserAirconSettings(BaseModel):
     async def set_system_mode(self, mode: str) -> None:
         """Set the AC system mode and send the command.
 
+        After successful command delivery the local ``mode`` and ``is_on``
+        fields are updated optimistically.
+
         Args:
             mode: Mode to set ('AUTO', 'COOL', 'FAN', 'HEAT', 'OFF')
                  Use 'OFF' to turn the system off.
@@ -273,11 +276,21 @@ class ActronAirUserAirconSettings(BaseModel):
             and hasattr(self._parent_status, "serial_number")
         ):
             await self._parent_status.api.send_command(self._parent_status.serial_number, command)
+
+            # Optimistic local state update
+            if mode.upper() == "OFF":
+                self.is_on = False
+            else:
+                self.is_on = True
+                self.mode = mode
         else:
             raise ValueError("No API reference available to send command")
 
     async def set_fan_mode(self, fan_mode: str) -> None:
         """Set the fan mode and send the command. Preserves current continuous mode setting.
+
+        After successful command delivery the local ``fan_mode`` field is
+        updated optimistically.
 
         Args:
             fan_mode: The fan mode (e.g., "AUTO", "LOW", "MEDIUM", "HIGH")
@@ -290,11 +303,20 @@ class ActronAirUserAirconSettings(BaseModel):
             and hasattr(self._parent_status, "serial_number")
         ):
             await self._parent_status.api.send_command(self._parent_status.serial_number, command)
+
+            # Optimistic local state update
+            new_mode = fan_mode
+            if self.continuous_fan_enabled:
+                new_mode = f"{fan_mode}+CONT"
+            self.fan_mode = new_mode
         else:
             raise ValueError("No API reference available to send command")
 
     async def set_continuous_mode(self, enabled: bool) -> None:
         """Enable or disable continuous fan mode and send the command.
+
+        After successful command delivery the local ``fan_mode`` field is
+        updated optimistically.
 
         Args:
             enabled: True to enable continuous mode, False to disable
@@ -307,6 +329,10 @@ class ActronAirUserAirconSettings(BaseModel):
             and hasattr(self._parent_status, "serial_number")
         ):
             await self._parent_status.api.send_command(self._parent_status.serial_number, command)
+
+            # Optimistic local state update
+            base = self.base_fan_mode
+            self.fan_mode = f"{base}+CONT" if enabled else base
         else:
             raise ValueError("No API reference available to send command")
 
@@ -350,11 +376,25 @@ class ActronAirUserAirconSettings(BaseModel):
             and hasattr(self._parent_status, "serial_number")
         ):
             await self._parent_status.api.send_command(self._parent_status.serial_number, command)
+
+            # Optimistic local state update
+            mode = self.mode.upper()
+            if mode == "COOL":
+                self.temperature_setpoint_cool_c = temperature
+            elif mode == "HEAT":
+                self.temperature_setpoint_heat_c = temperature
+            elif mode == "AUTO":
+                differential = self.temperature_setpoint_cool_c - self.temperature_setpoint_heat_c
+                self.temperature_setpoint_cool_c = temperature
+                self.temperature_setpoint_heat_c = max(10.0, temperature - differential)
         else:
             raise ValueError("No API reference available to send command")
 
     async def set_away_mode(self, enabled: bool = False) -> None:
         """Enable/disable away mode and send the command.
+
+        After successful command delivery the local ``away_mode`` field is
+        updated optimistically.
 
         Args:
             enabled: True to enable, False to disable
@@ -367,11 +407,17 @@ class ActronAirUserAirconSettings(BaseModel):
             and hasattr(self._parent_status, "serial_number")
         ):
             await self._parent_status.api.send_command(self._parent_status.serial_number, command)
+
+            # Optimistic local state update
+            self.away_mode = enabled
         else:
             raise ValueError("No API reference available to send command")
 
     async def set_quiet_mode(self, enabled: bool = False) -> None:
         """Enable/disable quiet mode and send the command.
+
+        After successful command delivery the local ``quiet_mode_enabled``
+        field is updated optimistically.
 
         Args:
             enabled: True to enable, False to disable
@@ -384,11 +430,17 @@ class ActronAirUserAirconSettings(BaseModel):
             and hasattr(self._parent_status, "serial_number")
         ):
             await self._parent_status.api.send_command(self._parent_status.serial_number, command)
+
+            # Optimistic local state update
+            self.quiet_mode_enabled = enabled
         else:
             raise ValueError("No API reference available to send command")
 
     async def set_turbo_mode(self, enabled: bool = False) -> None:
         """Enable/disable turbo mode and send the command.
+
+        After successful command delivery the local ``turbo_mode_enabled``
+        field is updated optimistically.
 
         Args:
             enabled: True to enable, False to disable
@@ -401,5 +453,11 @@ class ActronAirUserAirconSettings(BaseModel):
             and hasattr(self._parent_status, "serial_number")
         ):
             await self._parent_status.api.send_command(self._parent_status.serial_number, command)
+
+            # Optimistic local state update
+            if isinstance(self.turbo_mode_enabled, dict):
+                self.turbo_mode_enabled["Enabled"] = enabled
+            else:
+                self.turbo_mode_enabled = enabled
         else:
             raise ValueError("No API reference available to send command")
