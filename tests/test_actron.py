@@ -721,6 +721,33 @@ class TestActronAirAPIUpdateStatus:
         with pytest.raises(ActronAirAuthError, match="Failed to initialize API"):
             await api._ensure_initialized()
 
+    @pytest.mark.asyncio
+    async def test_ensure_initialized_concurrent_single_init(self) -> None:
+        """Concurrent first calls only trigger one initialization."""
+        import asyncio
+
+        api = ActronAirAPI(refresh_token="test_token")
+        api.oauth2_auth.access_token = None
+
+        call_count = 0
+
+        async def mock_refresh() -> tuple[str, float]:
+            nonlocal call_count
+            call_count += 1
+            await asyncio.sleep(0.05)
+            api.oauth2_auth.access_token = "new_token"
+            return "new_token", 0.0
+
+        api.oauth2_auth.refresh_access_token = mock_refresh  # type: ignore[assignment]
+
+        await asyncio.gather(
+            api._ensure_initialized(),
+            api._ensure_initialized(),
+        )
+
+        assert call_count == 1
+        assert api._initialized is True
+
 
 class TestActronAirAPIOAuth2Methods:
     """Test OAuth2 method proxies."""

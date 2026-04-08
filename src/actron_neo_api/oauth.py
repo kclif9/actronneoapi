@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import logging
 import time
 from typing import AsyncIterator, Final
 
@@ -11,6 +12,8 @@ import aiohttp
 
 from .exceptions import ActronAirAuthError
 from .models import ActronAirDeviceCode, ActronAirToken, ActronAirUserInfo
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class ActronAirOAuth2DeviceCodeAuth:
@@ -51,6 +54,7 @@ class ActronAirOAuth2DeviceCodeAuth:
         self.token_expiry: float | None = None
         self.authenticated_platform: str | None = None  # Track which platform issued tokens
         self._session: aiohttp.ClientSession | None = session
+        self._token_lock: asyncio.Lock = asyncio.Lock()
 
         # OAuth2 endpoints
         self.token_url: Final[str] = f"{self.base_url}/api/v0/oauth/token"
@@ -352,17 +356,38 @@ class ActronAirOAuth2DeviceCodeAuth:
                     )
 
     async def ensure_token_valid(self) -> str:
-        """Ensure the token is valid, refreshing it if necessary.
+        """Ensure the token is valid, refreshing proactively if expiring soon.
+
+        Uses double-check locking so that concurrent callers only trigger a
+        single refresh.  When the token is still valid but a proactive refresh
+        fails, the existing token is returned instead of raising.
 
         Returns:
             The current valid access token
 
         Raises:
-            ActronAirAuthError: If token validation fails
+            ActronAirAuthError: If token is expired and refresh fails
 
         """
-        if not self.is_token_valid:
-            await self.refresh_access_token()
+        if self.is_token_valid and not self.is_token_expiring_soon:
+            # is_token_valid guarantees access_token is not None
+            assert self.access_token is not None
+            return self.access_token
+
+        async with self._token_lock:
+            # Double-check after acquiring lock
+            if not self.is_token_valid or self.is_token_expiring_soon:
+                try:
+                    await self.refresh_access_token()
+                except (ActronAirAuthError, Exception):
+                    if self.is_token_valid:
+                        _LOGGER.warning(
+                            "Proactive token refresh failed; "
+                            "using existing token (expires in %ds)",
+                            int((self.token_expiry or 0) - time.time()),
+                        )
+                    else:
+                        raise
 
         if not self.access_token:
             raise ActronAirAuthError("Access token is not available")
