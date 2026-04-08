@@ -266,6 +266,7 @@ class ActronAirAPI:
         self._session: aiohttp.ClientSession | None = session
         self._external_session = session is not None
         self._session_lock = asyncio.Lock()
+        self._init_lock = asyncio.Lock()
 
         # Command coalescing
         self._coalescer = CommandCoalescer(
@@ -409,17 +410,25 @@ class ActronAirAPI:
         self._set_base_url(target_base, target_platform)
 
     async def _ensure_initialized(self) -> None:
-        """Ensure the API is initialized with valid tokens."""
+        """Ensure the API is initialized with valid tokens.
+
+        Uses double-check locking so concurrent first calls only
+        initialise once.
+        """
         if self._initialized:
             return
 
-        if self.oauth2_auth.refresh_token and not self.oauth2_auth.access_token:
-            try:
-                await self.oauth2_auth.refresh_access_token()
-            except (ActronAirAuthError, aiohttp.ClientError) as e:
-                raise ActronAirAuthError(f"Failed to initialize API: {e}") from e
+        async with self._init_lock:
+            if self._initialized:
+                return
 
-        self._initialized = True
+            if self.oauth2_auth.refresh_token and not self.oauth2_auth.access_token:
+                try:
+                    await self.oauth2_auth.refresh_access_token()
+                except (ActronAirAuthError, aiohttp.ClientError) as e:
+                    raise ActronAirAuthError(f"Failed to initialize API: {e}") from e
+
+            self._initialized = True
 
     async def _get_session(self) -> aiohttp.ClientSession:
         """Get or create an aiohttp ClientSession."""

@@ -1,5 +1,6 @@
 """Test OAuth2 device code flow implementation."""
 
+import asyncio
 import time
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -870,3 +871,89 @@ class TestActronAirOAuth2InjectableSession:
 
         assert result.sub == "test_user"
         mock_session.get.assert_called_once()
+
+
+class TestTokenRefreshLock:
+    """Test token refresh lock prevents duplicate concurrent refreshes."""
+
+    @pytest.mark.asyncio
+    async def test_concurrent_ensure_token_valid_single_refresh(self) -> None:
+        """Two concurrent ensure_token_valid calls trigger only one refresh."""
+        auth = ActronAirOAuth2DeviceCodeAuth("https://example.com", "test_client")
+        auth.access_token = "old_token"
+        auth.refresh_token = "test_refresh"
+        auth.token_expiry = time.time() - 100  # Expired
+
+        call_count = 0
+
+        async def mock_refresh() -> tuple[str, float]:
+            nonlocal call_count
+            call_count += 1
+            await asyncio.sleep(0.05)  # Simulate network delay
+            auth.access_token = "new_token"
+            auth.token_expiry = time.time() + 3600
+            return "new_token", auth.token_expiry
+
+        auth.refresh_access_token = mock_refresh  # type: ignore[assignment]
+
+        results = await asyncio.gather(
+            auth.ensure_token_valid(),
+            auth.ensure_token_valid(),
+        )
+
+        assert call_count == 1
+        assert results[0] == "new_token"
+        assert results[1] == "new_token"
+
+    @pytest.mark.asyncio
+    async def test_proactive_refresh_when_expiring_soon(self) -> None:
+        """Token is refreshed proactively when within 15 minutes of expiry."""
+        auth = ActronAirOAuth2DeviceCodeAuth("https://example.com", "test_client")
+        auth.access_token = "old_token"
+        auth.refresh_token = "test_refresh"
+        # Token valid but expiring in 5 minutes (within 15-min window)
+        auth.token_expiry = time.time() + 300
+
+        assert auth.is_token_valid
+        assert auth.is_token_expiring_soon
+
+        refreshed = False
+
+        async def mock_refresh() -> tuple[str, float]:
+            nonlocal refreshed
+            refreshed = True
+            auth.access_token = "new_token"
+            auth.token_expiry = time.time() + 3600
+            return "new_token", auth.token_expiry
+
+        auth.refresh_access_token = mock_refresh  # type: ignore[assignment]
+
+        token = await auth.ensure_token_valid()
+
+        assert refreshed
+        assert token == "new_token"
+
+    @pytest.mark.asyncio
+    async def test_no_refresh_when_token_valid_and_not_expiring(self) -> None:
+        """Valid token not expiring soon returns immediately without refresh."""
+        auth = ActronAirOAuth2DeviceCodeAuth("https://example.com", "test_client")
+        auth.access_token = "good_token"
+        auth.refresh_token = "test_refresh"
+        auth.token_expiry = time.time() + 3600  # 1 hour left
+
+        assert auth.is_token_valid
+        assert not auth.is_token_expiring_soon
+
+        refreshed = False
+
+        async def mock_refresh() -> tuple[str, float]:
+            nonlocal refreshed
+            refreshed = True
+            return "unused", 0.0
+
+        auth.refresh_access_token = mock_refresh  # type: ignore[assignment]
+
+        token = await auth.ensure_token_valid()
+
+        assert not refreshed
+        assert token == "good_token"

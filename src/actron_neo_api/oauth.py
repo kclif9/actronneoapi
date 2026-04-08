@@ -51,6 +51,7 @@ class ActronAirOAuth2DeviceCodeAuth:
         self.token_expiry: float | None = None
         self.authenticated_platform: str | None = None  # Track which platform issued tokens
         self._session: aiohttp.ClientSession | None = session
+        self._token_lock: asyncio.Lock = asyncio.Lock()
 
         # OAuth2 endpoints
         self.token_url: Final[str] = f"{self.base_url}/api/v0/oauth/token"
@@ -352,7 +353,10 @@ class ActronAirOAuth2DeviceCodeAuth:
                     )
 
     async def ensure_token_valid(self) -> str:
-        """Ensure the token is valid, refreshing it if necessary.
+        """Ensure the token is valid, refreshing proactively if expiring soon.
+
+        Uses double-check locking so that concurrent callers only trigger a
+        single refresh.
 
         Returns:
             The current valid access token
@@ -361,8 +365,13 @@ class ActronAirOAuth2DeviceCodeAuth:
             ActronAirAuthError: If token validation fails
 
         """
-        if not self.is_token_valid:
-            await self.refresh_access_token()
+        if self.is_token_valid and not self.is_token_expiring_soon:
+            return self.access_token  # type: ignore[return-value]
+
+        async with self._token_lock:
+            # Double-check after acquiring lock
+            if not self.is_token_valid or self.is_token_expiring_soon:
+                await self.refresh_access_token()
 
         if not self.access_token:
             raise ActronAirAuthError("Access token is not available")
