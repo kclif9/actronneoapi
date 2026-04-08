@@ -302,13 +302,13 @@ class ActronAirUserAirconSettings(BaseModel):
             and self._parent_status.api
             and hasattr(self._parent_status, "serial_number")
         ):
+            # Capture optimistic value before await to avoid races
+            optimistic_fan = f"{fan_mode}+CONT" if self.continuous_fan_enabled else fan_mode
+
             await self._parent_status.api.send_command(self._parent_status.serial_number, command)
 
             # Optimistic local state update
-            new_mode = fan_mode
-            if self.continuous_fan_enabled:
-                new_mode = f"{fan_mode}+CONT"
-            self.fan_mode = new_mode
+            self.fan_mode = optimistic_fan
         else:
             raise ValueError("No API reference available to send command")
 
@@ -328,11 +328,14 @@ class ActronAirUserAirconSettings(BaseModel):
             and self._parent_status.api
             and hasattr(self._parent_status, "serial_number")
         ):
+            # Capture optimistic value before await to avoid races
+            base = self.base_fan_mode
+            optimistic_fan = f"{base}+CONT" if enabled else base
+
             await self._parent_status.api.send_command(self._parent_status.serial_number, command)
 
             # Optimistic local state update
-            base = self.base_fan_mode
-            self.fan_mode = f"{base}+CONT" if enabled else base
+            self.fan_mode = optimistic_fan
         else:
             raise ValueError("No API reference available to send command")
 
@@ -375,18 +378,26 @@ class ActronAirUserAirconSettings(BaseModel):
             and self._parent_status.api
             and hasattr(self._parent_status, "serial_number")
         ):
+            # Capture optimistic values before await to avoid races
+            mode = self.mode.upper()
+            optimistic_cool: float | None = None
+            optimistic_heat: float | None = None
+            if mode == "COOL":
+                optimistic_cool = temperature
+            elif mode == "HEAT":
+                optimistic_heat = temperature
+            elif mode == "AUTO":
+                differential = self.temperature_setpoint_cool_c - self.temperature_setpoint_heat_c
+                optimistic_cool = temperature
+                optimistic_heat = max(10.0, temperature - differential)
+
             await self._parent_status.api.send_command(self._parent_status.serial_number, command)
 
             # Optimistic local state update
-            mode = self.mode.upper()
-            if mode == "COOL":
-                self.temperature_setpoint_cool_c = temperature
-            elif mode == "HEAT":
-                self.temperature_setpoint_heat_c = temperature
-            elif mode == "AUTO":
-                differential = self.temperature_setpoint_cool_c - self.temperature_setpoint_heat_c
-                self.temperature_setpoint_cool_c = temperature
-                self.temperature_setpoint_heat_c = max(10.0, temperature - differential)
+            if optimistic_cool is not None:
+                self.temperature_setpoint_cool_c = optimistic_cool
+            if optimistic_heat is not None:
+                self.temperature_setpoint_heat_c = optimistic_heat
         else:
             raise ValueError("No API reference available to send command")
 

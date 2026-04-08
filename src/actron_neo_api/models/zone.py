@@ -408,21 +408,29 @@ class ActronAirZone(BaseModel):
             and self._parent_status.api
             and hasattr(self._parent_status, "serial_number")
         ):
-            await self._parent_status.api.send_command(self._parent_status.serial_number, command)
-
-            # Optimistic local state update
+            # Capture optimistic values before await to avoid races
             settings = self._parent_status.user_aircon_settings
             mode = settings.mode.upper() if settings else ""
+            optimistic_cool: float | None = None
+            optimistic_heat: float | None = None
             if mode == "COOL":
-                self.temperature_setpoint_cool_c = temperature
+                optimistic_cool = temperature
             elif mode == "HEAT":
-                self.temperature_setpoint_heat_c = temperature
+                optimistic_heat = temperature
             elif mode == "AUTO":
-                self.temperature_setpoint_cool_c = temperature
                 cool = settings.temperature_setpoint_cool_c if settings else 24.0
                 heat = settings.temperature_setpoint_heat_c if settings else 20.0
                 differential = cool - heat
-                self.temperature_setpoint_heat_c = max(10.0, temperature - differential)
+                optimistic_cool = temperature
+                optimistic_heat = max(10.0, temperature - differential)
+
+            await self._parent_status.api.send_command(self._parent_status.serial_number, command)
+
+            # Optimistic local state update using values captured before await
+            if optimistic_cool is not None:
+                self.temperature_setpoint_cool_c = optimistic_cool
+            if optimistic_heat is not None:
+                self.temperature_setpoint_heat_c = optimistic_heat
         else:
             raise ValueError("No API reference available to send command")
 
@@ -445,12 +453,9 @@ class ActronAirZone(BaseModel):
         ):
             await self._parent_status.api.send_command(self._parent_status.serial_number, command)
 
-            # Optimistic local state update
-            if (
-                self._parent_status.user_aircon_settings
-                and self.zone_id is not None
-                and self.zone_id < len(self._parent_status.user_aircon_settings.enabled_zones)
-            ):
-                self._parent_status.user_aircon_settings.enabled_zones[self.zone_id] = is_enabled
+            # Optimistic local state update — apply the exact EnabledZones sent
+            sent_zones = command.get("command", {}).get("UserAirconSettings.EnabledZones")
+            if self._parent_status.user_aircon_settings and isinstance(sent_zones, list):
+                self._parent_status.user_aircon_settings.enabled_zones = list(sent_zones)
         else:
             raise ValueError("No API reference available to send command")
