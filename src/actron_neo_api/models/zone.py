@@ -249,15 +249,15 @@ class ActronAirZone(BaseModel):
         if not self._parent_status or not self._parent_status.last_known_state:
             return 30.0  # Default fallback value
 
-        max_setpoint = (
+        max_setpoint = float(
             self._parent_status.last_known_state.get("NV_Limits", {})
             .get("UserSetpoint_oC", {})
             .get("setCool_Max", 30.0)
         )
 
         user_settings = self._parent_status.last_known_state.get("UserAirconSettings", {})
-        target_setpoint = user_settings.get("TemperatureSetpoint_Cool_oC", 24.0)
-        temp_variance = user_settings.get("ZoneTemperatureSetpointVariance_oC", 3.0)
+        target_setpoint = float(user_settings.get("TemperatureSetpoint_Cool_oC", 24.0))
+        temp_variance = float(user_settings.get("ZoneTemperatureSetpointVariance_oC", 3.0))
 
         if max_setpoint < target_setpoint + temp_variance:
             return max_setpoint
@@ -269,15 +269,15 @@ class ActronAirZone(BaseModel):
         if not self._parent_status or not self._parent_status.last_known_state:
             return 16.0  # Default fallback value
 
-        min_setpoint = (
+        min_setpoint = float(
             self._parent_status.last_known_state.get("NV_Limits", {})
             .get("UserSetpoint_oC", {})
             .get("setCool_Min", 16.0)
         )
 
         user_settings = self._parent_status.last_known_state.get("UserAirconSettings", {})
-        target_setpoint = user_settings.get("TemperatureSetpoint_Cool_oC", 24.0)
-        temp_variance = user_settings.get("ZoneTemperatureSetpointVariance_oC", 3.0)
+        target_setpoint = float(user_settings.get("TemperatureSetpoint_Cool_oC", 24.0))
+        temp_variance = float(user_settings.get("ZoneTemperatureSetpointVariance_oC", 3.0))
 
         if min_setpoint > target_setpoint - temp_variance:
             return min_setpoint
