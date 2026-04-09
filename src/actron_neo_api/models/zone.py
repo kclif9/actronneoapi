@@ -23,7 +23,7 @@ class ActronAirZoneSensor(BaseModel):
     connected: bool = Field(False, alias="Connected")
     kind: str = Field("", alias="NV_Kind")
     is_paired: bool = Field(False, alias="NV_isPaired")
-    signal_strength: str = str(Field("NA", alias="Signal_of3"))
+    signal_strength: str = Field("NA", alias="Signal_of3")
     temperature: float | None = Field(None, alias="Temperature_oC")
     humidity: float | None = Field(None, alias="RelativeHumidity_pc")
     battery_level: float | None = Field(None, alias="RemainingBatteryCapacity_pc")

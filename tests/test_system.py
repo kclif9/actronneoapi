@@ -5,7 +5,7 @@ from typing import Any
 import pytest
 
 from actron_neo_api.models import ActronAirStatus
-from actron_neo_api.models.system import ActronAirACSystem
+from actron_neo_api.models.system import ActronAirACSystem, ActronAirOutdoorUnit
 
 
 @pytest.fixture
@@ -83,3 +83,25 @@ class TestACSystemSetMode:
 
         with pytest.raises(ValueError, match="No API reference available"):
             await ac_system.set_system_mode("HEAT")
+
+
+class TestOutdoorUnitAliasParsing:
+    """Test that OutdoorUnit fields parse from API aliases correctly."""
+
+    def test_model_number_parses_from_alias(self) -> None:
+        """model_number correctly parses from ModelNumber alias."""
+        unit = ActronAirOutdoorUnit.model_validate(
+            {"ModelNumber": "ESP-PLUS-7", "SerialNumber": "SN123", "SoftwareVersion": "v2.1"}
+        )
+        assert unit.model_number == "ESP-PLUS-7"
+
+    def test_software_version_parses_from_alias(self) -> None:
+        """software_version correctly parses from SoftwareVersion alias."""
+        unit = ActronAirOutdoorUnit.model_validate({"SoftwareVersion": "v3.5.1"})
+        assert unit.software_version == "v3.5.1"
+
+    def test_defaults_to_none_when_missing(self) -> None:
+        """Fields default to None when not in data."""
+        unit = ActronAirOutdoorUnit.model_validate({})
+        assert unit.model_number is None
+        assert unit.software_version is None
