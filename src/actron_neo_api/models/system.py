@@ -6,6 +6,8 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from ..const import AC_MODE_AUTO, AC_MODE_COOL, AC_MODE_FAN, AC_MODE_HEAT, AC_MODE_OFF
+
 if TYPE_CHECKING:
     from .status import ActronAirStatus
 
@@ -133,7 +135,7 @@ class ActronAirACSystem(BaseModel):
         if not mode or not isinstance(mode, str):
             raise ValueError("Mode must be a non-empty string")
 
-        valid_modes = {"AUTO", "COOL", "FAN", "HEAT", "OFF"}
+        valid_modes = {AC_MODE_COOL, AC_MODE_HEAT, AC_MODE_AUTO, AC_MODE_FAN, AC_MODE_OFF}
         mode_upper = mode.upper().strip()
         if mode_upper not in valid_modes:
             raise ValueError(
@@ -144,7 +146,7 @@ class ActronAirACSystem(BaseModel):
             raise ValueError("No API reference available")
 
         # Determine if system should be on or off based on mode
-        is_on = mode_upper != "OFF"
+        is_on = mode_upper != AC_MODE_OFF
 
         command = {"command": {"UserAirconSettings.isOn": is_on, "type": "set-settings"}}
 

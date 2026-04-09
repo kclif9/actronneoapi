@@ -6,7 +6,14 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field
 
-from ..const import DEFAULT_MAX_SETPOINT, DEFAULT_MIN_SETPOINT
+from ..const import (
+    AC_MODE_AUTO,
+    AC_MODE_COOL,
+    AC_MODE_HEAT,
+    AC_MODE_OFF,
+    DEFAULT_MAX_SETPOINT,
+    DEFAULT_MIN_SETPOINT,
+)
 
 if TYPE_CHECKING:
     from .status import ActronAirStatus
@@ -110,7 +117,7 @@ class ActronAirUserAirconSettings(BaseModel):
 
         """
         # Determine if system should be on or off based on mode
-        is_on = mode.upper() != "OFF"
+        is_on = mode.upper() != AC_MODE_OFF
 
         command = {
             "command": {
@@ -185,15 +192,15 @@ class ActronAirUserAirconSettings(BaseModel):
         mode = self.mode.upper()
         command: dict[str, Any] = {"command": {"type": "set-settings"}}
 
-        if mode == "COOL":
+        if mode == AC_MODE_COOL:
             command["command"]["UserAirconSettings.TemperatureSetpoint_Cool_oC"] = float(
                 temperature
             )
-        elif mode == "HEAT":
+        elif mode == AC_MODE_HEAT:
             command["command"]["UserAirconSettings.TemperatureSetpoint_Heat_oC"] = float(
                 temperature
             )
-        elif mode == "AUTO":
+        elif mode == AC_MODE_AUTO:
             # AUTO: maintain the temperature differential between cooling and heating
             differential = self.temperature_setpoint_cool_c - self.temperature_setpoint_heat_c
 
@@ -280,7 +287,7 @@ class ActronAirUserAirconSettings(BaseModel):
             await self._parent_status.api.send_command(self._parent_status.serial_number, command)
 
             # Optimistic local state update
-            if mode.upper() == "OFF":
+            if mode.upper() == AC_MODE_OFF:
                 self.is_on = False
             else:
                 self.is_on = True
@@ -365,11 +372,11 @@ class ActronAirUserAirconSettings(BaseModel):
                 "UserSetpoint_oC", {}
             )
 
-            if self.mode.upper() == "COOL":
+            if self.mode.upper() == AC_MODE_COOL:
                 min_temp = limits.get("setCool_Min", DEFAULT_MIN_SETPOINT)
                 max_temp = limits.get("setCool_Max", DEFAULT_MAX_SETPOINT)
                 temperature = max(min_temp, min(max_temp, temperature))
-            elif self.mode.upper() == "HEAT":
+            elif self.mode.upper() == AC_MODE_HEAT:
                 min_temp = limits.get("setHeat_Min", DEFAULT_MIN_SETPOINT)
                 max_temp = limits.get("setHeat_Max", DEFAULT_MAX_SETPOINT)
                 temperature = max(min_temp, min(max_temp, temperature))
@@ -384,11 +391,11 @@ class ActronAirUserAirconSettings(BaseModel):
             mode = self.mode.upper()
             optimistic_cool: float | None = None
             optimistic_heat: float | None = None
-            if mode == "COOL":
+            if mode == AC_MODE_COOL:
                 optimistic_cool = temperature
-            elif mode == "HEAT":
+            elif mode == AC_MODE_HEAT:
                 optimistic_heat = temperature
-            elif mode == "AUTO":
+            elif mode == AC_MODE_AUTO:
                 differential = self.temperature_setpoint_cool_c - self.temperature_setpoint_heat_c
                 optimistic_cool = temperature
                 optimistic_heat = max(10.0, temperature - differential)
