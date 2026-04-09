@@ -232,6 +232,43 @@ class TestStateManager:
         assert zone0.actual_humidity_pc == 55.0
         assert zone1.actual_humidity_pc == 55.0
 
+    def test_non_int_zone_assignment_skipped_in_state_mapping(
+        self, state_manager: StateManager
+    ) -> None:
+        """Non-int entries in ZoneAssignment are skipped without raising."""
+        status_data: Dict[str, Any] = {
+            "isOnline": True,
+            "lastKnownState": {
+                "AirconSystem": {
+                    "MasterSerial": "TEST123",
+                    "CanOperate": True,
+                    "Peripherals": [
+                        {
+                            "ZoneAssignment": ["bad", None, 1],
+                            "SensorInputs": {
+                                "SHTC1": {
+                                    "Temperature_oC": 22.5,
+                                    "RelativeHumidity_pc": 55.0,
+                                }
+                            },
+                        }
+                    ],
+                },
+                "UserAirconSettings": {"EnabledZones": [True]},
+                "RemoteZoneInfo": [
+                    {
+                        "CanOperate": True,
+                        "LiveTemp_oC": 22.0,
+                        "EnabledZone": True,
+                    }
+                ],
+            },
+        }
+        status = state_manager.process_status_update("TEST123", status_data)
+
+        # Zone 0 should get humidity from the valid assignment (1 → index 0)
+        assert status.remote_zone_info[0].actual_humidity_pc == 55.0
+
     def test_extract_peripheral_humidity_valid(self, state_manager: StateManager) -> None:
         """Test extracting valid peripheral humidity."""
         peripheral: Dict[str, Any] = {

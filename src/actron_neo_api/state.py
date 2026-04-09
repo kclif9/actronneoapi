@@ -142,10 +142,10 @@ class StateManager:
             zone_assignments = peripheral.get("ZoneAssignment", [])
             for zone_assignment in zone_assignments:
                 # Convert 1-based API assignment to 0-based list index
+                if not isinstance(zone_assignment, int):
+                    continue
                 adjusted_idx = zone_assignment - 1
-                if isinstance(zone_assignment, int) and 0 <= adjusted_idx < len(
-                    status.remote_zone_info
-                ):
+                if 0 <= adjusted_idx < len(status.remote_zone_info):
                     zone_humidity_map[adjusted_idx] = humidity
 
         # Update zones with actual humidity values

@@ -259,10 +259,10 @@ class ActronAirStatus(BaseModel):
         for peripheral in self.peripherals:
             for zone_assignment in peripheral.zone_assignments:
                 # API zone assignments are 1-based; convert to 0-based list index
+                if not isinstance(zone_assignment, int):
+                    continue
                 adjusted_idx = zone_assignment - 1
-                if isinstance(zone_assignment, int) and 0 <= adjusted_idx < len(
-                    self.remote_zone_info
-                ):
+                if 0 <= adjusted_idx < len(self.remote_zone_info):
                     zone_peripheral_map[adjusted_idx] = peripheral
 
         # Update zones with peripheral data

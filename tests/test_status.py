@@ -550,3 +550,37 @@ class TestZoneAssignmentMapping:
 
         # Zone index 0 should not find this peripheral
         assert status.get_peripheral_for_zone(0) is None
+
+    def test_non_int_zone_assignment_skipped_in_mapping(self):
+        """Non-int entries in ZoneAssignment are skipped without raising."""
+        status = ActronAirStatus(
+            isOnline=True,
+            lastKnownState={
+                "AirconSystem": {
+                    "MasterSerial": "TEST",
+                    "Peripherals": [
+                        {
+                            "ZoneAssignment": [1],
+                            "SerialNumber": "P1",
+                            "SensorInputs": {
+                                "SHTC1": {
+                                    "Temperature_oC": 22.0,
+                                    "RelativeHumidity_pc": 50.0,
+                                }
+                            },
+                        }
+                    ],
+                },
+                "RemoteZoneInfo": [
+                    {"CanOperate": True, "LiveTemp_oC": 22.0},
+                ],
+            },
+        )
+        status.parse_nested_components()
+
+        # Inject a non-int assignment after Pydantic validation
+        status.peripherals[0].zone_assignments = ["bad", None, 1]
+        status._map_peripheral_data_to_zones()
+
+        # Zone 0 should still get humidity from the valid assignment (1 → index 0)
+        assert status.remote_zone_info[0].actual_humidity_pc == 50.0
