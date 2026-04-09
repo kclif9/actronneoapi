@@ -31,8 +31,8 @@ class ActronAirToken(BaseModel):
 class ActronAirUserInfo(BaseModel):
     """User information model."""
 
-    sub: str | None = Field(None, alias="id", description="User ID")
-    email: str | None = Field(None, description="User email")
+    sub: str = Field("", alias="id", description="User ID")
+    email: str = Field("", description="User email")
     name: str | None = Field(None, description="User full name")
     given_name: str | None = Field(None, description="User given name")
     family_name: str | None = Field(None, description="User family name")

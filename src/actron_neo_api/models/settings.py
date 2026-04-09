@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from ..const import (
     AC_MODE_AUTO,
@@ -31,12 +31,17 @@ class ActronAirUserAirconSettings(BaseModel):
     Provides async methods to send commands to modify these settings.
     """
 
+    model_config = ConfigDict(populate_by_name=True)
+
     is_on: bool = Field(False, alias="isOn")
     mode: str = Field("", alias="Mode")
     fan_mode: str = Field("", alias="FanMode")
     away_mode: bool = Field(False, alias="AwayMode")
     temperature_setpoint_cool_c: float = Field(0.0, alias="TemperatureSetpoint_Cool_oC")
     temperature_setpoint_heat_c: float = Field(0.0, alias="TemperatureSetpoint_Heat_oC")
+    zone_temperature_setpoint_variance: float = Field(
+        0.0, alias="ZoneTemperatureSetpointVariance_oC"
+    )
     enabled_zones: list[bool] = Field(default_factory=list, alias="EnabledZones")
     quiet_mode_enabled: bool = Field(False, alias="QuietModeEnabled")
     turbo_mode_enabled: bool | dict[str, bool] = Field(
@@ -52,6 +57,23 @@ class ActronAirUserAirconSettings(BaseModel):
 
         """
         self._parent_status = parent
+
+    @property
+    def current_setpoint(self) -> float:
+        """Get the current active temperature setpoint based on the AC mode.
+
+        Returns:
+            The active temperature setpoint in degrees Celsius
+
+        Note:
+            In AUTO mode, the cooling setpoint is typically the active one,
+            but this may depend on the current operating state of the system.
+            For simplicity, this property returns the cooling setpoint for AUTO mode.
+
+        """
+        if self.mode.upper() == AC_MODE_HEAT:
+            return self.temperature_setpoint_heat_c
+        return self.temperature_setpoint_cool_c
 
     @property
     def turbo_supported(self) -> bool:

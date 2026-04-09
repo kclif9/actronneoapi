@@ -32,8 +32,6 @@ OAUTH_DEFAULT_EXPIRY: Final[int] = 3600  # 1 hour in seconds
 # Temperature validation
 TEMP_PHYSICAL_MIN: Final[float] = -50.0
 TEMP_PHYSICAL_MAX: Final[float] = 100.0
-TEMP_DEFAULT_TARGET: Final[float] = 24.0
-TEMP_DEFAULT_VARIANCE: Final[float] = 3.0
 TEMP_AUTO_HEAT_MIN: Final[float] = 10.0
 
 # Response sanitization

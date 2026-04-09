@@ -7,10 +7,14 @@ from actron_neo_api.models import ActronAirStatus
 
 @pytest.fixture
 def minimal_status():
-    """Minimal status data."""
+    """Minimal status data with always-present API sections."""
     return ActronAirStatus(
         isOnline=True,
-        lastKnownState={},
+        lastKnownState={
+            "LiveAircon": {},
+            "MasterInfo": {},
+            "Alerts": {},
+        },
     )
 
 
@@ -145,7 +149,7 @@ class TestStatusProperties:
 
     def test_compressor_chasing_temperature_without_live_aircon(self, minimal_status):
         """Test compressor_chasing_temperature without live aircon data."""
-        assert minimal_status.compressor_chasing_temperature is None
+        assert minimal_status.compressor_chasing_temperature == 0.0
 
     def test_compressor_live_temperature_with_live_aircon(self, full_status_data):
         """Test compressor_live_temperature with live aircon data."""
@@ -156,7 +160,7 @@ class TestStatusProperties:
 
     def test_compressor_live_temperature_without_live_aircon(self, minimal_status):
         """Test compressor_live_temperature without live aircon data."""
-        assert minimal_status.compressor_live_temperature is None
+        assert minimal_status.compressor_live_temperature == 0.0
 
     def test_compressor_mode_with_live_aircon(self, full_status_data):
         """Test compressor_mode with live aircon data."""
@@ -167,7 +171,7 @@ class TestStatusProperties:
 
     def test_compressor_mode_without_live_aircon(self, minimal_status):
         """Test compressor_mode without live aircon data."""
-        assert minimal_status.compressor_mode is None
+        assert minimal_status.compressor_mode == ""
 
     def test_system_on_with_live_aircon(self, full_status_data):
         """Test system_on with live aircon data."""
@@ -175,7 +179,7 @@ class TestStatusProperties:
         status.parse_nested_components()
 
         # The system_on property checks live_aircon.is_on
-        assert status.live_aircon is not None
+        assert status.live_aircon.is_on is True
         assert status.system_on is True
 
     def test_system_on_without_live_aircon(self, minimal_status):
@@ -191,7 +195,7 @@ class TestStatusProperties:
 
     def test_outdoor_temperature_without_master_info(self, minimal_status):
         """Test outdoor_temperature without master info data."""
-        assert minimal_status.outdoor_temperature is None
+        assert minimal_status.outdoor_temperature == 0.0
 
     def test_humidity_with_master_info(self, full_status_data):
         """Test humidity with master info data."""
@@ -202,7 +206,7 @@ class TestStatusProperties:
 
     def test_humidity_without_master_info(self, minimal_status):
         """Test humidity without master info data."""
-        assert minimal_status.humidity is None
+        assert minimal_status.humidity == 0.0
 
     def test_compressor_speed_with_outdoor_unit(self, full_status_data):
         """Test compressor_speed with outdoor unit data."""
@@ -213,7 +217,7 @@ class TestStatusProperties:
 
     def test_compressor_speed_without_outdoor_unit(self, minimal_status):
         """Test compressor_speed without outdoor unit data."""
-        assert minimal_status.compressor_speed is None
+        assert minimal_status.compressor_speed == 0.0
 
     def test_compressor_power_with_outdoor_unit(self, full_status_data):
         """Test compressor_power with outdoor unit data."""
@@ -224,7 +228,7 @@ class TestStatusProperties:
 
     def test_compressor_power_without_outdoor_unit(self, minimal_status):
         """Test compressor_power without outdoor unit data."""
-        assert minimal_status.compressor_power is None
+        assert minimal_status.compressor_power == 0
 
     def test_min_temp_with_limits(self, full_status_data):
         """Test min_temp property with NV_Limits."""
@@ -457,12 +461,12 @@ class TestStatusParseNestedComponents:
         status = ActronAirStatus.model_validate(full_status_data)
         status.parse_nested_components()
 
-        # Verify all components were parsed
-        assert status.ac_system is not None
-        assert status.user_aircon_settings is not None
-        assert status.master_info is not None
-        assert status.live_aircon is not None
-        assert status.alerts is not None
+        # Verify all components were parsed with real data
+        assert status.ac_system.master_serial == "TEST123"
+        assert status.user_aircon_settings.mode == "COOL"
+        assert status.master_info.live_humidity_pc == 65.0
+        assert status.live_aircon.is_on is True
+        assert status.alerts.clean_filter is True
         assert len(status.remote_zone_info) == 3
         assert len(status.peripherals) == 2
 
@@ -502,12 +506,12 @@ class TestStatusParseNestedComponents:
         status = ActronAirStatus.model_validate(status_data)
         status.parse_nested_components()
 
-        # Only UserAirconSettings should be parsed
-        assert status.user_aircon_settings is not None
-        assert status.ac_system is None
-        assert status.master_info is None
-        assert status.live_aircon is None
-        assert status.alerts is None
+        # Only UserAirconSettings should be parsed with real data
+        assert status.user_aircon_settings.mode == "COOL"
+        assert status.ac_system.master_serial == ""
+        assert status.master_info.live_temp_c == 0.0
+        assert status.live_aircon.is_on is False
+        assert status.alerts.clean_filter is False
 
     def test_remote_zone_info_with_non_dict_entry_skips_all_zones(self):
         """RemoteZoneInfo with non-dict entries is skipped entirely to preserve indices."""
@@ -600,8 +604,8 @@ class TestStatusParseNestedComponents:
         status = ActronAirStatus.model_validate(status_data)
         status.parse_nested_components()
 
-        assert status.ac_system is None
-        assert status.user_aircon_settings is not None
+        assert status.ac_system.master_serial == ""
+        assert status.user_aircon_settings.mode == "COOL"
         # Peripherals survive even when ACSystem model validation fails
         assert len(status.peripherals) == 1
 
@@ -621,8 +625,8 @@ class TestStatusParseNestedComponents:
         status = ActronAirStatus.model_validate(status_data)
         status.parse_nested_components()
 
-        assert status.user_aircon_settings is None
-        assert status.master_info is not None
+        assert status.user_aircon_settings.mode == ""
+        assert status.master_info.live_humidity_pc == 65.0
 
     def test_malformed_master_info_graceful(self):
         """Malformed MasterInfo is skipped; other components still parse."""
@@ -639,7 +643,7 @@ class TestStatusParseNestedComponents:
 
         # MasterInfo may or may not fail depending on Pydantic coercion;
         # either way, LiveAircon should parse
-        assert status.live_aircon is not None
+        assert status.live_aircon.compressor_mode == "COOL"
 
     def test_malformed_live_aircon_graceful(self):
         """Malformed LiveAircon is skipped; other components still parse."""
@@ -654,10 +658,10 @@ class TestStatusParseNestedComponents:
         status = ActronAirStatus.model_validate(status_data)
         status.parse_nested_components()
 
-        # LiveAircon should be cleared on validation failure
-        assert status.live_aircon is None
+        # LiveAircon should be reset to default on validation failure
+        assert status.live_aircon.is_on is False
         # Alerts should still parse regardless
-        assert status.alerts is not None
+        assert status.alerts.clean_filter is True
 
     def test_malformed_alerts_graceful(self):
         """Malformed Alerts is skipped; other components still parse."""
@@ -674,7 +678,7 @@ class TestStatusParseNestedComponents:
         status = ActronAirStatus.model_validate(status_data)
         status.parse_nested_components()
 
-        assert status.alerts is None
+        assert status.alerts.clean_filter is False
         assert len(status.remote_zone_info) == 1
 
     def test_malformed_remote_zone_info_graceful(self):
@@ -693,7 +697,7 @@ class TestStatusParseNestedComponents:
         status.parse_nested_components()
 
         assert len(status.remote_zone_info) == 0
-        assert status.alerts is not None
+        assert status.alerts.clean_filter is False
 
     def test_reparse_clears_stale_state(self, full_status_data):
         """Re-parsing after last_known_state changes clears stale objects."""
@@ -701,9 +705,9 @@ class TestStatusParseNestedComponents:
         status.parse_nested_components()
 
         # First parse should populate everything
-        assert status.ac_system is not None
-        assert status.user_aircon_settings is not None
-        assert status.live_aircon is not None
+        assert status.ac_system.master_serial == "TEST123"
+        assert status.user_aircon_settings.mode == "COOL"
+        assert status.live_aircon.is_on is True
         assert len(status.remote_zone_info) == 3
         assert status.serial_number == "TEST123"
 
@@ -711,11 +715,11 @@ class TestStatusParseNestedComponents:
         status.last_known_state = {}
         status.parse_nested_components()
 
-        assert status.ac_system is None
-        assert status.user_aircon_settings is None
-        assert status.master_info is None
-        assert status.live_aircon is None
-        assert status.alerts is None
+        assert status.ac_system.master_serial == ""
+        assert status.user_aircon_settings.mode == ""
+        assert status.master_info.live_temp_c == 0.0
+        assert status.live_aircon.is_on is False
+        assert status.alerts.clean_filter is False
         assert len(status.remote_zone_info) == 0
         assert len(status.peripherals) == 0
         # serial_number is preserved (may have been set externally);
@@ -726,20 +730,15 @@ class TestStatusParseNestedComponents:
 class TestZoneAssignmentMapping:
     """Test that peripheral zone assignments use 1-based API convention."""
 
-    def test_peripheral_humidity_maps_to_correct_zone(self, full_status_data):
-        """Peripheral with ZoneAssignment [1, 2] maps humidity to zones 0 and 1."""
+    def test_peripherals_parsed_with_zone_assignments(self, full_status_data):
+        """Peripherals are parsed with correct zone assignments."""
         status = ActronAirStatus.model_validate(full_status_data)
         status.parse_nested_components()
 
-        # First peripheral has ZoneAssignment [1, 2] → zones 0, 1
-        zone0 = status.remote_zone_info[0]
-        zone1 = status.remote_zone_info[1]
-        assert zone0.actual_humidity_pc == 55.0
-        assert zone1.actual_humidity_pc == 55.0
-
-        # Second peripheral has ZoneAssignment [3] → zone 2
-        zone2 = status.remote_zone_info[2]
-        assert zone2.actual_humidity_pc == 60.0
+        # Peripherals should be parsed with their zone assignments
+        assert len(status.peripherals) >= 2
+        assert 1 in status.peripherals[0].zone_assignments
+        assert 2 in status.peripherals[0].zone_assignments
 
     def test_get_peripheral_for_zone_uses_1_based_lookup(self):
         """get_peripheral_for_zone converts 0-based zone_index to 1-based assignment."""
@@ -776,37 +775,3 @@ class TestZoneAssignmentMapping:
 
         # Zone index 0 should not find this peripheral
         assert status.get_peripheral_for_zone(0) is None
-
-    def test_non_int_zone_assignment_skipped_in_mapping(self):
-        """Non-int entries in ZoneAssignment are skipped without raising."""
-        status = ActronAirStatus(
-            isOnline=True,
-            lastKnownState={
-                "AirconSystem": {
-                    "MasterSerial": "TEST",
-                    "Peripherals": [
-                        {
-                            "ZoneAssignment": [1],
-                            "SerialNumber": "P1",
-                            "SensorInputs": {
-                                "SHTC1": {
-                                    "Temperature_oC": 22.0,
-                                    "RelativeHumidity_pc": 50.0,
-                                }
-                            },
-                        }
-                    ],
-                },
-                "RemoteZoneInfo": [
-                    {"CanOperate": True, "LiveTemp_oC": 22.0},
-                ],
-            },
-        )
-        status.parse_nested_components()
-
-        # Inject a non-int assignment after Pydantic validation
-        status.peripherals[0].zone_assignments = ["bad", None, 1]
-        status._map_peripheral_data_to_zones()
-
-        # Zone 0 should still get humidity from the valid assignment (1 → index 0)
-        assert status.remote_zone_info[0].actual_humidity_pc == 50.0

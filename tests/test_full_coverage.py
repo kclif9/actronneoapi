@@ -15,7 +15,6 @@ from actron_neo_api.models import ActronAirStatus
 from actron_neo_api.models.system import ActronAirACSystem
 from actron_neo_api.models.zone import ActronAirPeripheral, ActronAirZone
 from actron_neo_api.oauth import ActronAirOAuth2DeviceCodeAuth
-from actron_neo_api.state import StateManager
 
 # ---------------------------------------------------------------------------
 # actron.py – _CommandCoalescer._flush edge cases (lines 171, 194)
@@ -438,31 +437,13 @@ class TestZoneIsActiveOutOfRange:
 
     def test_zone_id_exceeds_enabled_zones(self) -> None:
         """Line 156: zone_id >= len(enabled_zones) returns False."""
-        zone = ActronAirZone(CanOperate=True)
+        zone = ActronAirZone(zone_id=5, CanOperate=True)
         parent = MagicMock()
         parent.user_aircon_settings.enabled_zones = [True]  # Only 1 zone
         zone._parent_status = parent
-        zone.zone_id = 5  # Out of range
         zone.can_operate = True
 
         assert zone.is_active is False
-
-
-# ---------------------------------------------------------------------------
-# zone.py – set_parent_status negative index (line 379)
-# ---------------------------------------------------------------------------
-
-
-class TestZoneSetParentStatusNegative:
-    """Test zone set_parent_status with negative zone_index."""
-
-    def test_negative_zone_index(self) -> None:
-        """Line 379: Negative zone_index raises ValueError."""
-        zone = ActronAirZone()
-        parent = MagicMock()
-
-        with pytest.raises(ValueError, match="zone_index must be non-negative"):
-            zone.set_parent_status(parent, zone_index=-1)
 
 
 # ---------------------------------------------------------------------------
@@ -476,11 +457,11 @@ class TestZoneAsyncSetTemperatureValidation:
     @pytest.mark.asyncio
     async def test_set_temperature_non_numeric(self) -> None:
         """Line 402: Non-numeric temperature raises ValueError."""
-        zone = ActronAirZone()
+        zone = ActronAirZone(zone_id=0)
         parent = MagicMock()
         parent.user_aircon_settings.mode = "COOL"
         parent.api = MagicMock()
-        zone.set_parent_status(parent, 0)
+        zone.set_parent_status(parent)
 
         with pytest.raises(ValueError, match="Temperature must be a number"):
             await zone.set_temperature("warm")  # type: ignore[arg-type]
@@ -488,11 +469,11 @@ class TestZoneAsyncSetTemperatureValidation:
     @pytest.mark.asyncio
     async def test_set_temperature_out_of_range(self) -> None:
         """Line 404: Temperature outside physical limits raises ValueError."""
-        zone = ActronAirZone()
+        zone = ActronAirZone(zone_id=0)
         parent = MagicMock()
         parent.user_aircon_settings.mode = "COOL"
         parent.api = MagicMock()
-        zone.set_parent_status(parent, 0)
+        zone.set_parent_status(parent)
 
         with pytest.raises(ValueError, match="outside reasonable range"):
             await zone.set_temperature(150.0)
@@ -712,54 +693,6 @@ class TestSetTokensValidation:
 # ---------------------------------------------------------------------------
 # state.py – _extract_peripheral_humidity edge cases (lines 169, 173, 177-180)
 # ---------------------------------------------------------------------------
-
-
-class TestExtractPeripheralHumidity:
-    """Test StateManager._extract_peripheral_humidity edge cases."""
-
-    def test_invalid_sensor_inputs_type(self) -> None:
-        """Line 169: Non-dict sensor_inputs returns None."""
-        sm = StateManager()
-        result = sm._extract_peripheral_humidity({"SensorInputs": "invalid"})
-        assert result is None
-
-    def test_invalid_shtc1_type(self) -> None:
-        """Non-dict SHTC1 returns None."""
-        sm = StateManager()
-        result = sm._extract_peripheral_humidity({"SensorInputs": {"SHTC1": "not_a_dict"}})
-        assert result is None
-
-    def test_shtc1_missing_humidity_key(self) -> None:
-        """Line 173: SHTC1 dict exists but has no RelativeHumidity_pc key."""
-        sm = StateManager()
-        result = sm._extract_peripheral_humidity(
-            {"SensorInputs": {"SHTC1": {"Temperature_oC": 22.5}}}
-        )
-        assert result is None
-
-    def test_non_numeric_humidity(self) -> None:
-        """Lines 177-178: Non-numeric humidity returns None."""
-        sm = StateManager()
-        result = sm._extract_peripheral_humidity(
-            {"SensorInputs": {"SHTC1": {"RelativeHumidity_pc": "fifty"}}}
-        )
-        assert result is None
-
-    def test_humidity_out_of_range_high(self) -> None:
-        """Lines 179-180: Humidity > 100 returns None."""
-        sm = StateManager()
-        result = sm._extract_peripheral_humidity(
-            {"SensorInputs": {"SHTC1": {"RelativeHumidity_pc": 150.0}}}
-        )
-        assert result is None
-
-    def test_humidity_out_of_range_negative(self) -> None:
-        """Lines 179-180: Negative humidity returns None."""
-        sm = StateManager()
-        result = sm._extract_peripheral_humidity(
-            {"SensorInputs": {"SHTC1": {"RelativeHumidity_pc": -5.0}}}
-        )
-        assert result is None
 
 
 # ---------------------------------------------------------------------------

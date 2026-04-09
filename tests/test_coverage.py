@@ -153,48 +153,6 @@ class TestStatusPeripheralEdgeCases:
         status.parse_nested_components()
         # Peripheral should be parsed but not mapped to any zone
         assert len(status.peripherals) == 1
-        assert status.remote_zone_info[0].actual_humidity_pc is None
-
-    def test_map_peripheral_data_updates_zone_humidity(self) -> None:
-        """Test _map_peripheral_data_to_zones updates actual_humidity_pc."""
-        status_data = {
-            "isOnline": True,
-            "lastKnownState": {
-                "AirconSystem": {
-                    "MasterSerial": "TEST123",
-                    "Peripherals": [
-                        {
-                            "ZoneAssignment": [1],
-                            "SensorInputs": {
-                                "SHTC1": {
-                                    "Temperature_oC": 22.5,
-                                    "RelativeHumidity_pc": 55.0,
-                                }
-                            },
-                        }
-                    ],
-                },
-                "RemoteZoneInfo": [
-                    {
-                        "ZoneNumber": 0,
-                        "LiveTemp_oC": 22.0,
-                        "EnabledZone": True,
-                        "CanOperate": True,
-                    }
-                ],
-            },
-        }
-
-        status = ActronAirStatus.model_validate(status_data)
-        status.parse_nested_components()
-        # Peripheral mapping runs and updates humidity
-        # Verify peripheral was created
-        assert len(status.peripherals) == 1
-        assert status.peripherals[0].humidity == 55.0
-        # Test that code path for updating zone humidity is executed
-        status._map_peripheral_data_to_zones()
-        # After mapping, zone should have humidity
-        assert status.remote_zone_info[0].actual_humidity_pc == 55.0
 
 
 class TestOAuthEdgeCases:
@@ -238,48 +196,6 @@ class TestOAuthEdgeCases:
             await auth.ensure_token_valid()
 
 
-class TestStateManagerPeripheralMapping:
-    """Test state manager peripheral mapping (line 129)."""
-
-    def test_map_peripheral_humidity_skips_none(self) -> None:
-        """Test that peripheral humidity mapping skips None humidity values."""
-        from actron_neo_api.state import StateManager
-
-        state_manager = StateManager()
-
-        status_data = {
-            "isOnline": True,
-            "lastKnownState": {
-                "AirconSystem": {
-                    "MasterSerial": "TEST123",
-                    "Peripherals": [
-                        {
-                            "ZoneAssignment": [1],
-                            "SensorInputs": {},  # No humidity sensor
-                        }
-                    ],
-                },
-                "RemoteZoneInfo": [
-                    {
-                        "ZoneNumber": 0,
-                        "LiveTemp_oC": 22.0,
-                        "EnabledZone": True,
-                        "CanOperate": True,
-                    }
-                ],
-            },
-        }
-
-        status = ActronAirStatus.model_validate(status_data)
-        status.parse_nested_components()
-
-        # This should execute the continue statement on line 129
-        state_manager._map_peripheral_humidity_to_zones(status)
-
-        # Zone should not have humidity data
-        assert status.remote_zone_info[0].actual_humidity_pc is None
-
-
 class TestZoneEdgeCases:
     """Test zone property edge cases."""
 
@@ -303,34 +219,10 @@ class TestZoneEdgeCases:
 
         # Create a zone manually with out of range zone_id
         zone = ActronAirZone(zone_id=5, can_operate=True)  # id 5 >= len([True, False])
-        zone.set_parent_status(status, zone_index=5)
+        zone.set_parent_status(status)
 
         # Should return False due to out of range
         assert zone.is_active is False
-
-    def test_peripheral_temperature_no_parent(self) -> None:
-        """Test peripheral_temperature returns None without parent (line 202)."""
-        from actron_neo_api.models import ActronAirZone
-
-        zone = ActronAirZone(zone_id=0, can_operate=True)
-        # No parent status
-        assert zone.peripheral_temperature is None
-
-    def test_peripheral_humidity_no_parent(self) -> None:
-        """Test peripheral_humidity returns None without parent (line 216)."""
-        from actron_neo_api.models import ActronAirZone
-
-        zone = ActronAirZone(zone_id=0, can_operate=True)
-        # No parent status
-        assert zone.peripheral_humidity is None
-
-    def test_peripheral_no_parent(self) -> None:
-        """Test peripheral property returns None without parent (line 230)."""
-        from actron_neo_api.models import ActronAirZone
-
-        zone = ActronAirZone(zone_id=0, can_operate=True)
-        # No parent status
-        assert zone.peripheral is None
 
     def test_max_temp_returns_clamped_value(self) -> None:
         """Test max_temp returns clamped value when limit is lower (line 251)."""

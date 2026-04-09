@@ -21,6 +21,8 @@ def zone_with_api(mock_api: Any) -> ActronAirZone:
                 "FanMode": "AUTO",
                 "SetPoint": 22.0,
                 "EnabledZones": [True, True, False],
+                "TemperatureSetpoint_Cool_oC": 24.0,
+                "ZoneTemperatureSetpointVariance_oC": 3.0,
             },
             "RemoteZoneInfo": [
                 {
@@ -62,6 +64,14 @@ def zone_without_api() -> ActronAirZone:
     status = ActronAirStatus(
         isOnline=True,
         lastKnownState={
+            "UserAirconSettings": {
+                "isOn": True,
+                "Mode": "COOL",
+                "FanMode": "AUTO",
+                "EnabledZones": [True, False, False],
+                "TemperatureSetpoint_Cool_oC": 24.0,
+                "ZoneTemperatureSetpointVariance_oC": 3.0,
+            },
             "RemoteZoneInfo": [
                 {
                     "ZoneNumber": 0,
@@ -69,7 +79,7 @@ def zone_without_api() -> ActronAirZone:
                     "EnabledZone": True,
                     "CanOperate": True,
                 }
-            ]
+            ],
         },
     )
     status.parse_nested_components()
@@ -110,22 +120,9 @@ class TestZoneAsyncSetTemperature:
         assert mock_api.last_command is not None
 
     @pytest.mark.asyncio
-    async def test_set_temperature_without_zone_id(self) -> None:
-        """Test setting temperature without zone_id raises."""
-        zone = ActronAirZone(
-            zone_number=0,
-            live_temp_c=22.0,
-            enabled_zone=True,
-            can_operate=True,
-        )
-
-        with pytest.raises(ValueError, match="Zone index not set"):
-            await zone.set_temperature(24.0)
-
-    @pytest.mark.asyncio
     async def test_set_temperature_without_api(self, zone_without_api: ActronAirZone) -> None:
         """Test setting temperature without API reference raises."""
-        with pytest.raises(ValueError, match="No parent AC status available"):
+        with pytest.raises(ValueError, match="No API reference available"):
             await zone_without_api.set_temperature(24.0)
 
     @pytest.mark.asyncio
@@ -174,22 +171,9 @@ class TestZoneAsyncEnable:
         assert zone_with_api._parent_status.user_aircon_settings.enabled_zones[0] is False
 
     @pytest.mark.asyncio
-    async def test_enable_without_zone_id(self) -> None:
-        """Test enabling without zone_id raises."""
-        zone = ActronAirZone(
-            zone_number=0,
-            live_temp_c=22.0,
-            enabled_zone=True,
-            can_operate=True,
-        )
-
-        with pytest.raises(ValueError, match="Zone index not set"):
-            await zone.enable(True)
-
-    @pytest.mark.asyncio
     async def test_enable_without_api(self, zone_without_api: ActronAirZone) -> None:
         """Test enabling without API reference raises."""
-        with pytest.raises(ValueError, match="No parent AC status available"):
+        with pytest.raises(ValueError, match="No API reference available"):
             await zone_without_api.enable(True)
 
 
@@ -207,15 +191,45 @@ class TestZoneSetEnableCommand:
     def test_set_enable_command_without_parent(self) -> None:
         """Test set_enable_command without parent status."""
         zone = ActronAirZone(
+            zone_id=0,
             zone_number=0,
             live_temp_c=22.0,
             enabled_zone=True,
             can_operate=True,
         )
-        zone.zone_id = 0  # Set zone_id but no parent
 
-        with pytest.raises(ValueError, match="No parent AC status available"):
+        with pytest.raises(RuntimeError, match="Zone must be attached to a parent status"):
             zone.set_enable_command(True)
+
+    def test_set_enable_command_empty_enabled_zones(self) -> None:
+        """Test set_enable_command when enabled_zones is empty (no real data parsed)."""
+        status = ActronAirStatus(
+            isOnline=True,
+            lastKnownState={
+                "RemoteZoneInfo": [
+                    {"LiveTemp_oC": 22.0, "CanOperate": True},
+                ],
+            },
+        )
+        zone = status.remote_zone_info[0]
+
+        with pytest.raises(ValueError, match="No enabled zones available"):
+            zone.set_enable_command(True)
+
+    def test_set_temperature_command_empty_mode(self) -> None:
+        """Test set_temperature_command when mode is empty (no real data parsed)."""
+        status = ActronAirStatus(
+            isOnline=True,
+            lastKnownState={
+                "RemoteZoneInfo": [
+                    {"LiveTemp_oC": 22.0, "CanOperate": True},
+                ],
+            },
+        )
+        zone = status.remote_zone_info[0]
+
+        with pytest.raises(ValueError, match="No AC mode available"):
+            zone.set_temperature_command(22.0)
 
 
 class TestZoneOptimisticStateNotUpdatedOnError:
@@ -296,6 +310,7 @@ class TestZoneOptimisticAutoMode:
                     "EnabledZones": [True, True, False],
                     "TemperatureSetpoint_Cool_oC": 24.0,
                     "TemperatureSetpoint_Heat_oC": 20.0,
+                    "ZoneTemperatureSetpointVariance_oC": 3.0,
                 },
                 "RemoteZoneInfo": [
                     {
@@ -342,320 +357,6 @@ class TestZoneOptimisticAutoMode:
         await zone_auto_mode.set_temperature(22.0)
 
         assert zone_auto_mode.temperature_setpoint_heat_c == 22.0
-
-
-class TestZoneTempLimitsFallback:
-    """Test max_temp/min_temp fallback when API returns non-numeric values."""
-
-    @staticmethod
-    def _make_zone_with_state(last_known_state: dict[str, Any]) -> ActronAirZone:
-        """Create a zone with the given last_known_state."""
-        status = ActronAirStatus(
-            isOnline=True,
-            lastKnownState=last_known_state,
-        )
-        status.parse_nested_components()
-        return status.remote_zone_info[0]
-
-    def test_max_temp_non_numeric_setpoint(self) -> None:
-        """max_temp uses default setpoint (30.0) when setCool_Max is non-numeric."""
-        zone = self._make_zone_with_state(
-            {
-                "NV_Limits": {"UserSetpoint_oC": {"setCool_Max": "not_a_number"}},
-                "UserAirconSettings": {"EnabledZones": [True]},
-                "RemoteZoneInfo": [
-                    {"ZoneNumber": 0, "LiveTemp_oC": 22.0, "EnabledZone": True, "CanOperate": True}
-                ],
-            }
-        )
-        # max_setpoint defaults to 30.0, target defaults to 24.0, variance to 3.0
-        # target + variance = 27 < max_setpoint (30), so returns 27
-        assert zone.max_temp == 27.0
-
-    def test_min_temp_non_numeric_setpoint(self) -> None:
-        """min_temp uses default setpoint (16.0) when setCool_Min is non-numeric."""
-        zone = self._make_zone_with_state(
-            {
-                "NV_Limits": {"UserSetpoint_oC": {"setCool_Min": "bad"}},
-                "UserAirconSettings": {"EnabledZones": [True]},
-                "RemoteZoneInfo": [
-                    {"ZoneNumber": 0, "LiveTemp_oC": 22.0, "EnabledZone": True, "CanOperate": True}
-                ],
-            }
-        )
-        # min_setpoint defaults to 16.0, target defaults to 24.0, variance to 3.0
-        # min_setpoint (16) < target - variance (21), so returns 21
-        assert zone.min_temp == 21.0
-
-    def test_max_temp_none_variance(self) -> None:
-        """max_temp uses default variance (3.0) when variance is None."""
-        zone = self._make_zone_with_state(
-            {
-                "UserAirconSettings": {
-                    "EnabledZones": [True],
-                    "ZoneTemperatureSetpointVariance_oC": None,
-                },
-                "RemoteZoneInfo": [
-                    {"ZoneNumber": 0, "LiveTemp_oC": 22.0, "EnabledZone": True, "CanOperate": True}
-                ],
-            }
-        )
-        # max_setpoint defaults to 30.0, target defaults to 24.0, variance defaults to 3.0
-        # target + variance = 27 < max_setpoint (30), so returns 27
-        assert zone.max_temp == 27.0
-
-    def test_min_temp_none_variance(self) -> None:
-        """min_temp uses default variance (3.0) when variance is None."""
-        zone = self._make_zone_with_state(
-            {
-                "UserAirconSettings": {
-                    "EnabledZones": [True],
-                    "ZoneTemperatureSetpointVariance_oC": None,
-                },
-                "RemoteZoneInfo": [
-                    {"ZoneNumber": 0, "LiveTemp_oC": 22.0, "EnabledZone": True, "CanOperate": True}
-                ],
-            }
-        )
-        # min_setpoint defaults to 16.0, target defaults to 24.0, variance defaults to 3.0
-        # min_setpoint (16) < target - variance (21), so returns 21
-        assert zone.min_temp == 21.0
-
-    def test_max_temp_bad_variance_preserves_valid_limit(self) -> None:
-        """max_temp honors NV_Limits even when variance is non-numeric."""
-        zone = self._make_zone_with_state(
-            {
-                "NV_Limits": {"UserSetpoint_oC": {"setCool_Max": 25.0}},
-                "UserAirconSettings": {
-                    "EnabledZones": [True],
-                    "TemperatureSetpoint_Cool_oC": 24.0,
-                    "ZoneTemperatureSetpointVariance_oC": "bad",
-                },
-                "RemoteZoneInfo": [
-                    {"ZoneNumber": 0, "LiveTemp_oC": 22.0, "EnabledZone": True, "CanOperate": True}
-                ],
-            }
-        )
-        # target (24) + default variance (3) = 27 > max_setpoint (25), so clamps to 25
-        assert zone.max_temp == 25.0
-
-    def test_min_temp_bad_variance_preserves_valid_limit(self) -> None:
-        """min_temp honors NV_Limits even when variance is non-numeric."""
-        zone = self._make_zone_with_state(
-            {
-                "NV_Limits": {"UserSetpoint_oC": {"setCool_Min": 22.0}},
-                "UserAirconSettings": {
-                    "EnabledZones": [True],
-                    "TemperatureSetpoint_Cool_oC": 24.0,
-                    "ZoneTemperatureSetpointVariance_oC": "bad",
-                },
-                "RemoteZoneInfo": [
-                    {"ZoneNumber": 0, "LiveTemp_oC": 22.0, "EnabledZone": True, "CanOperate": True}
-                ],
-            }
-        )
-        # target (24) - default variance (3) = 21 < min_setpoint (22), so clamps to 22
-        assert zone.min_temp == 22.0
-
-    def test_max_temp_bad_target_preserves_valid_limit(self) -> None:
-        """max_temp honors NV_Limits even when target setpoint is non-numeric."""
-        zone = self._make_zone_with_state(
-            {
-                "NV_Limits": {"UserSetpoint_oC": {"setCool_Max": 25.0}},
-                "UserAirconSettings": {
-                    "EnabledZones": [True],
-                    "TemperatureSetpoint_Cool_oC": 24.0,
-                    "ZoneTemperatureSetpointVariance_oC": 3.0,
-                },
-                "RemoteZoneInfo": [
-                    {"ZoneNumber": 0, "LiveTemp_oC": 22.0, "EnabledZone": True, "CanOperate": True}
-                ],
-            }
-        )
-        # Inject bad value into last_known_state after Pydantic validation
-        zone._parent_status.last_known_state["UserAirconSettings"][
-            "TemperatureSetpoint_Cool_oC"
-        ] = "bad"
-        # default target (24) + variance (3) = 27 > max_setpoint (25), clamps to 25
-        assert zone.max_temp == 25.0
-
-    def test_min_temp_bad_target_preserves_valid_limit(self) -> None:
-        """min_temp honors NV_Limits even when target setpoint is non-numeric."""
-        zone = self._make_zone_with_state(
-            {
-                "NV_Limits": {"UserSetpoint_oC": {"setCool_Min": 22.0}},
-                "UserAirconSettings": {
-                    "EnabledZones": [True],
-                    "TemperatureSetpoint_Cool_oC": 24.0,
-                    "ZoneTemperatureSetpointVariance_oC": 3.0,
-                },
-                "RemoteZoneInfo": [
-                    {"ZoneNumber": 0, "LiveTemp_oC": 22.0, "EnabledZone": True, "CanOperate": True}
-                ],
-            }
-        )
-        # Inject bad value into last_known_state after Pydantic validation
-        zone._parent_status.last_known_state["UserAirconSettings"][
-            "TemperatureSetpoint_Cool_oC"
-        ] = "bad"
-        # default target (24) - variance (3) = 21 < min_setpoint (22), clamps to 22
-        assert zone.min_temp == 22.0
-
-    def test_max_temp_nv_limits_is_none(self) -> None:
-        """max_temp falls back when NV_Limits is None (not missing, explicitly null)."""
-        zone = self._make_zone_with_state(
-            {
-                "NV_Limits": None,
-                "UserAirconSettings": {"EnabledZones": [True]},
-                "RemoteZoneInfo": [
-                    {"ZoneNumber": 0, "LiveTemp_oC": 22.0, "EnabledZone": True, "CanOperate": True}
-                ],
-            }
-        )
-        # max_setpoint defaults to 30.0, target 24.0, variance 3.0 → 27
-        assert zone.max_temp == 27.0
-
-    def test_min_temp_nv_limits_is_none(self) -> None:
-        """min_temp falls back when NV_Limits is None."""
-        zone = self._make_zone_with_state(
-            {
-                "NV_Limits": None,
-                "UserAirconSettings": {"EnabledZones": [True]},
-                "RemoteZoneInfo": [
-                    {"ZoneNumber": 0, "LiveTemp_oC": 22.0, "EnabledZone": True, "CanOperate": True}
-                ],
-            }
-        )
-        # min_setpoint defaults to 16.0, target 24.0, variance 3.0 → 21
-        assert zone.min_temp == 21.0
-
-    def test_max_temp_user_setpoint_is_none(self) -> None:
-        """max_temp falls back when UserSetpoint_oC is None."""
-        zone = self._make_zone_with_state(
-            {
-                "NV_Limits": {"UserSetpoint_oC": None},
-                "UserAirconSettings": {"EnabledZones": [True]},
-                "RemoteZoneInfo": [
-                    {"ZoneNumber": 0, "LiveTemp_oC": 22.0, "EnabledZone": True, "CanOperate": True}
-                ],
-            }
-        )
-        assert zone.max_temp == 27.0
-
-    def test_min_temp_user_setpoint_is_none(self) -> None:
-        """min_temp falls back when UserSetpoint_oC is None."""
-        zone = self._make_zone_with_state(
-            {
-                "NV_Limits": {"UserSetpoint_oC": None},
-                "UserAirconSettings": {"EnabledZones": [True]},
-                "RemoteZoneInfo": [
-                    {"ZoneNumber": 0, "LiveTemp_oC": 22.0, "EnabledZone": True, "CanOperate": True}
-                ],
-            }
-        )
-        assert zone.min_temp == 21.0
-
-    def test_max_temp_user_aircon_settings_is_none(self) -> None:
-        """max_temp falls back when UserAirconSettings is None end-to-end."""
-        zone = self._make_zone_with_state(
-            {
-                "UserAirconSettings": None,
-                "RemoteZoneInfo": [
-                    {"ZoneNumber": 0, "LiveTemp_oC": 22.0, "EnabledZone": True, "CanOperate": True}
-                ],
-            }
-        )
-        # max_setpoint 30, target 24, variance 3 → 27
-        assert zone.max_temp == 27.0
-
-    def test_min_temp_user_aircon_settings_is_none(self) -> None:
-        """min_temp falls back when UserAirconSettings is None end-to-end."""
-        zone = self._make_zone_with_state(
-            {
-                "UserAirconSettings": None,
-                "RemoteZoneInfo": [
-                    {"ZoneNumber": 0, "LiveTemp_oC": 22.0, "EnabledZone": True, "CanOperate": True}
-                ],
-            }
-        )
-        # min_setpoint 16, target 24, variance 3 → 21
-        assert zone.min_temp == 21.0
-
-    def test_max_temp_nv_limits_is_list(self) -> None:
-        """max_temp falls back when NV_Limits is a list instead of dict."""
-        zone = self._make_zone_with_state(
-            {
-                "NV_Limits": ["unexpected", "list"],
-                "UserAirconSettings": {"EnabledZones": [True]},
-                "RemoteZoneInfo": [
-                    {"ZoneNumber": 0, "LiveTemp_oC": 22.0, "EnabledZone": True, "CanOperate": True}
-                ],
-            }
-        )
-        assert zone.max_temp == 27.0
-
-    def test_min_temp_nv_limits_is_string(self) -> None:
-        """min_temp falls back when NV_Limits is a string instead of dict."""
-        zone = self._make_zone_with_state(
-            {
-                "NV_Limits": "unexpected_string",
-                "UserAirconSettings": {"EnabledZones": [True]},
-                "RemoteZoneInfo": [
-                    {"ZoneNumber": 0, "LiveTemp_oC": 22.0, "EnabledZone": True, "CanOperate": True}
-                ],
-            }
-        )
-        assert zone.min_temp == 21.0
-
-    def test_max_temp_user_setpoint_is_list(self) -> None:
-        """max_temp falls back when UserSetpoint_oC is a list instead of dict."""
-        zone = self._make_zone_with_state(
-            {
-                "NV_Limits": {"UserSetpoint_oC": [1, 2, 3]},
-                "UserAirconSettings": {"EnabledZones": [True]},
-                "RemoteZoneInfo": [
-                    {"ZoneNumber": 0, "LiveTemp_oC": 22.0, "EnabledZone": True, "CanOperate": True}
-                ],
-            }
-        )
-        assert zone.max_temp == 27.0
-
-    def test_min_temp_user_setpoint_is_string(self) -> None:
-        """min_temp falls back when UserSetpoint_oC is a string instead of dict."""
-        zone = self._make_zone_with_state(
-            {
-                "NV_Limits": {"UserSetpoint_oC": "bad"},
-                "UserAirconSettings": {"EnabledZones": [True]},
-                "RemoteZoneInfo": [
-                    {"ZoneNumber": 0, "LiveTemp_oC": 22.0, "EnabledZone": True, "CanOperate": True}
-                ],
-            }
-        )
-        assert zone.min_temp == 21.0
-
-    def test_max_temp_user_aircon_settings_is_list(self) -> None:
-        """max_temp falls back when UserAirconSettings is a list instead of dict."""
-        zone = self._make_zone_with_state(
-            {
-                "UserAirconSettings": ["not", "a", "dict"],
-                "RemoteZoneInfo": [
-                    {"ZoneNumber": 0, "LiveTemp_oC": 22.0, "EnabledZone": True, "CanOperate": True}
-                ],
-            }
-        )
-        assert zone.max_temp == 27.0
-
-    def test_min_temp_user_aircon_settings_is_string(self) -> None:
-        """min_temp falls back when UserAirconSettings is a string instead of dict."""
-        zone = self._make_zone_with_state(
-            {
-                "UserAirconSettings": "unexpected",
-                "RemoteZoneInfo": [
-                    {"ZoneNumber": 0, "LiveTemp_oC": 22.0, "EnabledZone": True, "CanOperate": True}
-                ],
-            }
-        )
-        assert zone.min_temp == 21.0
 
 
 class TestZoneTempLimitsHeatMode:
@@ -806,23 +507,25 @@ class TestZoneTempLimitsHeatMode:
         assert zone.min_temp == 22.0
 
     def test_heat_mode_defaults_when_limits_missing(self) -> None:
-        """Heat mode uses correct defaults when NV_Limits missing."""
+        """Heat mode uses Pydantic defaults when NV_Limits missing."""
         zone = self._make_zone_with_state(
             {
                 "UserAirconSettings": {
                     "isOn": True,
                     "Mode": "HEAT",
                     "EnabledZones": [True],
+                    "TemperatureSetpoint_Heat_oC": 22.0,
+                    "ZoneTemperatureSetpointVariance_oC": 3.0,
                 },
                 "RemoteZoneInfo": [
                     {"ZoneNumber": 0, "LiveTemp_oC": 20.0, "EnabledZone": True, "CanOperate": True}
                 ],
             }
         )
-        # Heat mode defaults: target=24, variance=3 → max=27, min=21
+        # Heat mode: target=22, variance=3 → max=25, min=19
         # max_setpoint default=30, min_setpoint default=16
-        assert zone.max_temp == 27.0
-        assert zone.min_temp == 21.0
+        assert zone.max_temp == 25.0
+        assert zone.min_temp == 19.0
 
     def test_auto_mode_uses_cool_limits(self) -> None:
         """AUTO mode uses cool limits, same as COOL."""

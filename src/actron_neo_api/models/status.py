@@ -27,11 +27,19 @@ class ActronAirStatus(BaseModel):
 
     is_online: bool = Field(False, alias="isOnline")
     last_known_state: dict[str, Any] = Field(default_factory=dict, alias="lastKnownState")
-    ac_system: ActronAirACSystem | None = None
-    user_aircon_settings: ActronAirUserAirconSettings | None = None
-    master_info: ActronAirMasterInfo | None = None
-    live_aircon: ActronAirLiveAircon | None = None
-    alerts: ActronAirAlerts | None = None
+    ac_system: ActronAirACSystem = Field(
+        default_factory=lambda: ActronAirACSystem.model_validate({})
+    )
+    user_aircon_settings: ActronAirUserAirconSettings = Field(
+        default_factory=lambda: ActronAirUserAirconSettings.model_validate({})
+    )
+    master_info: ActronAirMasterInfo = Field(
+        default_factory=lambda: ActronAirMasterInfo.model_validate({})
+    )
+    live_aircon: ActronAirLiveAircon = Field(
+        default_factory=lambda: ActronAirLiveAircon.model_validate({})
+    )
+    alerts: ActronAirAlerts = Field(default_factory=lambda: ActronAirAlerts.model_validate({}))
     remote_zone_info: list[ActronAirZone] = Field(default_factory=list, alias="RemoteZoneInfo")
     peripherals: list[ActronAirPeripheral] = Field(default_factory=list)
     _api: Any | None = None
@@ -54,56 +62,52 @@ class ActronAirStatus(BaseModel):
     @property
     def clean_filter(self) -> bool:
         """Clean filter alert status."""
-        return self.alerts.clean_filter if self.alerts else False
+        return self.alerts.clean_filter
 
     @property
     def defrost_mode(self) -> bool:
         """Defrost mode status."""
-        return self.alerts.defrosting if self.alerts else False
+        return self.alerts.defrosting
 
     @property
-    def compressor_chasing_temperature(self) -> float | None:
+    def compressor_chasing_temperature(self) -> float:
         """Compressor target temperature."""
-        return self.live_aircon.compressor_chasing_temperature if self.live_aircon else None
+        return self.live_aircon.compressor_chasing_temperature
 
     @property
-    def compressor_live_temperature(self) -> float | None:
+    def compressor_live_temperature(self) -> float:
         """Current compressor temperature."""
-        return self.live_aircon.compressor_live_temperature if self.live_aircon else None
+        return self.live_aircon.compressor_live_temperature
 
     @property
-    def compressor_mode(self) -> str | None:
+    def compressor_mode(self) -> str:
         """Current compressor mode."""
-        return self.live_aircon.compressor_mode if self.live_aircon else None
+        return self.live_aircon.compressor_mode
 
     @property
     def system_on(self) -> bool:
         """Whether the system is currently on."""
-        return self.live_aircon.is_on if self.live_aircon else False
+        return self.live_aircon.is_on
 
     @property
-    def outdoor_temperature(self) -> float | None:
+    def outdoor_temperature(self) -> float:
         """Current outdoor temperature in Celsius."""
-        return self.master_info.live_outdoor_temp_c if self.master_info else None
+        return self.master_info.live_outdoor_temp_c
 
     @property
-    def humidity(self) -> float | None:
+    def humidity(self) -> float:
         """Current humidity percentage."""
-        return self.master_info.live_humidity_pc if self.master_info else None
+        return self.master_info.live_humidity_pc
 
     @property
-    def compressor_speed(self) -> float | None:
+    def compressor_speed(self) -> float:
         """Current compressor speed."""
-        if self.live_aircon and self.live_aircon.outdoor_unit:
-            return self.live_aircon.outdoor_unit.comp_speed
-        return None
+        return self.live_aircon.outdoor_unit.comp_speed
 
     @property
-    def compressor_power(self) -> int | None:
+    def compressor_power(self) -> int:
         """Current compressor power consumption in watts."""
-        if self.live_aircon and self.live_aircon.outdoor_unit:
-            return self.live_aircon.outdoor_unit.comp_power
-        return None
+        return self.live_aircon.outdoor_unit.comp_power
 
     def parse_nested_components(self) -> None:
         """Parse nested components from the last_known_state.
@@ -121,13 +125,18 @@ class ActronAirStatus(BaseModel):
         # serial_number is intentionally preserved: it may have been set
         # externally and will be overwritten by _parse_aircon_system when
         # AirconSystem data is present.
-        self.ac_system = None
-        self.user_aircon_settings = None
-        self.master_info = None
-        self.live_aircon = None
-        self.alerts = None
+        self.ac_system = ActronAirACSystem.model_validate({})
+        self.user_aircon_settings = ActronAirUserAirconSettings.model_validate({})
+        self.master_info = ActronAirMasterInfo.model_validate({})
+        self.live_aircon = ActronAirLiveAircon.model_validate({})
+        self.alerts = ActronAirAlerts.model_validate({})
         self.remote_zone_info = []
         self.peripherals = []
+
+        # Set parent references on default instances so callers can
+        # safely access properties even when sections are missing/malformed.
+        self.ac_system.set_parent_status(self)
+        self.user_aircon_settings.set_parent_status(self)
 
         self._parse_aircon_system()
         self._parse_user_aircon_settings()
@@ -135,9 +144,6 @@ class ActronAirStatus(BaseModel):
         self._parse_live_aircon()
         self._parse_alerts()
         self._parse_remote_zones()
-
-        # Map peripheral sensor data to zones (must run after both peripherals and zones are parsed)
-        self._map_peripheral_data_to_zones()
 
     def _parse_aircon_system(self) -> None:
         """Parse AirconSystem data from last_known_state."""
@@ -232,15 +238,16 @@ class ActronAirStatus(BaseModel):
             return
         try:
             self.remote_zone_info = [
-                ActronAirZone.model_validate(zone) for zone in remote_zone_data
+                ActronAirZone.model_validate({**zone, "zone_id": i})
+                for i, zone in enumerate(remote_zone_data)
             ]
         except (ValidationError, ValueError, TypeError) as e:
             _LOGGER.warning("Failed to parse RemoteZoneInfo: %s", e)
             self.remote_zone_info = []
             return
         # Set parent reference for each zone
-        for i, zone in enumerate(self.remote_zone_info):
-            zone.set_parent_status(self, i)
+        for zone in self.remote_zone_info:
+            zone.set_parent_status(self)
 
     def set_api(self, api: Any) -> None:
         """Set the API reference to enable direct command sending.
@@ -330,41 +337,6 @@ class ActronAirStatus(BaseModel):
             except (ValidationError, ValueError, TypeError, KeyError) as e:
                 # Graceful degradation: log warning and continue with other peripherals
                 _LOGGER.warning("Failed to parse peripheral: %s", e)
-
-    def _map_peripheral_data_to_zones(self) -> None:
-        """Map peripheral sensor data to their assigned zones.
-
-        Updates zone objects with actual humidity readings from their assigned
-        peripheral devices, replacing the default system-wide humidity value
-        with zone-specific sensor data.
-
-        Note:
-            ZoneAssignment values from the API are 1-based (Zone 1, Zone 2, etc.)
-            while remote_zone_info is a 0-based list. The offset is applied here.
-        """
-        if not self.peripherals or not self.remote_zone_info:
-            return
-
-        # Create mapping of zone list index to peripheral
-        zone_peripheral_map: dict[int, ActronAirPeripheral] = {}
-
-        for peripheral in self.peripherals:
-            for zone_assignment in peripheral.zone_assignments:
-                # API zone assignments are 1-based; convert to 0-based list index
-                if not isinstance(zone_assignment, int):
-                    continue
-                adjusted_idx = zone_assignment - 1
-                if 0 <= adjusted_idx < len(self.remote_zone_info):
-                    zone_peripheral_map[adjusted_idx] = peripheral
-
-        # Update zones with peripheral data
-        for i, zone in enumerate(self.remote_zone_info):
-            if i in zone_peripheral_map:
-                peripheral = zone_peripheral_map[i]
-                # Update zone with peripheral sensor data
-                if peripheral.humidity is not None:
-                    zone.actual_humidity_pc = peripheral.humidity
-                # The temperature will be automatically used through the existing properties
 
     def get_peripheral_for_zone(self, zone_index: int) -> ActronAirPeripheral | None:
         """Get the peripheral device assigned to a specific zone.

@@ -452,8 +452,7 @@ class ActronAirOAuth2DeviceCodeAuth:
                 except ActronAirAuthError:
                     if self.is_token_valid:
                         _LOGGER.warning(
-                            "Proactive token refresh failed; "
-                            "using existing token (expires in %ds)",
+                            "Proactive token refresh failed; using existing token (expires in %ds)",
                             int((self.token_expiry or 0) - time.monotonic()),
                         )
                     else:
