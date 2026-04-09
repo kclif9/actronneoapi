@@ -111,69 +111,121 @@ class ActronAirStatus(BaseModel):
         Extracts and validates nested objects like AirconSystem, UserAirconSettings,
         MasterInfo, LiveAircon, Alerts, and RemoteZoneInfo from the raw API response.
         Sets parent references on all child objects to enable bidirectional navigation.
+
+        Each nested component is parsed independently with graceful degradation:
+        a malformed section is logged and skipped so the remaining components are
+        still available.
         """
-        aircon_system_data = self.last_known_state.get("AirconSystem")
-        if isinstance(aircon_system_data, dict):
-            self.ac_system = ActronAirACSystem.model_validate(aircon_system_data)
-            # Set the system name from NV_SystemSettings if available
-            nv_system_settings = self.last_known_state.get("NV_SystemSettings")
-            if isinstance(nv_system_settings, dict):
-                system_name = nv_system_settings.get("SystemName", "")
-                if system_name and self.ac_system:
-                    self.ac_system.system_name = system_name
-
-            # Set serial number from the AirconSystem data
-            if self.ac_system and self.ac_system.master_serial:
-                self.serial_number = self.ac_system.master_serial
-
-            # Set parent reference for ACSystem
-            if self.ac_system:
-                self.ac_system.set_parent_status(self)
-
-            # Process peripherals if available
-            self._process_peripherals()
-
-        user_aircon_settings_data = self.last_known_state.get("UserAirconSettings")
-        if isinstance(user_aircon_settings_data, dict):
-            self.user_aircon_settings = ActronAirUserAirconSettings.model_validate(
-                user_aircon_settings_data
-            )
-            # Set parent reference
-            if self.user_aircon_settings:
-                self.user_aircon_settings.set_parent_status(self)
-
-        master_info_data = self.last_known_state.get("MasterInfo")
-        if isinstance(master_info_data, dict):
-            self.master_info = ActronAirMasterInfo.model_validate(master_info_data)
-
-        live_aircon_data = self.last_known_state.get("LiveAircon")
-        if isinstance(live_aircon_data, dict):
-            self.live_aircon = ActronAirLiveAircon.model_validate(live_aircon_data)
-
-        alerts_data = self.last_known_state.get("Alerts")
-        if isinstance(alerts_data, dict):
-            self.alerts = ActronAirAlerts.model_validate(alerts_data)
-
-        remote_zone_data = self.last_known_state.get("RemoteZoneInfo")
-        if isinstance(remote_zone_data, list):
-            # Validate all entries are dicts before parsing to preserve positional
-            # indices. Silently dropping non-dict entries would shift zone indices,
-            # causing commands and peripheral mapping to target the wrong zone.
-            if all(isinstance(zone, dict) for zone in remote_zone_data):
-                self.remote_zone_info = [
-                    ActronAirZone.model_validate(zone) for zone in remote_zone_data
-                ]
-                # Set parent reference for each zone
-                for i, zone in enumerate(self.remote_zone_info):
-                    zone.set_parent_status(self, i)
-            else:
-                _LOGGER.warning(
-                    "RemoteZoneInfo contains non-dict entries, skipping zone parsing "
-                    "to prevent index misalignment"
-                )
+        self._parse_aircon_system()
+        self._parse_user_aircon_settings()
+        self._parse_master_info()
+        self._parse_live_aircon()
+        self._parse_alerts()
+        self._parse_remote_zones()
 
         # Map peripheral sensor data to zones (must run after both peripherals and zones are parsed)
         self._map_peripheral_data_to_zones()
+
+    def _parse_aircon_system(self) -> None:
+        """Parse AirconSystem data from last_known_state."""
+        aircon_system_data = self.last_known_state.get("AirconSystem")
+        if not isinstance(aircon_system_data, dict):
+            return
+        try:
+            self.ac_system = ActronAirACSystem.model_validate(aircon_system_data)
+        except (ValidationError, ValueError, TypeError) as e:
+            _LOGGER.warning("Failed to parse AirconSystem: %s", e)
+            return
+
+        # Set the system name from NV_SystemSettings if available
+        nv_system_settings = self.last_known_state.get("NV_SystemSettings")
+        if isinstance(nv_system_settings, dict):
+            system_name = nv_system_settings.get("SystemName", "")
+            if system_name and self.ac_system:
+                self.ac_system.system_name = system_name
+
+        # Set serial number from the AirconSystem data
+        if self.ac_system and self.ac_system.master_serial:
+            self.serial_number = self.ac_system.master_serial
+
+        # Set parent reference for ACSystem
+        if self.ac_system:
+            self.ac_system.set_parent_status(self)
+
+        # Process peripherals if available
+        self._process_peripherals()
+
+    def _parse_user_aircon_settings(self) -> None:
+        """Parse UserAirconSettings data from last_known_state."""
+        user_aircon_settings_data = self.last_known_state.get("UserAirconSettings")
+        if not isinstance(user_aircon_settings_data, dict):
+            return
+        try:
+            self.user_aircon_settings = ActronAirUserAirconSettings.model_validate(
+                user_aircon_settings_data
+            )
+        except (ValidationError, ValueError, TypeError) as e:
+            _LOGGER.warning("Failed to parse UserAirconSettings: %s", e)
+            return
+        # Set parent reference
+        if self.user_aircon_settings:
+            self.user_aircon_settings.set_parent_status(self)
+
+    def _parse_master_info(self) -> None:
+        """Parse MasterInfo data from last_known_state."""
+        master_info_data = self.last_known_state.get("MasterInfo")
+        if not isinstance(master_info_data, dict):
+            return
+        try:
+            self.master_info = ActronAirMasterInfo.model_validate(master_info_data)
+        except (ValidationError, ValueError, TypeError) as e:
+            _LOGGER.warning("Failed to parse MasterInfo: %s", e)
+
+    def _parse_live_aircon(self) -> None:
+        """Parse LiveAircon data from last_known_state."""
+        live_aircon_data = self.last_known_state.get("LiveAircon")
+        if not isinstance(live_aircon_data, dict):
+            return
+        try:
+            self.live_aircon = ActronAirLiveAircon.model_validate(live_aircon_data)
+        except (ValidationError, ValueError, TypeError) as e:
+            _LOGGER.warning("Failed to parse LiveAircon: %s", e)
+
+    def _parse_alerts(self) -> None:
+        """Parse Alerts data from last_known_state."""
+        alerts_data = self.last_known_state.get("Alerts")
+        if not isinstance(alerts_data, dict):
+            return
+        try:
+            self.alerts = ActronAirAlerts.model_validate(alerts_data)
+        except (ValidationError, ValueError, TypeError) as e:
+            _LOGGER.warning("Failed to parse Alerts: %s", e)
+
+    def _parse_remote_zones(self) -> None:
+        """Parse RemoteZoneInfo data from last_known_state."""
+        remote_zone_data = self.last_known_state.get("RemoteZoneInfo")
+        if not isinstance(remote_zone_data, list):
+            return
+        # Validate all entries are dicts before parsing to preserve positional
+        # indices. Silently dropping non-dict entries would shift zone indices,
+        # causing commands and peripheral mapping to target the wrong zone.
+        if not all(isinstance(zone, dict) for zone in remote_zone_data):
+            _LOGGER.warning(
+                "RemoteZoneInfo contains non-dict entries, skipping zone parsing "
+                "to prevent index misalignment"
+            )
+            return
+        try:
+            self.remote_zone_info = [
+                ActronAirZone.model_validate(zone) for zone in remote_zone_data
+            ]
+        except (ValidationError, ValueError, TypeError) as e:
+            _LOGGER.warning("Failed to parse RemoteZoneInfo: %s", e)
+            self.remote_zone_info = []
+            return
+        # Set parent reference for each zone
+        for i, zone in enumerate(self.remote_zone_info):
+            zone.set_parent_status(self, i)
 
     def set_api(self, api: Any) -> None:
         """Set the API reference to enable direct command sending.

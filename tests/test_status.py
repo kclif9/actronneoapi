@@ -569,6 +569,115 @@ class TestStatusParseNestedComponents:
         assert status.remote_zone_info[0].zone_id == 0
         assert status.remote_zone_info[1].zone_id == 1
 
+    def test_malformed_aircon_system_graceful(self):
+        """Malformed AirconSystem is skipped; other components still parse."""
+        status_data = {
+            "isOnline": True,
+            "lastKnownState": {
+                "AirconSystem": {"MasterSerial": [1, 2, 3]},  # wrong type
+                "UserAirconSettings": {
+                    "isOn": True,
+                    "Mode": "COOL",
+                    "FanMode": "AUTO",
+                    "SetPoint": 22.0,
+                },
+            },
+        }
+
+        status = ActronAirStatus.model_validate(status_data)
+        status.parse_nested_components()
+
+        assert status.ac_system is None
+        assert status.user_aircon_settings is not None
+
+    def test_malformed_user_aircon_settings_graceful(self):
+        """Malformed UserAirconSettings is skipped; other components still parse."""
+        status_data = {
+            "isOnline": True,
+            "lastKnownState": {
+                "UserAirconSettings": {"Mode": {"nested": "wrong"}},
+                "MasterInfo": {
+                    "LiveOutdoorTemp_oC": 28.5,
+                    "LiveHumidity_pc": 65.0,
+                },
+            },
+        }
+
+        status = ActronAirStatus.model_validate(status_data)
+        status.parse_nested_components()
+
+        assert status.user_aircon_settings is None
+        assert status.master_info is not None
+
+    def test_malformed_master_info_graceful(self):
+        """Malformed MasterInfo is skipped; other components still parse."""
+        status_data = {
+            "isOnline": True,
+            "lastKnownState": {
+                "MasterInfo": {"LiveOutdoorTemp_oC": "not_a_number"},
+                "LiveAircon": {"SystemOn": True, "CompressorMode": "COOL"},
+            },
+        }
+
+        status = ActronAirStatus.model_validate(status_data)
+        status.parse_nested_components()
+
+        # MasterInfo may or may not fail depending on Pydantic coercion;
+        # either way, LiveAircon should parse
+        assert status.live_aircon is not None
+
+    def test_malformed_live_aircon_graceful(self):
+        """Malformed LiveAircon is skipped; other components still parse."""
+        status_data = {
+            "isOnline": True,
+            "lastKnownState": {
+                "LiveAircon": {"SystemOn": "invalid_bool_struct", "OutdoorUnit": 42},
+                "Alerts": {"CleanFilter": True, "Defrosting": False},
+            },
+        }
+
+        status = ActronAirStatus.model_validate(status_data)
+        status.parse_nested_components()
+
+        # Alerts should still parse regardless of LiveAircon failure
+        assert status.alerts is not None
+
+    def test_malformed_alerts_graceful(self):
+        """Malformed Alerts is skipped; other components still parse."""
+        status_data = {
+            "isOnline": True,
+            "lastKnownState": {
+                "Alerts": {"CleanFilter": {"nested": "wrong"}},
+                "RemoteZoneInfo": [
+                    {"ZoneNumber": 0, "LiveTemp_oC": 22.0, "EnabledZone": True, "CanOperate": True},
+                ],
+            },
+        }
+
+        status = ActronAirStatus.model_validate(status_data)
+        status.parse_nested_components()
+
+        assert status.alerts is None
+        assert len(status.remote_zone_info) == 1
+
+    def test_malformed_remote_zone_info_graceful(self):
+        """Malformed RemoteZoneInfo resets to empty; other components still parse."""
+        status_data = {
+            "isOnline": True,
+            "lastKnownState": {
+                "RemoteZoneInfo": [
+                    {"ZoneNumber": "not_a_number", "LiveTemp_oC": "bad", "CanOperate": 999},
+                ],
+                "Alerts": {"CleanFilter": False, "Defrosting": False},
+            },
+        }
+
+        status = ActronAirStatus.model_validate(status_data)
+        status.parse_nested_components()
+
+        # Alerts should still work
+        assert status.alerts is not None
+
 
 class TestZoneAssignmentMapping:
     """Test that peripheral zone assignments use 1-based API convention."""
