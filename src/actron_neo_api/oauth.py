@@ -76,13 +76,13 @@ class ActronAirOAuth2DeviceCodeAuth:
         return (
             self.access_token is not None
             and self.token_expiry is not None
-            and time.time() < self.token_expiry
+            and time.monotonic() < self.token_expiry
         )
 
     @property
     def is_token_expiring_soon(self) -> bool:
         """Check if the token is expiring within the next 15 minutes."""
-        return self.token_expiry is not None and time.time() > (
+        return self.token_expiry is not None and time.monotonic() > (
             self.token_expiry - OAUTH_TOKEN_REFRESH_MARGIN
         )
 
@@ -212,11 +212,11 @@ class ActronAirOAuth2DeviceCodeAuth:
 
         headers = {"Content-Type": "application/x-www-form-urlencoded"}
 
-        start_time = time.time()
+        start_time = time.monotonic()
         current_interval = interval
 
         async with self._get_session() as session:
-            while time.time() - start_time < timeout:
+            while time.monotonic() - start_time < timeout:
                 try:
                     async with session.post(
                         self.token_url, data=payload, headers=headers
@@ -231,8 +231,12 @@ class ActronAirOAuth2DeviceCodeAuth:
                                 self.token_type = data.get("token_type", "Bearer")
                                 self.authenticated_platform = self.base_url
 
-                                expires_in = data.get("expires_in", OAUTH_DEFAULT_EXPIRY)
-                                self.token_expiry = time.time() + expires_in
+                                raw_expires_in = data.get("expires_in", OAUTH_DEFAULT_EXPIRY)
+                                try:
+                                    expires_in = int(raw_expires_in)
+                                except (TypeError, ValueError):
+                                    expires_in = OAUTH_DEFAULT_EXPIRY
+                                self.token_expiry = time.monotonic() + expires_in
 
                             return ActronAirToken(**data)
 
@@ -282,7 +286,10 @@ class ActronAirOAuth2DeviceCodeAuth:
         :meth:`_refresh_access_token_unlocked` instead.
 
         Returns:
-            Tuple of (access_token, expiry_timestamp)
+            Tuple of (access_token, monotonic_expiry_deadline) where the
+            deadline is a :func:`time.monotonic` value. It is only valid
+            within the current process and must not be persisted or
+            converted to a wall-clock timestamp.
 
         Raises:
             ActronAirAuthError: If token refresh fails
@@ -299,7 +306,10 @@ class ActronAirOAuth2DeviceCodeAuth:
         deadlocking on the non-reentrant :class:`asyncio.Lock`.
 
         Returns:
-            Tuple of (access_token, expiry_timestamp)
+            Tuple of (access_token, monotonic_expiry_deadline) where the
+            deadline is a :func:`time.monotonic` value. It is only valid
+            within the current process and must not be persisted or
+            converted to a wall-clock timestamp.
 
         Raises:
             ActronAirAuthError: If token refresh fails
@@ -339,7 +349,7 @@ class ActronAirOAuth2DeviceCodeAuth:
                         except (ValueError, TypeError):
                             expires_in = OAUTH_DEFAULT_EXPIRY
 
-                        token_expiry = time.time() + expires_in
+                        token_expiry = time.monotonic() + expires_in
 
                         self.access_token = access_token
                         if refresh_token and isinstance(refresh_token, str):
@@ -419,7 +429,7 @@ class ActronAirOAuth2DeviceCodeAuth:
                         _LOGGER.warning(
                             "Proactive token refresh failed; "
                             "using existing token (expires in %ds)",
-                            int((self.token_expiry or 0) - time.time()),
+                            int((self.token_expiry or 0) - time.monotonic()),
                         )
                     else:
                         raise
@@ -457,7 +467,7 @@ class ActronAirOAuth2DeviceCodeAuth:
         self.token_type = token_type if token_type else "Bearer"
 
         if expires_in is not None:
-            self.token_expiry = time.time() + expires_in
+            self.token_expiry = time.monotonic() + expires_in
         else:
             # No expiry known — force a refresh on next use
             self.token_expiry = None

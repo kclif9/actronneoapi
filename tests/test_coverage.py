@@ -42,7 +42,7 @@ class TestActronAPIAuthErrors:
 
         # Set tokens directly to avoid initialization issues
         api.oauth2_auth.access_token = "test_access"
-        api.oauth2_auth.token_expiry = time.time() + 3600  # Valid token
+        api.oauth2_auth.token_expiry = time.monotonic() + 3600  # Valid token
         api._initialized = True
 
         # Create a mock session

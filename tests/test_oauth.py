@@ -81,15 +81,61 @@ class TestActronAirOAuth2DeviceCodeAuth:
             assert auth.is_token_valid
 
     @pytest.mark.asyncio
+    async def test_poll_for_token_string_expires_in(self) -> None:
+        """Test that a string expires_in from poll response is coerced to int."""
+        auth = ActronAirOAuth2DeviceCodeAuth("https://example.com", "test_client")
+
+        mock_response = {
+            "access_token": "tok",
+            "refresh_token": "ref",
+            "token_type": "Bearer",
+            "expires_in": "7200",  # String instead of int
+        }
+
+        with patch("aiohttp.ClientSession.post") as mock_post:
+            mock_post.return_value.__aenter__.return_value.status = 200
+            mock_post.return_value.__aenter__.return_value.json.return_value = mock_response
+
+            result = await auth.poll_for_token("test_device_code")
+
+            assert result is not None
+            assert auth.is_token_valid
+            assert auth.token_expiry is not None
+
+    @pytest.mark.asyncio
+    async def test_poll_for_token_unparseable_expires_in(self) -> None:
+        """Test that an unparseable expires_in uses fallback and Pydantic raises."""
+        auth = ActronAirOAuth2DeviceCodeAuth("https://example.com", "test_client")
+
+        mock_response = {
+            "access_token": "tok",
+            "refresh_token": "ref",
+            "token_type": "Bearer",
+            "expires_in": {"nested": "object"},
+        }
+
+        with patch("aiohttp.ClientSession.post") as mock_post:
+            mock_post.return_value.__aenter__.return_value.status = 200
+            mock_post.return_value.__aenter__.return_value.json.return_value = mock_response
+
+            # ActronAirToken model validation will fail on the bad expires_in,
+            # which is caught and re-raised as ActronAirAuthError
+            with pytest.raises(ActronAirAuthError, match="Polling failed"):
+                await auth.poll_for_token("test_device_code")
+
+    @pytest.mark.asyncio
     async def test_poll_for_token_pending(self) -> None:
         """Test token polling when authorization is pending and times out."""
         auth = ActronAirOAuth2DeviceCodeAuth("https://example.com", "test_client")
 
         mock_response = {"error": "authorization_pending"}
 
-        with patch("aiohttp.ClientSession.post") as mock_post, patch("time.time") as mock_time:
+        with (
+            patch("aiohttp.ClientSession.post") as mock_post,
+            patch("actron_neo_api.oauth.time") as mock_time_mod,
+        ):
             # Simulate timeout by advancing time past the threshold
-            mock_time.side_effect = [0, 0, 601, 601, 601]
+            mock_time_mod.monotonic.side_effect = [0, 0, 601, 601, 601]
 
             mock_post.return_value.__aenter__.return_value.status = 400
             mock_post.return_value.__aenter__.return_value.json.return_value = mock_response
@@ -127,7 +173,7 @@ class TestActronAirOAuth2DeviceCodeAuth:
         auth = ActronAirOAuth2DeviceCodeAuth("https://example.com", "test_client")
         auth.access_token = "test_access_token"
         auth.refresh_token = "test_refresh_token"  # Add refresh token to avoid error
-        auth.token_expiry = time.time() + 3600  # Set token as valid
+        auth.token_expiry = time.monotonic() + 3600  # Set token as valid
 
         mock_response = {"id": "test_user_id", "email": "test@example.com", "name": "Test User"}
 
@@ -196,17 +242,17 @@ class TestActronAirOAuth2DeviceCodeAuth:
 
         # Valid token
         auth.access_token = "test_token"
-        auth.token_expiry = time.time() + 3600
+        auth.token_expiry = time.monotonic() + 3600
         assert auth.is_token_valid
         assert not auth.is_token_expiring_soon
 
         # Expiring soon (within 15 minutes)
-        auth.token_expiry = time.time() + 600  # 10 minutes
+        auth.token_expiry = time.monotonic() + 600  # 10 minutes
         assert auth.is_token_valid
         assert auth.is_token_expiring_soon
 
         # Expired
-        auth.token_expiry = time.time() - 100
+        auth.token_expiry = time.monotonic() - 100
         assert not auth.is_token_valid
         assert auth.is_token_expiring_soon
 
@@ -526,7 +572,7 @@ class TestActronAirOAuth2DeviceCodeAuth:
         auth = ActronAirOAuth2DeviceCodeAuth("https://example.com", "test_client")
         auth.access_token = "test_token"
         auth.refresh_token = "test_refresh"
-        auth.token_expiry = time.time() + 3600
+        auth.token_expiry = time.monotonic() + 3600
 
         mock_resp = AsyncMock()
         mock_resp.status = 401
@@ -550,7 +596,7 @@ class TestActronAirOAuth2DeviceCodeAuth:
         auth = ActronAirOAuth2DeviceCodeAuth("https://example.com", "test_client")
         auth.access_token = "old_token"
         auth.refresh_token = "test_refresh"
-        auth.token_expiry = time.time() - 100  # Expired
+        auth.token_expiry = time.monotonic() - 100  # Expired
 
         mock_resp = AsyncMock()
         mock_resp.status = 200
@@ -860,7 +906,7 @@ class TestActronAirOAuth2InjectableSession:
         )
         auth.access_token = "test_token"
         auth.refresh_token = "test_refresh"
-        auth.token_expiry = time.time() + 3600
+        auth.token_expiry = time.monotonic() + 3600
 
         with patch("aiohttp.ClientSession") as mock_client_session:
             result = await auth.get_user_info()
@@ -879,7 +925,7 @@ class TestTokenRefreshLock:
         auth = ActronAirOAuth2DeviceCodeAuth("https://example.com", "test_client")
         auth.access_token = "old_token"
         auth.refresh_token = "test_refresh"
-        auth.token_expiry = time.time() - 100  # Expired
+        auth.token_expiry = time.monotonic() - 100  # Expired
 
         call_count = 0
 
@@ -888,7 +934,7 @@ class TestTokenRefreshLock:
             call_count += 1
             await asyncio.sleep(0.05)  # Simulate network delay
             auth.access_token = "new_token"
-            auth.token_expiry = time.time() + 3600
+            auth.token_expiry = time.monotonic() + 3600
             return "new_token", auth.token_expiry
 
         auth._refresh_access_token_unlocked = mock_refresh  # type: ignore[assignment]
@@ -909,7 +955,7 @@ class TestTokenRefreshLock:
         auth.access_token = "old_token"
         auth.refresh_token = "test_refresh"
         # Token valid but expiring in 5 minutes (within 15-min window)
-        auth.token_expiry = time.time() + 300
+        auth.token_expiry = time.monotonic() + 300
 
         assert auth.is_token_valid
         assert auth.is_token_expiring_soon
@@ -920,7 +966,7 @@ class TestTokenRefreshLock:
             nonlocal refreshed
             refreshed = True
             auth.access_token = "new_token"
-            auth.token_expiry = time.time() + 3600
+            auth.token_expiry = time.monotonic() + 3600
             return "new_token", auth.token_expiry
 
         auth._refresh_access_token_unlocked = mock_refresh  # type: ignore[assignment]
@@ -936,7 +982,7 @@ class TestTokenRefreshLock:
         auth = ActronAirOAuth2DeviceCodeAuth("https://example.com", "test_client")
         auth.access_token = "good_token"
         auth.refresh_token = "test_refresh"
-        auth.token_expiry = time.time() + 3600  # 1 hour left
+        auth.token_expiry = time.monotonic() + 3600  # 1 hour left
 
         assert auth.is_token_valid
         assert not auth.is_token_expiring_soon
@@ -962,7 +1008,7 @@ class TestTokenRefreshLock:
         auth.access_token = "still_valid_token"
         auth.refresh_token = "test_refresh"
         # Token valid but expiring in 5 minutes (within 15-min window)
-        auth.token_expiry = time.time() + 300
+        auth.token_expiry = time.monotonic() + 300
 
         async def mock_refresh_fail() -> tuple[str, float]:
             raise ActronAirAuthError("refresh failed")
@@ -979,7 +1025,7 @@ class TestTokenRefreshLock:
         auth = ActronAirOAuth2DeviceCodeAuth("https://example.com", "test_client")
         auth.access_token = "expired_token"
         auth.refresh_token = "test_refresh"
-        auth.token_expiry = time.time() - 100  # Expired
+        auth.token_expiry = time.monotonic() - 100  # Expired
 
         async def mock_refresh_fail() -> tuple[str, float]:
             raise ActronAirAuthError("refresh failed")
@@ -1027,7 +1073,7 @@ class TestOAuthClientErrorWrapping:
         """get_user_info wraps aiohttp.ClientError in ActronAirAuthError."""
         auth = ActronAirOAuth2DeviceCodeAuth("https://example.com", "test_client")
         auth.access_token = "valid_token"
-        auth.token_expiry = time.time() + 3600
+        auth.token_expiry = time.monotonic() + 3600
 
         mock_session = AsyncMock()
         mock_session.get = MagicMock(side_effect=aiohttp.ClientError("dns failure"))
