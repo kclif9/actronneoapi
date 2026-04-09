@@ -169,9 +169,10 @@ class TestZoneProperties:
     """Test ActronAirZone properties."""
 
     def test_is_active_without_parent(self) -> None:
-        """Test is_active without parent status."""
+        """Test is_active without parent status raises."""
         zone = ActronAirZone(CanOperate=True)
-        assert zone.is_active is False
+        with pytest.raises(RuntimeError, match="Zone must be attached to a parent status"):
+            _ = zone.is_active
 
     def test_is_active_cannot_operate(self) -> None:
         """Test is_active when zone cannot operate."""
@@ -201,9 +202,10 @@ class TestZoneProperties:
         assert zone.is_active is True
 
     def test_hvac_mode_without_parent(self) -> None:
-        """Test hvac_mode without parent returns OFF."""
+        """Test hvac_mode without parent raises."""
         zone = ActronAirZone()
-        assert zone.hvac_mode == "OFF"
+        with pytest.raises(RuntimeError, match="Zone must be attached to a parent status"):
+            _ = zone.hvac_mode
 
     def test_hvac_mode_system_off(self) -> None:
         """Test hvac_mode when system is off."""
@@ -249,9 +251,10 @@ class TestZoneProperties:
         assert zone.humidity == 50.0
 
     def test_battery_level_without_parent(self) -> None:
-        """Test battery_level without parent."""
-        zone = ActronAirZone()
-        assert zone.battery_level is None
+        """Test battery_level without parent raises."""
+        zone = ActronAirZone(zone_id=0)
+        with pytest.raises(RuntimeError, match="Zone must be attached to a parent status"):
+            _ = zone.battery_level
 
     def test_battery_level_with_peripheral(self) -> None:
         """Test battery_level from peripheral."""
@@ -306,15 +309,15 @@ class TestZoneProperties:
         assert zone.peripheral is peripheral
 
     def test_max_temp_without_parent(self) -> None:
-        """Test max_temp without parent raises AssertionError (fail fast)."""
+        """Test max_temp without parent raises RuntimeError (fail fast)."""
         zone = ActronAirZone()
-        with pytest.raises(AssertionError, match="Zone must be attached to a parent status"):
+        with pytest.raises(RuntimeError, match="Zone must be attached to a parent status"):
             _ = zone.max_temp
 
     def test_min_temp_without_parent(self) -> None:
-        """Test min_temp without parent raises AssertionError (fail fast)."""
+        """Test min_temp without parent raises RuntimeError (fail fast)."""
         zone = ActronAirZone()
-        with pytest.raises(AssertionError, match="Zone must be attached to a parent status"):
+        with pytest.raises(RuntimeError, match="Zone must be attached to a parent status"):
             _ = zone.min_temp
 
 
@@ -369,7 +372,7 @@ class TestZoneCommands:
         zone = ActronAirZone()
         zone.zone_id = 0
 
-        with pytest.raises(ValueError, match="Zone is not attached to a parent status"):
+        with pytest.raises(RuntimeError, match="Zone must be attached to a parent status"):
             zone.set_temperature_command(22.0)
 
     def test_set_enable_command_enable(self) -> None:
