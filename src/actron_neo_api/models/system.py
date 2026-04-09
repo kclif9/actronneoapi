@@ -64,6 +64,8 @@ class ActronAirLiveAircon(BaseModel):
     compressor mode and capacity, fan speed, defrost status, and temperature targets.
     """
 
+    model_config = ConfigDict(populate_by_name=True)
+
     is_on: bool = Field(False, alias="SystemOn")
     compressor_mode: str = Field("", alias="CompressorMode")
     compressor_capacity: int = Field(0, alias="CompressorCapacity")
@@ -81,6 +83,8 @@ class ActronAirMasterInfo(BaseModel):
     humidity, and outdoor temperature readings.
     """
 
+    model_config = ConfigDict(populate_by_name=True)
+
     live_temp_c: float = Field(0.0, alias="LiveTemp_oC")
     live_humidity_pc: float = Field(0.0, alias="LiveHumidity_pc")
     live_outdoor_temp_c: float = Field(0.0, alias="LiveOutdoorTemp_oC")
@@ -93,6 +97,8 @@ class ActronAirAlerts(BaseModel):
     and defrost cycle status.
     """
 
+    model_config = ConfigDict(populate_by_name=True)
+
     clean_filter: bool = Field(False, alias="CleanFilter")
     defrosting: bool = Field(False, alias="Defrosting")
 
@@ -104,6 +110,8 @@ class ActronAirACSystem(BaseModel):
     outdoor unit, and system identification. Provides methods to control
     system-level settings like operating mode.
     """
+
+    model_config = ConfigDict(populate_by_name=True)
 
     master_wc_model: str = Field("", alias="MasterWCModel")
     master_serial: str = Field("", alias="MasterSerial")
@@ -172,9 +180,8 @@ class ActronAirACSystem(BaseModel):
         await self._parent_status.api.send_command(serial, command)
 
         # Optimistic local state update
-        if self._parent_status.user_aircon_settings:
-            if is_on:
-                self._parent_status.user_aircon_settings.is_on = True
-                self._parent_status.user_aircon_settings.mode = mode_upper
-            else:
-                self._parent_status.user_aircon_settings.is_on = False
+        if is_on:
+            self._parent_status.user_aircon_settings.is_on = True
+            self._parent_status.user_aircon_settings.mode = mode_upper
+        else:
+            self._parent_status.user_aircon_settings.is_on = False

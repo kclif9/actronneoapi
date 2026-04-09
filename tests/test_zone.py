@@ -62,6 +62,12 @@ def zone_without_api() -> ActronAirZone:
     status = ActronAirStatus(
         isOnline=True,
         lastKnownState={
+            "UserAirconSettings": {
+                "isOn": True,
+                "Mode": "COOL",
+                "FanMode": "AUTO",
+                "EnabledZones": [True, False, False],
+            },
             "RemoteZoneInfo": [
                 {
                     "ZoneNumber": 0,
@@ -69,7 +75,7 @@ def zone_without_api() -> ActronAirZone:
                     "EnabledZone": True,
                     "CanOperate": True,
                 }
-            ]
+            ],
         },
     )
     status.parse_nested_components()
@@ -125,7 +131,7 @@ class TestZoneAsyncSetTemperature:
     @pytest.mark.asyncio
     async def test_set_temperature_without_api(self, zone_without_api: ActronAirZone) -> None:
         """Test setting temperature without API reference raises."""
-        with pytest.raises(ValueError, match="No parent AC status available"):
+        with pytest.raises(ValueError, match="No API reference available"):
             await zone_without_api.set_temperature(24.0)
 
     @pytest.mark.asyncio
@@ -189,7 +195,7 @@ class TestZoneAsyncEnable:
     @pytest.mark.asyncio
     async def test_enable_without_api(self, zone_without_api: ActronAirZone) -> None:
         """Test enabling without API reference raises."""
-        with pytest.raises(ValueError, match="No parent AC status available"):
+        with pytest.raises(ValueError, match="No API reference available"):
             await zone_without_api.enable(True)
 
 
@@ -214,8 +220,38 @@ class TestZoneSetEnableCommand:
         )
         zone.zone_id = 0  # Set zone_id but no parent
 
+        with pytest.raises(ValueError, match="Zone index not set"):
+            zone.set_enable_command(True)
+
+    def test_set_enable_command_empty_enabled_zones(self) -> None:
+        """Test set_enable_command when enabled_zones is empty (no real data parsed)."""
+        status = ActronAirStatus(
+            isOnline=True,
+            lastKnownState={
+                "RemoteZoneInfo": [
+                    {"LiveTemp_oC": 22.0, "CanOperate": True},
+                ],
+            },
+        )
+        zone = status.remote_zone_info[0]
+
         with pytest.raises(ValueError, match="No parent AC status available"):
             zone.set_enable_command(True)
+
+    def test_set_temperature_command_empty_mode(self) -> None:
+        """Test set_temperature_command when mode is empty (no real data parsed)."""
+        status = ActronAirStatus(
+            isOnline=True,
+            lastKnownState={
+                "RemoteZoneInfo": [
+                    {"LiveTemp_oC": 22.0, "CanOperate": True},
+                ],
+            },
+        )
+        zone = status.remote_zone_info[0]
+
+        with pytest.raises(ValueError, match="No parent AC status available"):
+            zone.set_temperature_command(22.0)
 
 
 class TestZoneOptimisticStateNotUpdatedOnError:

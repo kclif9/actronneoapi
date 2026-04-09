@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from ..const import (
     AC_MODE_AUTO,
@@ -30,6 +30,8 @@ class ActronAirUserAirconSettings(BaseModel):
     temperature setpoints, fan settings, and special modes (quiet, turbo, away).
     Provides async methods to send commands to modify these settings.
     """
+
+    model_config = ConfigDict(populate_by_name=True)
 
     is_on: bool = Field(False, alias="isOn")
     mode: str = Field("", alias="Mode")

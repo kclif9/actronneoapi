@@ -149,7 +149,7 @@ class ActronAirZone(BaseModel):
     temperature_setpoint_heat_c: float = Field(0.0, alias="TemperatureSetpoint_Heat_oC")
     sensors: dict[str, ActronAirZoneSensor] = Field(default_factory=dict, alias="Sensors")
     actual_humidity_pc: float | None = None
-    zone_id: int | None = None
+    zone_id: int = 0
     _parent_status: "ActronAirStatus | None" = None
 
     @property
@@ -160,14 +160,14 @@ class ActronAirZone(BaseModel):
             True if zone is enabled and can operate, False otherwise
 
         """
-        if not self._parent_status or not self._parent_status.user_aircon_settings:
+        if not self._parent_status:
             return False
 
         enabled_zones = self._parent_status.user_aircon_settings.enabled_zones
 
         if not self.can_operate:
             return False
-        if self.zone_id is None or self.zone_id >= len(enabled_zones):
+        if self.zone_id >= len(enabled_zones):
             return False
         return enabled_zones[self.zone_id]
 
@@ -180,7 +180,7 @@ class ActronAirZone(BaseModel):
             "OFF" is returned if the system is off or the zone is inactive
 
         """
-        if not self._parent_status or not self._parent_status.user_aircon_settings:
+        if not self._parent_status:
             return AC_MODE_OFF
 
         settings = self._parent_status.user_aircon_settings
@@ -211,7 +211,7 @@ class ActronAirZone(BaseModel):
             Battery level as a percentage or None if no peripheral sensor is assigned
 
         """
-        if not self._parent_status or self.zone_id is None:
+        if not self._parent_status:
             return None
 
         peripheral = self._parent_status.get_peripheral_for_zone(self.zone_id)
@@ -225,7 +225,7 @@ class ActronAirZone(BaseModel):
             Temperature in degrees Celsius or None if no peripheral sensor is assigned
 
         """
-        if not self._parent_status or self.zone_id is None:
+        if not self._parent_status:
             return None
 
         peripheral = self._parent_status.get_peripheral_for_zone(self.zone_id)
@@ -239,7 +239,7 @@ class ActronAirZone(BaseModel):
             Relative humidity as a percentage or None if no peripheral sensor is assigned
 
         """
-        if not self._parent_status or self.zone_id is None:
+        if not self._parent_status:
             return None
 
         peripheral = self._parent_status.get_peripheral_for_zone(self.zone_id)
@@ -253,7 +253,7 @@ class ActronAirZone(BaseModel):
             The peripheral device or None if no peripheral is assigned
 
         """
-        if not self._parent_status or self.zone_id is None:
+        if not self._parent_status:
             return None
 
         return self._parent_status.get_peripheral_for_zone(self.zone_id)
@@ -266,11 +266,7 @@ class ActronAirZone(BaseModel):
             Returns empty string if mode is unavailable.
 
         """
-        if (
-            self._parent_status
-            and self._parent_status.user_aircon_settings
-            and self._parent_status.user_aircon_settings.mode
-        ):
+        if self._parent_status and self._parent_status.user_aircon_settings.mode:
             return self._parent_status.user_aircon_settings.mode.upper()
         return ""
 
@@ -369,10 +365,10 @@ class ActronAirZone(BaseModel):
             Command dictionary
 
         """
-        if self.zone_id is None:
+        if not self._parent_status:
             raise ValueError("Zone index not set")
 
-        if not self._parent_status or not self._parent_status.user_aircon_settings:
+        if not self._parent_status.user_aircon_settings.mode:
             raise ValueError("No parent AC status available to determine mode")
 
         mode = self._parent_status.user_aircon_settings.mode.upper()
@@ -417,10 +413,10 @@ class ActronAirZone(BaseModel):
             Command dictionary
 
         """
-        if self.zone_id is None:
+        if not self._parent_status:
             raise ValueError("Zone index not set")
 
-        if not self._parent_status or not self._parent_status.user_aircon_settings:
+        if not self._parent_status.user_aircon_settings.enabled_zones:
             raise ValueError("No parent AC status available to determine current zones")
 
         # Get current zones from parent
@@ -465,7 +461,7 @@ class ActronAirZone(BaseModel):
             ValueError: If zone_id is not set, temperature is invalid, or no API reference
 
         """
-        if self.zone_id is None:
+        if not self._parent_status:
             raise ValueError("Zone index not set")
 
         # Validate temperature is a reasonable value
@@ -484,7 +480,7 @@ class ActronAirZone(BaseModel):
         if self._parent_status and self._parent_status.api and self._parent_status.serial_number:
             # Capture optimistic values before await to avoid races
             settings = self._parent_status.user_aircon_settings
-            mode = settings.mode.upper() if settings else ""
+            mode = settings.mode.upper()
             optimistic_cool: float | None = None
             optimistic_heat: float | None = None
             if mode == AC_MODE_COOL:
@@ -492,8 +488,8 @@ class ActronAirZone(BaseModel):
             elif mode == AC_MODE_HEAT:
                 optimistic_heat = temperature
             elif mode == AC_MODE_AUTO:
-                cool = settings.temperature_setpoint_cool_c if settings else TEMP_DEFAULT_TARGET
-                heat = settings.temperature_setpoint_heat_c if settings else 20.0
+                cool = settings.temperature_setpoint_cool_c
+                heat = settings.temperature_setpoint_heat_c
                 differential = cool - heat
                 optimistic_cool = temperature
                 optimistic_heat = max(TEMP_AUTO_HEAT_MIN, temperature - differential)
@@ -525,7 +521,7 @@ class ActronAirZone(BaseModel):
 
             # Optimistic local state update — apply the exact EnabledZones sent
             sent_zones = command.get("command", {}).get("UserAirconSettings.EnabledZones")
-            if self._parent_status.user_aircon_settings and isinstance(sent_zones, list):
+            if isinstance(sent_zones, list):
                 self._parent_status.user_aircon_settings.enabled_zones = list(sent_zones)
         else:
             raise ValueError("No API reference available to send command")

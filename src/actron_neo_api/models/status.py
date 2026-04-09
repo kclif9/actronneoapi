@@ -27,11 +27,19 @@ class ActronAirStatus(BaseModel):
 
     is_online: bool = Field(False, alias="isOnline")
     last_known_state: dict[str, Any] = Field(default_factory=dict, alias="lastKnownState")
-    ac_system: ActronAirACSystem | None = None
-    user_aircon_settings: ActronAirUserAirconSettings | None = None
-    master_info: ActronAirMasterInfo | None = None
-    live_aircon: ActronAirLiveAircon | None = None
-    alerts: ActronAirAlerts | None = None
+    ac_system: ActronAirACSystem = Field(
+        default_factory=lambda: ActronAirACSystem.model_validate({})
+    )
+    user_aircon_settings: ActronAirUserAirconSettings = Field(
+        default_factory=lambda: ActronAirUserAirconSettings.model_validate({})
+    )
+    master_info: ActronAirMasterInfo = Field(
+        default_factory=lambda: ActronAirMasterInfo.model_validate({})
+    )
+    live_aircon: ActronAirLiveAircon = Field(
+        default_factory=lambda: ActronAirLiveAircon.model_validate({})
+    )
+    alerts: ActronAirAlerts = Field(default_factory=lambda: ActronAirAlerts.model_validate({}))
     remote_zone_info: list[ActronAirZone] = Field(default_factory=list, alias="RemoteZoneInfo")
     peripherals: list[ActronAirPeripheral] = Field(default_factory=list)
     _api: Any | None = None
@@ -54,54 +62,54 @@ class ActronAirStatus(BaseModel):
     @property
     def clean_filter(self) -> bool:
         """Clean filter alert status."""
-        return self.alerts.clean_filter if self.alerts else False
+        return self.alerts.clean_filter
 
     @property
     def defrost_mode(self) -> bool:
         """Defrost mode status."""
-        return self.alerts.defrosting if self.alerts else False
+        return self.alerts.defrosting
 
     @property
     def compressor_chasing_temperature(self) -> float | None:
         """Compressor target temperature."""
-        return self.live_aircon.compressor_chasing_temperature if self.live_aircon else None
+        return self.live_aircon.compressor_chasing_temperature
 
     @property
     def compressor_live_temperature(self) -> float | None:
         """Current compressor temperature."""
-        return self.live_aircon.compressor_live_temperature if self.live_aircon else None
+        return self.live_aircon.compressor_live_temperature
 
     @property
-    def compressor_mode(self) -> str | None:
+    def compressor_mode(self) -> str:
         """Current compressor mode."""
-        return self.live_aircon.compressor_mode if self.live_aircon else None
+        return self.live_aircon.compressor_mode
 
     @property
     def system_on(self) -> bool:
         """Whether the system is currently on."""
-        return self.live_aircon.is_on if self.live_aircon else False
+        return self.live_aircon.is_on
 
     @property
-    def outdoor_temperature(self) -> float | None:
+    def outdoor_temperature(self) -> float:
         """Current outdoor temperature in Celsius."""
-        return self.master_info.live_outdoor_temp_c if self.master_info else None
+        return self.master_info.live_outdoor_temp_c
 
     @property
-    def humidity(self) -> float | None:
+    def humidity(self) -> float:
         """Current humidity percentage."""
-        return self.master_info.live_humidity_pc if self.master_info else None
+        return self.master_info.live_humidity_pc
 
     @property
     def compressor_speed(self) -> float | None:
         """Current compressor speed."""
-        if self.live_aircon and self.live_aircon.outdoor_unit:
+        if self.live_aircon.outdoor_unit:
             return self.live_aircon.outdoor_unit.comp_speed
         return None
 
     @property
     def compressor_power(self) -> int | None:
         """Current compressor power consumption in watts."""
-        if self.live_aircon and self.live_aircon.outdoor_unit:
+        if self.live_aircon.outdoor_unit:
             return self.live_aircon.outdoor_unit.comp_power
         return None
 
@@ -121,11 +129,11 @@ class ActronAirStatus(BaseModel):
         # serial_number is intentionally preserved: it may have been set
         # externally and will be overwritten by _parse_aircon_system when
         # AirconSystem data is present.
-        self.ac_system = None
-        self.user_aircon_settings = None
-        self.master_info = None
-        self.live_aircon = None
-        self.alerts = None
+        self.ac_system = ActronAirACSystem.model_validate({})
+        self.user_aircon_settings = ActronAirUserAirconSettings.model_validate({})
+        self.master_info = ActronAirMasterInfo.model_validate({})
+        self.live_aircon = ActronAirLiveAircon.model_validate({})
+        self.alerts = ActronAirAlerts.model_validate({})
         self.remote_zone_info = []
         self.peripherals = []
 
@@ -159,16 +167,15 @@ class ActronAirStatus(BaseModel):
         nv_system_settings = self.last_known_state.get("NV_SystemSettings")
         if isinstance(nv_system_settings, dict):
             system_name = nv_system_settings.get("SystemName", "")
-            if system_name and self.ac_system:
+            if system_name:
                 self.ac_system.system_name = system_name
 
         # Set serial number from the AirconSystem data
-        if self.ac_system and self.ac_system.master_serial:
+        if self.ac_system.master_serial:
             self.serial_number = self.ac_system.master_serial
 
         # Set parent reference for ACSystem
-        if self.ac_system:
-            self.ac_system.set_parent_status(self)
+        self.ac_system.set_parent_status(self)
 
     def _parse_user_aircon_settings(self) -> None:
         """Parse UserAirconSettings data from last_known_state."""
@@ -183,8 +190,7 @@ class ActronAirStatus(BaseModel):
             _LOGGER.warning("Failed to parse UserAirconSettings: %s", e)
             return
         # Set parent reference
-        if self.user_aircon_settings:
-            self.user_aircon_settings.set_parent_status(self)
+        self.user_aircon_settings.set_parent_status(self)
 
     def _parse_master_info(self) -> None:
         """Parse MasterInfo data from last_known_state."""
@@ -269,7 +275,7 @@ class ActronAirStatus(BaseModel):
             Returns empty string if mode is unavailable.
 
         """
-        if self.user_aircon_settings and self.user_aircon_settings.mode:
+        if self.user_aircon_settings.mode:
             return self.user_aircon_settings.mode.upper()
         return ""
 
