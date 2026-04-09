@@ -1083,3 +1083,77 @@ class TestOAuthClientErrorWrapping:
 
         with pytest.raises(ActronAirAuthError, match="User info request failed"):
             await auth.get_user_info()
+
+
+class TestUpdateBaseUrl:
+    """Test update_base_url in-place mutation."""
+
+    def test_update_base_url(self) -> None:
+        """update_base_url changes all endpoint URLs in-place."""
+        auth = ActronAirOAuth2DeviceCodeAuth("https://old.example.com", "client")
+
+        auth.update_base_url("https://new.example.com")
+
+        assert auth.base_url == "https://new.example.com"
+        assert auth.token_url == "https://new.example.com/api/v0/oauth/token"
+        assert auth.authorize_url == "https://new.example.com/authorize"
+        assert auth.device_auth_url == "https://new.example.com/connect"
+        assert auth.user_info_url == "https://new.example.com/api/v0/client/account"
+
+    def test_update_base_url_preserves_tokens(self) -> None:
+        """update_base_url does not touch token fields."""
+        auth = ActronAirOAuth2DeviceCodeAuth("https://old.example.com", "client")
+        auth.set_tokens("tok123", "ref456", expires_in=3600)
+
+        auth.update_base_url("https://new.example.com")
+
+        assert auth.access_token == "tok123"
+        assert auth.refresh_token == "ref456"
+        assert auth.is_token_valid
+
+    def test_update_base_url_strips_trailing_slash(self) -> None:
+        """update_base_url strips trailing slash from URL."""
+        auth = ActronAirOAuth2DeviceCodeAuth("https://old.example.com", "client")
+
+        auth.update_base_url("https://new.example.com/")
+
+        assert auth.base_url == "https://new.example.com"
+
+    def test_update_base_url_empty_raises(self) -> None:
+        """update_base_url raises ValueError for empty URL."""
+        auth = ActronAirOAuth2DeviceCodeAuth("https://old.example.com", "client")
+
+        with pytest.raises(ValueError, match="base_url cannot be empty"):
+            auth.update_base_url("")
+
+    def test_update_base_url_preserves_identity(self) -> None:
+        """update_base_url mutates the same object, not a replacement."""
+        auth = ActronAirOAuth2DeviceCodeAuth("https://old.example.com", "client")
+        original_id = id(auth)
+
+        auth.update_base_url("https://new.example.com")
+
+        assert id(auth) == original_id
+
+
+class TestAsyncSetTokens:
+    """Test async_set_tokens thread-safe wrapper."""
+
+    @pytest.mark.asyncio
+    async def test_async_set_tokens(self) -> None:
+        """async_set_tokens sets all token fields under lock."""
+        auth = ActronAirOAuth2DeviceCodeAuth("https://example.com", "client")
+
+        await auth.async_set_tokens("tok", "ref", expires_in=3600, token_type="Bearer")
+
+        assert auth.access_token == "tok"
+        assert auth.refresh_token == "ref"
+        assert auth.is_token_valid
+
+    @pytest.mark.asyncio
+    async def test_async_set_tokens_validation(self) -> None:
+        """async_set_tokens propagates ValueError from set_tokens."""
+        auth = ActronAirOAuth2DeviceCodeAuth("https://example.com", "client")
+
+        with pytest.raises(ValueError, match="access_token cannot be empty"):
+            await auth.async_set_tokens("")

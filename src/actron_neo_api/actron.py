@@ -379,6 +379,10 @@ class ActronAirAPI:
     def _set_base_url(self, base_url: str, platform: str) -> None:
         """Update the base URL and platform, preserving existing authentication tokens.
 
+        Mutates the existing OAuth handler's endpoints in-place so that
+        coroutines holding a reference to ``self.oauth2_auth`` continue to
+        use the updated endpoints without observing a stale/replaced object.
+
         Args:
             base_url: New base URL to switch to
             platform: Platform identifier ('neo', 'que')
@@ -391,24 +395,9 @@ class ActronAirAPI:
         if self.base_url == base_url and self._platform == platform:
             return
 
-        # Preserve existing tokens
-        old_access_token = self.oauth2_auth.access_token
-        old_refresh_token = self.oauth2_auth.refresh_token
-        old_token_expiry = self.oauth2_auth.token_expiry
-        old_authenticated_platform = self.oauth2_auth.authenticated_platform
-
-        # Update base URL and platform, recreate OAuth2 handler to match new platform
         self.base_url = base_url
         self._platform = platform
-        self.oauth2_auth = ActronAirOAuth2DeviceCodeAuth(
-            base_url, self._oauth2_client_id, session=self._session
-        )
-
-        # Restore tokens
-        self.oauth2_auth.access_token = old_access_token
-        self.oauth2_auth.refresh_token = old_refresh_token
-        self.oauth2_auth.token_expiry = old_token_expiry
-        self.oauth2_auth.authenticated_platform = old_authenticated_platform
+        self.oauth2_auth.update_base_url(base_url)
 
     def _maybe_update_base_url_from_systems(self, systems: list[ActronAirSystemInfo]) -> None:
         """Automatically update base URL based on system types if auto-management is enabled.
