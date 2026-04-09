@@ -103,6 +103,25 @@ class TestACSystemSetMode:
         with pytest.raises(ValueError, match="No API reference available"):
             await ac_system.set_system_mode("HEAT")
 
+    @pytest.mark.asyncio
+    async def test_set_mode_empty_serial_number(self, mock_api: Any) -> None:
+        """Test set_mode with empty master_serial raises ValueError."""
+        status = ActronAirStatus(
+            isOnline=True,
+            lastKnownState={
+                "AirconSystem": {
+                    "MasterSerial": "",
+                    "CanOperate": True,
+                }
+            },
+        )
+        status.parse_nested_components()
+        status.set_api(mock_api)
+
+        assert status.ac_system is not None
+        with pytest.raises(ValueError, match="No serial number available"):
+            await status.ac_system.set_system_mode("COOL")
+
 
 class TestOutdoorUnitAliasParsing:
     """Test that OutdoorUnit fields parse from API aliases correctly."""

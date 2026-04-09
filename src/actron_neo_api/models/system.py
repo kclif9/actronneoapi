@@ -150,6 +150,9 @@ class ActronAirACSystem(BaseModel):
         if not self._parent_status or not self._parent_status.api:
             raise ValueError("No API reference available")
 
+        if not self.master_serial:
+            raise ValueError("No serial number available")
+
         # Determine if system should be on or off based on mode
         is_on = mode_upper != AC_MODE_OFF
 
