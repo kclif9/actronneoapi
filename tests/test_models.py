@@ -250,64 +250,6 @@ class TestZoneProperties:
         zone = ActronAirZone(LiveHumidity_pc=50.0, actual_humidity_pc=None)
         assert zone.humidity == 50.0
 
-    def test_battery_level_without_parent(self) -> None:
-        """Test battery_level without parent raises."""
-        zone = ActronAirZone(zone_id=0)
-        with pytest.raises(RuntimeError, match="Zone must be attached to a parent status"):
-            _ = zone.battery_level
-
-    def test_battery_level_with_peripheral(self) -> None:
-        """Test battery_level from peripheral."""
-        zone = ActronAirZone()
-        parent = MagicMock()
-        peripheral = MagicMock()
-        peripheral.battery_level = 85.0
-        parent.get_peripheral_for_zone.return_value = peripheral
-        zone.set_parent_status(parent, 0)
-
-        assert zone.battery_level == 85.0
-
-    def test_battery_level_no_peripheral(self) -> None:
-        """Test battery_level when no peripheral assigned."""
-        zone = ActronAirZone()
-        parent = MagicMock()
-        parent.get_peripheral_for_zone.return_value = None
-        zone.set_parent_status(parent, 0)
-
-        assert zone.battery_level is None
-
-    def test_peripheral_temperature(self) -> None:
-        """Test peripheral_temperature property."""
-        zone = ActronAirZone()
-        parent = MagicMock()
-        peripheral = MagicMock()
-        peripheral.temperature = 22.5
-        parent.get_peripheral_for_zone.return_value = peripheral
-        zone.set_parent_status(parent, 0)
-
-        assert zone.peripheral_temperature == 22.5
-
-    def test_peripheral_humidity(self) -> None:
-        """Test peripheral_humidity property."""
-        zone = ActronAirZone()
-        parent = MagicMock()
-        peripheral = MagicMock()
-        peripheral.humidity = 55.0
-        parent.get_peripheral_for_zone.return_value = peripheral
-        zone.set_parent_status(parent, 0)
-
-        assert zone.peripheral_humidity == 55.0
-
-    def test_peripheral_property(self) -> None:
-        """Test peripheral property returns the peripheral."""
-        zone = ActronAirZone()
-        parent = MagicMock()
-        peripheral = MagicMock()
-        parent.get_peripheral_for_zone.return_value = peripheral
-        zone.set_parent_status(parent, 0)
-
-        assert zone.peripheral is peripheral
-
     def test_max_temp_without_parent(self) -> None:
         """Test max_temp without parent raises RuntimeError (fail fast)."""
         zone = ActronAirZone()

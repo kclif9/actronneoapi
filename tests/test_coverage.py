@@ -308,58 +308,6 @@ class TestZoneEdgeCases:
         # Should return False due to out of range
         assert zone.is_active is False
 
-    def test_peripheral_temperature_no_parent(self) -> None:
-        """Test peripheral_temperature raises without parent."""
-        from actron_neo_api.models import ActronAirZone
-
-        zone = ActronAirZone(zone_id=0, can_operate=True)
-        with pytest.raises(RuntimeError, match="Zone must be attached to a parent status"):
-            _ = zone.peripheral_temperature
-
-    def test_peripheral_humidity_no_parent(self) -> None:
-        """Test peripheral_humidity raises without parent."""
-        from actron_neo_api.models import ActronAirZone
-
-        zone = ActronAirZone(zone_id=0, can_operate=True)
-        with pytest.raises(RuntimeError, match="Zone must be attached to a parent status"):
-            _ = zone.peripheral_humidity
-
-    def test_peripheral_no_parent(self) -> None:
-        """Test peripheral property raises without parent."""
-        from actron_neo_api.models import ActronAirZone
-
-        zone = ActronAirZone(zone_id=0, can_operate=True)
-        with pytest.raises(RuntimeError, match="Zone must be attached to a parent status"):
-            _ = zone.peripheral
-
-    def test_battery_level_zone_id_none(self) -> None:
-        """Test battery_level returns None when zone_id is None."""
-        from actron_neo_api.models import ActronAirZone
-
-        zone = ActronAirZone()
-        assert zone.battery_level is None
-
-    def test_peripheral_temperature_zone_id_none(self) -> None:
-        """Test peripheral_temperature returns None when zone_id is None."""
-        from actron_neo_api.models import ActronAirZone
-
-        zone = ActronAirZone()
-        assert zone.peripheral_temperature is None
-
-    def test_peripheral_humidity_zone_id_none(self) -> None:
-        """Test peripheral_humidity returns None when zone_id is None."""
-        from actron_neo_api.models import ActronAirZone
-
-        zone = ActronAirZone()
-        assert zone.peripheral_humidity is None
-
-    def test_peripheral_zone_id_none(self) -> None:
-        """Test peripheral returns None when zone_id is None."""
-        from actron_neo_api.models import ActronAirZone
-
-        zone = ActronAirZone()
-        assert zone.peripheral is None
-
     def test_max_temp_returns_clamped_value(self) -> None:
         """Test max_temp returns clamped value when limit is lower (line 251)."""
         status_data = {

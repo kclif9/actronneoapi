@@ -211,57 +211,6 @@ class ActronAirZone(BaseModel):
         return self.live_humidity_pc
 
     @property
-    def battery_level(self) -> float | None:
-        """Get the battery level of the peripheral sensor assigned to this zone.
-
-        Returns:
-            Battery level as a percentage or None if no peripheral sensor is assigned
-
-        """
-        if self.zone_id is None:
-            return None
-        peripheral = self.parent_status.get_peripheral_for_zone(self.zone_id)
-        return peripheral.battery_level if peripheral else None
-
-    @property
-    def peripheral_temperature(self) -> float | None:
-        """Get the temperature reading from the peripheral sensor assigned to this zone.
-
-        Returns:
-            Temperature in degrees Celsius or None if no peripheral sensor is assigned
-
-        """
-        if self.zone_id is None:
-            return None
-        peripheral = self.parent_status.get_peripheral_for_zone(self.zone_id)
-        return peripheral.temperature if peripheral else None
-
-    @property
-    def peripheral_humidity(self) -> float | None:
-        """Get the humidity reading from the peripheral sensor assigned to this zone.
-
-        Returns:
-            Relative humidity as a percentage or None if no peripheral sensor is assigned
-
-        """
-        if self.zone_id is None:
-            return None
-        peripheral = self.parent_status.get_peripheral_for_zone(self.zone_id)
-        return peripheral.humidity if peripheral else None
-
-    @property
-    def peripheral(self) -> ActronAirPeripheral | None:
-        """Get the peripheral device assigned to this zone.
-
-        Returns:
-            The peripheral device or None if no peripheral is assigned
-
-        """
-        if self.zone_id is None:
-            return None
-        return self.parent_status.get_peripheral_for_zone(self.zone_id)
-
-    @property
     def max_temp(self) -> float:
         """Return the maximum temperature that can be set.
 
