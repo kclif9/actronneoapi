@@ -111,11 +111,13 @@ class ActronAirStatus(BaseModel):
         MasterInfo, LiveAircon, Alerts, and RemoteZoneInfo from the raw API response.
         Sets parent references on all child objects to enable bidirectional navigation.
         """
-        if "AirconSystem" in self.last_known_state:
-            self.ac_system = ActronAirACSystem.model_validate(self.last_known_state["AirconSystem"])
+        aircon_system_data = self.last_known_state.get("AirconSystem")
+        if isinstance(aircon_system_data, dict):
+            self.ac_system = ActronAirACSystem.model_validate(aircon_system_data)
             # Set the system name from NV_SystemSettings if available
-            if "NV_SystemSettings" in self.last_known_state:
-                system_name = self.last_known_state["NV_SystemSettings"].get("SystemName", "")
+            nv_system_settings = self.last_known_state.get("NV_SystemSettings")
+            if isinstance(nv_system_settings, dict):
+                system_name = nv_system_settings.get("SystemName", "")
                 if system_name and self.ac_system:
                     self.ac_system.system_name = system_name
 
@@ -130,31 +132,33 @@ class ActronAirStatus(BaseModel):
             # Process peripherals if available
             self._process_peripherals()
 
-        if "UserAirconSettings" in self.last_known_state:
+        user_aircon_settings_data = self.last_known_state.get("UserAirconSettings")
+        if isinstance(user_aircon_settings_data, dict):
             self.user_aircon_settings = ActronAirUserAirconSettings.model_validate(
-                self.last_known_state["UserAirconSettings"]
+                user_aircon_settings_data
             )
             # Set parent reference
             if self.user_aircon_settings:
                 self.user_aircon_settings.set_parent_status(self)
 
-        if "MasterInfo" in self.last_known_state:
-            self.master_info = ActronAirMasterInfo.model_validate(
-                self.last_known_state["MasterInfo"]
-            )
+        master_info_data = self.last_known_state.get("MasterInfo")
+        if isinstance(master_info_data, dict):
+            self.master_info = ActronAirMasterInfo.model_validate(master_info_data)
 
-        if "LiveAircon" in self.last_known_state:
-            self.live_aircon = ActronAirLiveAircon.model_validate(
-                self.last_known_state["LiveAircon"]
-            )
+        live_aircon_data = self.last_known_state.get("LiveAircon")
+        if isinstance(live_aircon_data, dict):
+            self.live_aircon = ActronAirLiveAircon.model_validate(live_aircon_data)
 
-        if "Alerts" in self.last_known_state:
-            self.alerts = ActronAirAlerts.model_validate(self.last_known_state["Alerts"])
+        alerts_data = self.last_known_state.get("Alerts")
+        if isinstance(alerts_data, dict):
+            self.alerts = ActronAirAlerts.model_validate(alerts_data)
 
-        if "RemoteZoneInfo" in self.last_known_state:
+        remote_zone_data = self.last_known_state.get("RemoteZoneInfo")
+        if isinstance(remote_zone_data, list):
             self.remote_zone_info = [
                 ActronAirZone.model_validate(zone)
-                for zone in self.last_known_state["RemoteZoneInfo"]
+                for zone in remote_zone_data
+                if isinstance(zone, dict)
             ]
             # Set parent reference for each zone
             for i, zone in enumerate(self.remote_zone_info):

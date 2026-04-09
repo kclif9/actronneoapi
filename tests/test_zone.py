@@ -541,31 +541,103 @@ class TestZoneTempLimitsFallback:
         assert zone.min_temp == 21.0
 
     def test_max_temp_user_aircon_settings_is_none(self) -> None:
-        """max_temp falls back when UserAirconSettings is None."""
+        """max_temp falls back when UserAirconSettings is None end-to-end."""
         zone = self._make_zone_with_state(
             {
-                "UserAirconSettings": {"EnabledZones": [True]},
+                "UserAirconSettings": None,
                 "RemoteZoneInfo": [
                     {"ZoneNumber": 0, "LiveTemp_oC": 22.0, "EnabledZone": True, "CanOperate": True}
                 ],
             }
         )
-        # Inject None after validation since Pydantic will reject it
-        zone._parent_status.last_known_state["UserAirconSettings"] = None
         # max_setpoint 30, target 24, variance 3 → 27
         assert zone.max_temp == 27.0
 
     def test_min_temp_user_aircon_settings_is_none(self) -> None:
-        """min_temp falls back when UserAirconSettings is None."""
+        """min_temp falls back when UserAirconSettings is None end-to-end."""
         zone = self._make_zone_with_state(
             {
+                "UserAirconSettings": None,
+                "RemoteZoneInfo": [
+                    {"ZoneNumber": 0, "LiveTemp_oC": 22.0, "EnabledZone": True, "CanOperate": True}
+                ],
+            }
+        )
+        # min_setpoint 16, target 24, variance 3 → 21
+        assert zone.min_temp == 21.0
+
+    def test_max_temp_nv_limits_is_list(self) -> None:
+        """max_temp falls back when NV_Limits is a list instead of dict."""
+        zone = self._make_zone_with_state(
+            {
+                "NV_Limits": ["unexpected", "list"],
                 "UserAirconSettings": {"EnabledZones": [True]},
                 "RemoteZoneInfo": [
                     {"ZoneNumber": 0, "LiveTemp_oC": 22.0, "EnabledZone": True, "CanOperate": True}
                 ],
             }
         )
-        # Inject None after validation since Pydantic will reject it
-        zone._parent_status.last_known_state["UserAirconSettings"] = None
-        # min_setpoint 16, target 24, variance 3 → 21
+        assert zone.max_temp == 27.0
+
+    def test_min_temp_nv_limits_is_string(self) -> None:
+        """min_temp falls back when NV_Limits is a string instead of dict."""
+        zone = self._make_zone_with_state(
+            {
+                "NV_Limits": "unexpected_string",
+                "UserAirconSettings": {"EnabledZones": [True]},
+                "RemoteZoneInfo": [
+                    {"ZoneNumber": 0, "LiveTemp_oC": 22.0, "EnabledZone": True, "CanOperate": True}
+                ],
+            }
+        )
+        assert zone.min_temp == 21.0
+
+    def test_max_temp_user_setpoint_is_list(self) -> None:
+        """max_temp falls back when UserSetpoint_oC is a list instead of dict."""
+        zone = self._make_zone_with_state(
+            {
+                "NV_Limits": {"UserSetpoint_oC": [1, 2, 3]},
+                "UserAirconSettings": {"EnabledZones": [True]},
+                "RemoteZoneInfo": [
+                    {"ZoneNumber": 0, "LiveTemp_oC": 22.0, "EnabledZone": True, "CanOperate": True}
+                ],
+            }
+        )
+        assert zone.max_temp == 27.0
+
+    def test_min_temp_user_setpoint_is_string(self) -> None:
+        """min_temp falls back when UserSetpoint_oC is a string instead of dict."""
+        zone = self._make_zone_with_state(
+            {
+                "NV_Limits": {"UserSetpoint_oC": "bad"},
+                "UserAirconSettings": {"EnabledZones": [True]},
+                "RemoteZoneInfo": [
+                    {"ZoneNumber": 0, "LiveTemp_oC": 22.0, "EnabledZone": True, "CanOperate": True}
+                ],
+            }
+        )
+        assert zone.min_temp == 21.0
+
+    def test_max_temp_user_aircon_settings_is_list(self) -> None:
+        """max_temp falls back when UserAirconSettings is a list instead of dict."""
+        zone = self._make_zone_with_state(
+            {
+                "UserAirconSettings": ["not", "a", "dict"],
+                "RemoteZoneInfo": [
+                    {"ZoneNumber": 0, "LiveTemp_oC": 22.0, "EnabledZone": True, "CanOperate": True}
+                ],
+            }
+        )
+        assert zone.max_temp == 27.0
+
+    def test_min_temp_user_aircon_settings_is_string(self) -> None:
+        """min_temp falls back when UserAirconSettings is a string instead of dict."""
+        zone = self._make_zone_with_state(
+            {
+                "UserAirconSettings": "unexpected",
+                "RemoteZoneInfo": [
+                    {"ZoneNumber": 0, "LiveTemp_oC": 22.0, "EnabledZone": True, "CanOperate": True}
+                ],
+            }
+        )
         assert zone.min_temp == 21.0
