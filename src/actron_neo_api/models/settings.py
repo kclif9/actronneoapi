@@ -6,6 +6,8 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field
 
+from ..const import DEFAULT_MAX_SETPOINT, DEFAULT_MIN_SETPOINT
+
 if TYPE_CHECKING:
     from .status import ActronAirStatus
 
@@ -364,12 +366,12 @@ class ActronAirUserAirconSettings(BaseModel):
             )
 
             if self.mode.upper() == "COOL":
-                min_temp = limits.get("setCool_Min", 16.0)
-                max_temp = limits.get("setCool_Max", 30.0)
+                min_temp = limits.get("setCool_Min", DEFAULT_MIN_SETPOINT)
+                max_temp = limits.get("setCool_Max", DEFAULT_MAX_SETPOINT)
                 temperature = max(min_temp, min(max_temp, temperature))
             elif self.mode.upper() == "HEAT":
-                min_temp = limits.get("setHeat_Min", 16.0)
-                max_temp = limits.get("setHeat_Max", 30.0)
+                min_temp = limits.get("setHeat_Min", DEFAULT_MIN_SETPOINT)
+                max_temp = limits.get("setHeat_Max", DEFAULT_MAX_SETPOINT)
                 temperature = max(min_temp, min(max_temp, temperature))
 
         command = self._set_temperature_command(temperature)

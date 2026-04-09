@@ -7,6 +7,8 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field
 
+from ..const import DEFAULT_MAX_SETPOINT, DEFAULT_MIN_SETPOINT
+
 _LOGGER = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
@@ -243,24 +245,51 @@ class ActronAirZone(BaseModel):
 
         return self._parent_status.get_peripheral_for_zone(self.zone_id)
 
+    def _get_current_mode(self) -> str:
+        """Get the current AC mode from parent settings.
+
+        Returns:
+            Uppercase mode string, e.g. 'COOL', 'HEAT', 'AUTO', 'FAN'.
+            Returns empty string if mode is unavailable.
+
+        """
+        if (
+            self._parent_status
+            and self._parent_status.user_aircon_settings
+            and self._parent_status.user_aircon_settings.mode
+        ):
+            return self._parent_status.user_aircon_settings.mode.upper()
+        return ""
+
     @property
     def max_temp(self) -> float:
-        """Return the maximum temperature that can be set."""
+        """Return the maximum temperature that can be set.
+
+        Mode-aware: uses heat limits/setpoint when in HEAT mode,
+        cool limits/setpoint otherwise (COOL, AUTO, FAN).
+        """
         if not self._parent_status or not self._parent_status.last_known_state:
-            return 30.0  # Default fallback value
+            return DEFAULT_MAX_SETPOINT  # Default fallback value
+
+        mode = self._get_current_mode()
+        is_heat = mode == "HEAT"
 
         nv_limits = self._parent_status.last_known_state.get("NV_Limits") or {}
         user_setpoint = nv_limits.get("UserSetpoint_oC") if isinstance(nv_limits, dict) else {}
         user_setpoint = user_setpoint if isinstance(user_setpoint, dict) else {}
+
+        limit_key = "setHeat_Max" if is_heat else "setCool_Max"
         try:
-            max_setpoint = float(user_setpoint.get("setCool_Max", 30.0))
+            max_setpoint = float(user_setpoint.get(limit_key, DEFAULT_MAX_SETPOINT))
         except (TypeError, ValueError):
-            max_setpoint = 30.0
+            max_setpoint = DEFAULT_MAX_SETPOINT
 
         user_settings = self._parent_status.last_known_state.get("UserAirconSettings")
         user_settings = user_settings if isinstance(user_settings, dict) else {}
+
+        setpoint_key = "TemperatureSetpoint_Heat_oC" if is_heat else "TemperatureSetpoint_Cool_oC"
         try:
-            target_setpoint = float(user_settings.get("TemperatureSetpoint_Cool_oC", 24.0))
+            target_setpoint = float(user_settings.get(setpoint_key, 24.0))
         except (TypeError, ValueError):
             target_setpoint = 24.0
         try:
@@ -274,22 +303,33 @@ class ActronAirZone(BaseModel):
 
     @property
     def min_temp(self) -> float:
-        """Return the minimum temperature that can be set."""
+        """Return the minimum temperature that can be set.
+
+        Mode-aware: uses heat limits/setpoint when in HEAT mode,
+        cool limits/setpoint otherwise (COOL, AUTO, FAN).
+        """
         if not self._parent_status or not self._parent_status.last_known_state:
-            return 16.0  # Default fallback value
+            return DEFAULT_MIN_SETPOINT  # Default fallback value
+
+        mode = self._get_current_mode()
+        is_heat = mode == "HEAT"
 
         nv_limits = self._parent_status.last_known_state.get("NV_Limits") or {}
         user_setpoint = nv_limits.get("UserSetpoint_oC") if isinstance(nv_limits, dict) else {}
         user_setpoint = user_setpoint if isinstance(user_setpoint, dict) else {}
+
+        limit_key = "setHeat_Min" if is_heat else "setCool_Min"
         try:
-            min_setpoint = float(user_setpoint.get("setCool_Min", 16.0))
+            min_setpoint = float(user_setpoint.get(limit_key, DEFAULT_MIN_SETPOINT))
         except (TypeError, ValueError):
-            min_setpoint = 16.0
+            min_setpoint = DEFAULT_MIN_SETPOINT
 
         user_settings = self._parent_status.last_known_state.get("UserAirconSettings")
         user_settings = user_settings if isinstance(user_settings, dict) else {}
+
+        setpoint_key = "TemperatureSetpoint_Heat_oC" if is_heat else "TemperatureSetpoint_Cool_oC"
         try:
-            target_setpoint = float(user_settings.get("TemperatureSetpoint_Cool_oC", 24.0))
+            target_setpoint = float(user_settings.get(setpoint_key, 24.0))
         except (TypeError, ValueError):
             target_setpoint = 24.0
         try:

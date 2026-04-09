@@ -246,7 +246,80 @@ class TestStatusProperties:
 
     def test_max_temp_without_limits(self, minimal_status):
         """Test max_temp property with default value."""
-        assert minimal_status.max_temp == 32.0
+        assert minimal_status.max_temp == 30.0
+
+    def test_min_temp_heat_mode(self):
+        """Test min_temp returns heat limits when mode is HEAT."""
+        status = ActronAirStatus.model_validate(
+            {
+                "isOnline": True,
+                "lastKnownState": {
+                    "UserAirconSettings": {"isOn": True, "Mode": "HEAT"},
+                    "NV_Limits": {
+                        "UserSetpoint_oC": {
+                            "setCool_Min": 18.0,
+                            "setCool_Max": 30.0,
+                            "setHeat_Min": 14.0,
+                            "setHeat_Max": 26.0,
+                        }
+                    },
+                },
+            }
+        )
+        assert status.min_temp == 14.0
+
+    def test_max_temp_heat_mode(self):
+        """Test max_temp returns heat limits when mode is HEAT."""
+        status = ActronAirStatus.model_validate(
+            {
+                "isOnline": True,
+                "lastKnownState": {
+                    "UserAirconSettings": {"isOn": True, "Mode": "HEAT"},
+                    "NV_Limits": {
+                        "UserSetpoint_oC": {
+                            "setCool_Min": 18.0,
+                            "setCool_Max": 30.0,
+                            "setHeat_Min": 14.0,
+                            "setHeat_Max": 26.0,
+                        }
+                    },
+                },
+            }
+        )
+        assert status.max_temp == 26.0
+
+    def test_min_temp_heat_mode_default(self):
+        """Test min_temp heat mode default when limits missing."""
+        status = ActronAirStatus.model_validate(
+            {
+                "isOnline": True,
+                "lastKnownState": {
+                    "UserAirconSettings": {"isOn": True, "Mode": "HEAT"},
+                },
+            }
+        )
+        assert status.min_temp == 16.0
+
+    def test_max_temp_heat_mode_default(self):
+        """Test max_temp heat mode default when limits missing."""
+        status = ActronAirStatus.model_validate(
+            {
+                "isOnline": True,
+                "lastKnownState": {
+                    "UserAirconSettings": {"isOn": True, "Mode": "HEAT"},
+                },
+            }
+        )
+        assert status.max_temp == 30.0
+
+    def test_cool_mode_uses_cool_limits(self, full_status_data):
+        """Test that COOL mode still uses cool limits (regression)."""
+        status = ActronAirStatus.model_validate(full_status_data)
+        status.parse_nested_components()
+
+        # full_status_data has Mode=COOL, setCool_Min=18, setCool_Max=30
+        assert status.min_temp == 18.0
+        assert status.max_temp == 30.0
 
 
 class TestStatusAPIMethods:

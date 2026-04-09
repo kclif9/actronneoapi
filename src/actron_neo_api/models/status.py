@@ -7,6 +7,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field, ValidationError
 
+from ..const import DEFAULT_MAX_SETPOINT, DEFAULT_MIN_SETPOINT
 from .settings import ActronAirUserAirconSettings
 from .system import ActronAirACSystem, ActronAirAlerts, ActronAirLiveAircon, ActronAirMasterInfo
 
@@ -193,21 +194,45 @@ class ActronAirStatus(BaseModel):
         """
         return self._api
 
+    def _get_current_mode(self) -> str:
+        """Get the current AC mode from user settings.
+
+        Returns:
+            Uppercase mode string, e.g. 'COOL', 'HEAT', 'AUTO', 'FAN'.
+            Returns empty string if mode is unavailable.
+
+        """
+        if self.user_aircon_settings and self.user_aircon_settings.mode:
+            return self.user_aircon_settings.mode.upper()
+        return ""
+
     @property
     def min_temp(self) -> float:
-        """Return the minimum temperature that can be set."""
+        """Return the minimum temperature that can be set.
+
+        Mode-aware: uses heat limits when in HEAT mode,
+        cool limits otherwise (COOL, AUTO, FAN).
+        """
+        is_heat = self._get_current_mode() == "HEAT"
+        limit_key = "setHeat_Min" if is_heat else "setCool_Min"
         try:
-            return float(self.last_known_state["NV_Limits"]["UserSetpoint_oC"]["setCool_Min"])
+            return float(self.last_known_state["NV_Limits"]["UserSetpoint_oC"][limit_key])
         except (KeyError, TypeError, ValueError):
-            return 16.0  # Sensible default minimum temperature
+            return DEFAULT_MIN_SETPOINT
 
     @property
     def max_temp(self) -> float:
-        """Return the maximum temperature that can be set."""
+        """Return the maximum temperature that can be set.
+
+        Mode-aware: uses heat limits when in HEAT mode,
+        cool limits otherwise (COOL, AUTO, FAN).
+        """
+        is_heat = self._get_current_mode() == "HEAT"
+        limit_key = "setHeat_Max" if is_heat else "setCool_Max"
         try:
-            return float(self.last_known_state["NV_Limits"]["UserSetpoint_oC"]["setCool_Max"])
+            return float(self.last_known_state["NV_Limits"]["UserSetpoint_oC"][limit_key])
         except (KeyError, TypeError, ValueError):
-            return 32.0  # Sensible default maximum temperature
+            return DEFAULT_MAX_SETPOINT
 
     def _process_peripherals(self) -> None:
         """Process peripheral devices from the last_known_state and extract their sensor data.
