@@ -10,3 +10,6 @@ BASE_URL_QUE: Final[str] = "https://que.actronair.com.au"
 BASE_URL_DEFAULT: Final[str] = BASE_URL_NIMBUS
 
 COMMAND_DEBOUNCE_SECONDS: Final[float] = 0.1
+
+DEFAULT_MIN_SETPOINT: Final[float] = 16.0
+DEFAULT_MAX_SETPOINT: Final[float] = 30.0

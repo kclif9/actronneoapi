@@ -644,6 +644,200 @@ class TestZoneTempLimitsFallback:
         assert zone.min_temp == 21.0
 
 
+class TestZoneTempLimitsHeatMode:
+    """Test max_temp/min_temp use heat setpoint/limits when mode is HEAT."""
+
+    @staticmethod
+    def _make_zone_with_state(last_known_state: dict[str, Any]) -> ActronAirZone:
+        """Create a zone with the given last_known_state."""
+        status = ActronAirStatus(
+            isOnline=True,
+            lastKnownState=last_known_state,
+        )
+        return status.remote_zone_info[0]
+
+    def test_max_temp_heat_mode_uses_heat_limits(self) -> None:
+        """max_temp uses setHeat_Max and heat setpoint in HEAT mode."""
+        zone = self._make_zone_with_state(
+            {
+                "NV_Limits": {
+                    "UserSetpoint_oC": {
+                        "setCool_Min": 18.0,
+                        "setCool_Max": 30.0,
+                        "setHeat_Min": 14.0,
+                        "setHeat_Max": 26.0,
+                    }
+                },
+                "UserAirconSettings": {
+                    "isOn": True,
+                    "Mode": "HEAT",
+                    "EnabledZones": [True],
+                    "TemperatureSetpoint_Heat_oC": 20.0,
+                    "TemperatureSetpoint_Cool_oC": 26.0,
+                    "ZoneTemperatureSetpointVariance_oC": 2.0,
+                },
+                "RemoteZoneInfo": [
+                    {"ZoneNumber": 0, "LiveTemp_oC": 20.0, "EnabledZone": True, "CanOperate": True}
+                ],
+            }
+        )
+        # Heat mode: target=20, variance=2 → 22.0; max_setpoint=26 → min(26, 22)=22
+        assert zone.max_temp == 22.0
+
+    def test_min_temp_heat_mode_uses_heat_limits(self) -> None:
+        """min_temp uses setHeat_Min and heat setpoint in HEAT mode."""
+        zone = self._make_zone_with_state(
+            {
+                "NV_Limits": {
+                    "UserSetpoint_oC": {
+                        "setCool_Min": 18.0,
+                        "setCool_Max": 30.0,
+                        "setHeat_Min": 14.0,
+                        "setHeat_Max": 26.0,
+                    }
+                },
+                "UserAirconSettings": {
+                    "isOn": True,
+                    "Mode": "HEAT",
+                    "EnabledZones": [True],
+                    "TemperatureSetpoint_Heat_oC": 20.0,
+                    "TemperatureSetpoint_Cool_oC": 26.0,
+                    "ZoneTemperatureSetpointVariance_oC": 2.0,
+                },
+                "RemoteZoneInfo": [
+                    {"ZoneNumber": 0, "LiveTemp_oC": 20.0, "EnabledZone": True, "CanOperate": True}
+                ],
+            }
+        )
+        # Heat mode: target=20, variance=2 → 18.0; min_setpoint=14 → max(14, 18)=18
+        assert zone.min_temp == 18.0
+
+    def test_min_temp_heat_mode_clamped_by_limit(self) -> None:
+        """min_temp clamps to setHeat_Min when variance goes below it."""
+        zone = self._make_zone_with_state(
+            {
+                "NV_Limits": {
+                    "UserSetpoint_oC": {
+                        "setHeat_Min": 19.0,
+                        "setHeat_Max": 26.0,
+                    }
+                },
+                "UserAirconSettings": {
+                    "isOn": True,
+                    "Mode": "HEAT",
+                    "EnabledZones": [True],
+                    "TemperatureSetpoint_Heat_oC": 20.0,
+                    "ZoneTemperatureSetpointVariance_oC": 2.0,
+                },
+                "RemoteZoneInfo": [
+                    {"ZoneNumber": 0, "LiveTemp_oC": 20.0, "EnabledZone": True, "CanOperate": True}
+                ],
+            }
+        )
+        # Heat mode: target=20, variance=2 → 18.0; but min_setpoint=19 → clamps to 19
+        assert zone.min_temp == 19.0
+
+    def test_max_temp_heat_mode_clamped_by_limit(self) -> None:
+        """max_temp clamps to setHeat_Max when variance exceeds it."""
+        zone = self._make_zone_with_state(
+            {
+                "NV_Limits": {
+                    "UserSetpoint_oC": {
+                        "setHeat_Min": 14.0,
+                        "setHeat_Max": 21.0,
+                    }
+                },
+                "UserAirconSettings": {
+                    "isOn": True,
+                    "Mode": "HEAT",
+                    "EnabledZones": [True],
+                    "TemperatureSetpoint_Heat_oC": 20.0,
+                    "ZoneTemperatureSetpointVariance_oC": 2.0,
+                },
+                "RemoteZoneInfo": [
+                    {"ZoneNumber": 0, "LiveTemp_oC": 20.0, "EnabledZone": True, "CanOperate": True}
+                ],
+            }
+        )
+        # Heat mode: target=20, variance=2 → 22; but max_setpoint=21 → clamps to 21
+        assert zone.max_temp == 21.0
+
+    def test_cool_mode_ignores_heat_limits(self) -> None:
+        """In COOL mode, heat limits do not affect min/max_temp."""
+        zone = self._make_zone_with_state(
+            {
+                "NV_Limits": {
+                    "UserSetpoint_oC": {
+                        "setCool_Min": 18.0,
+                        "setCool_Max": 30.0,
+                        "setHeat_Min": 14.0,
+                        "setHeat_Max": 26.0,
+                    }
+                },
+                "UserAirconSettings": {
+                    "isOn": True,
+                    "Mode": "COOL",
+                    "EnabledZones": [True],
+                    "TemperatureSetpoint_Cool_oC": 24.0,
+                    "TemperatureSetpoint_Heat_oC": 20.0,
+                    "ZoneTemperatureSetpointVariance_oC": 2.0,
+                },
+                "RemoteZoneInfo": [
+                    {"ZoneNumber": 0, "LiveTemp_oC": 22.0, "EnabledZone": True, "CanOperate": True}
+                ],
+            }
+        )
+        # Cool mode: target=24, variance=2 → max=26, min=22; limited by 30/18
+        assert zone.max_temp == 26.0
+        assert zone.min_temp == 22.0
+
+    def test_heat_mode_defaults_when_limits_missing(self) -> None:
+        """Heat mode uses correct defaults when NV_Limits missing."""
+        zone = self._make_zone_with_state(
+            {
+                "UserAirconSettings": {
+                    "isOn": True,
+                    "Mode": "HEAT",
+                    "EnabledZones": [True],
+                },
+                "RemoteZoneInfo": [
+                    {"ZoneNumber": 0, "LiveTemp_oC": 20.0, "EnabledZone": True, "CanOperate": True}
+                ],
+            }
+        )
+        # Heat mode defaults: target=24, variance=3 → max=27, min=21
+        # max_setpoint default=30, min_setpoint default=16
+        assert zone.max_temp == 27.0
+        assert zone.min_temp == 21.0
+
+    def test_auto_mode_uses_cool_limits(self) -> None:
+        """AUTO mode uses cool limits, same as COOL."""
+        zone = self._make_zone_with_state(
+            {
+                "NV_Limits": {
+                    "UserSetpoint_oC": {
+                        "setCool_Min": 18.0,
+                        "setCool_Max": 30.0,
+                        "setHeat_Min": 14.0,
+                        "setHeat_Max": 26.0,
+                    }
+                },
+                "UserAirconSettings": {
+                    "isOn": True,
+                    "Mode": "AUTO",
+                    "EnabledZones": [True],
+                    "TemperatureSetpoint_Cool_oC": 24.0,
+                    "ZoneTemperatureSetpointVariance_oC": 2.0,
+                },
+                "RemoteZoneInfo": [
+                    {"ZoneNumber": 0, "LiveTemp_oC": 22.0, "EnabledZone": True, "CanOperate": True}
+                ],
+            }
+        )
+        assert zone.max_temp == 26.0
+        assert zone.min_temp == 22.0
+
+
 class TestZoneSensorAliasParsing:
     """Test that ZoneSensor fields parse from API aliases correctly."""
 
