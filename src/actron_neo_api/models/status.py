@@ -7,7 +7,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field, ValidationError
 
-from ..const import DEFAULT_MAX_SETPOINT, DEFAULT_MIN_SETPOINT
+from ..const import AC_MODE_HEAT, DEFAULT_MAX_SETPOINT, DEFAULT_MIN_SETPOINT
 from .settings import ActronAirUserAirconSettings
 from .system import ActronAirACSystem, ActronAirAlerts, ActronAirLiveAircon, ActronAirMasterInfo
 
@@ -213,7 +213,7 @@ class ActronAirStatus(BaseModel):
         Mode-aware: uses heat limits when in HEAT mode,
         cool limits otherwise (COOL, AUTO, FAN).
         """
-        is_heat = self._get_current_mode() == "HEAT"
+        is_heat = self._get_current_mode() == AC_MODE_HEAT
         limit_key = "setHeat_Min" if is_heat else "setCool_Min"
         try:
             return float(self.last_known_state["NV_Limits"]["UserSetpoint_oC"][limit_key])
@@ -227,7 +227,7 @@ class ActronAirStatus(BaseModel):
         Mode-aware: uses heat limits when in HEAT mode,
         cool limits otherwise (COOL, AUTO, FAN).
         """
-        is_heat = self._get_current_mode() == "HEAT"
+        is_heat = self._get_current_mode() == AC_MODE_HEAT
         limit_key = "setHeat_Max" if is_heat else "setCool_Max"
         try:
             return float(self.last_known_state["NV_Limits"]["UserSetpoint_oC"][limit_key])

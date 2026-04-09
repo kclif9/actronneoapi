@@ -7,7 +7,14 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field
 
-from ..const import DEFAULT_MAX_SETPOINT, DEFAULT_MIN_SETPOINT
+from ..const import (
+    AC_MODE_AUTO,
+    AC_MODE_COOL,
+    AC_MODE_HEAT,
+    AC_MODE_OFF,
+    DEFAULT_MAX_SETPOINT,
+    DEFAULT_MIN_SETPOINT,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -168,15 +175,15 @@ class ActronAirZone(BaseModel):
 
         """
         if not self._parent_status or not self._parent_status.user_aircon_settings:
-            return "OFF"
+            return AC_MODE_OFF
 
         settings = self._parent_status.user_aircon_settings
 
         if not settings.is_on:
-            return "OFF"
+            return AC_MODE_OFF
 
         if not self.is_active:
-            return "OFF"
+            return AC_MODE_OFF
 
         return settings.mode
 
@@ -272,7 +279,7 @@ class ActronAirZone(BaseModel):
             return DEFAULT_MAX_SETPOINT  # Default fallback value
 
         mode = self._get_current_mode()
-        is_heat = mode == "HEAT"
+        is_heat = mode == AC_MODE_HEAT
 
         nv_limits = self._parent_status.last_known_state.get("NV_Limits") or {}
         user_setpoint = nv_limits.get("UserSetpoint_oC") if isinstance(nv_limits, dict) else {}
@@ -312,7 +319,7 @@ class ActronAirZone(BaseModel):
             return DEFAULT_MIN_SETPOINT  # Default fallback value
 
         mode = self._get_current_mode()
-        is_heat = mode == "HEAT"
+        is_heat = mode == AC_MODE_HEAT
 
         nv_limits = self._parent_status.last_known_state.get("NV_Limits") or {}
         user_setpoint = nv_limits.get("UserSetpoint_oC") if isinstance(nv_limits, dict) else {}
@@ -361,15 +368,15 @@ class ActronAirZone(BaseModel):
         mode = self._parent_status.user_aircon_settings.mode.upper()
         command: dict[str, Any] = {"type": "set-settings"}
 
-        if mode == "COOL":
+        if mode == AC_MODE_COOL:
             command[f"RemoteZoneInfo[{self.zone_id}].TemperatureSetpoint_Cool_oC"] = float(
                 temperature
             )
-        elif mode == "HEAT":
+        elif mode == AC_MODE_HEAT:
             command[f"RemoteZoneInfo[{self.zone_id}].TemperatureSetpoint_Heat_oC"] = float(
                 temperature
             )
-        elif mode == "AUTO":
+        elif mode == AC_MODE_AUTO:
             # AUTO: maintain the temperature differential between cooling and heating
             # Get the current differential from parent settings
             cool_temp = self._parent_status.user_aircon_settings.temperature_setpoint_cool_c
@@ -471,11 +478,11 @@ class ActronAirZone(BaseModel):
             mode = settings.mode.upper() if settings else ""
             optimistic_cool: float | None = None
             optimistic_heat: float | None = None
-            if mode == "COOL":
+            if mode == AC_MODE_COOL:
                 optimistic_cool = temperature
-            elif mode == "HEAT":
+            elif mode == AC_MODE_HEAT:
                 optimistic_heat = temperature
-            elif mode == "AUTO":
+            elif mode == AC_MODE_AUTO:
                 cool = settings.temperature_setpoint_cool_c if settings else 24.0
                 heat = settings.temperature_setpoint_heat_c if settings else 20.0
                 differential = cool - heat
