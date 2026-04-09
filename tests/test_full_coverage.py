@@ -80,7 +80,7 @@ class TestMakeRequest401RetryPaths:
         api = ActronAirAPI(refresh_token="test_refresh")
         api._initialized = True
         api.oauth2_auth.access_token = "valid_token"
-        api.oauth2_auth.token_expiry = time.time() + 3600
+        api.oauth2_auth.token_expiry = time.monotonic() + 3600
         return api
 
     def _make_401_session(self) -> MagicMock:
@@ -605,7 +605,7 @@ class TestRefreshTokenEdgeCases:
             }
         )
 
-        before = time.time()
+        before = time.monotonic()
         with patch("aiohttp.ClientSession", return_value=mock_aiohttp_session(mock_resp)):
             token, expiry = await auth.refresh_access_token()
 
@@ -652,7 +652,7 @@ class TestEnsureTokenValidProactiveRefresh:
         auth = ActronAirOAuth2DeviceCodeAuth("https://example.com", "client")
         auth.access_token = "still_valid"
         # Token valid but expiring soon (within 15 min)
-        auth.token_expiry = time.time() + 600
+        auth.token_expiry = time.monotonic() + 600
 
         auth._refresh_access_token_unlocked = AsyncMock(
             side_effect=ActronAirAuthError("Refresh server down")
@@ -673,7 +673,7 @@ class TestEnsureTokenValidProactiveRefresh:
         # Refresh sets access_token then we clear it
         async def bad_refresh() -> tuple[str, float]:
             auth.access_token = None
-            auth.token_expiry = time.time() + 3600
+            auth.token_expiry = time.monotonic() + 3600
             return "", 0.0
 
         auth._refresh_access_token_unlocked = bad_refresh  # type: ignore[assignment]
@@ -812,7 +812,7 @@ class TestMakeRequest204Response:
         api = ActronAirAPI(refresh_token="test_refresh")
         api._initialized = True
         api.oauth2_auth.access_token = "valid_token"
-        api.oauth2_auth.token_expiry = time.time() + 3600
+        api.oauth2_auth.token_expiry = time.monotonic() + 3600
 
         mock_response = AsyncMock()
         mock_response.status = 204

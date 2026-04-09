@@ -555,7 +555,7 @@ class TestActronAirAPIErrorHandling:
         api._session = mock_session
         # Set valid token so ensure_token_valid passes through
         api.oauth2_auth.access_token = "valid_token"
-        api.oauth2_auth.token_expiry = time.time() + 3600
+        api.oauth2_auth.token_expiry = time.monotonic() + 3600
         api.oauth2_auth.refresh_access_token = AsyncMock(
             side_effect=ActronAirAuthError("Refresh failed")
         )
