@@ -14,8 +14,6 @@ from ..const import (
     AC_MODE_HEAT,
     AC_MODE_OFF,
     TEMP_AUTO_HEAT_MIN,
-    TEMP_DEFAULT_TARGET,
-    TEMP_DEFAULT_VARIANCE,
     TEMP_PHYSICAL_MAX,
     TEMP_PHYSICAL_MIN,
 )
@@ -227,8 +225,8 @@ class ActronAirZone(BaseModel):
         """
         settings = self.parent_status.user_aircon_settings
         limit = self.parent_status.max_temp
-        target = settings.current_setpoint or TEMP_DEFAULT_TARGET
-        variance = settings.zone_temperature_setpoint_variance or TEMP_DEFAULT_VARIANCE
+        target = settings.current_setpoint
+        variance = settings.zone_temperature_setpoint_variance
         return min(limit, target + variance)
 
     @property
@@ -240,8 +238,8 @@ class ActronAirZone(BaseModel):
         """
         settings = self.parent_status.user_aircon_settings
         limit = self.parent_status.min_temp
-        target = settings.current_setpoint or TEMP_DEFAULT_TARGET
-        variance = settings.zone_temperature_setpoint_variance or TEMP_DEFAULT_VARIANCE
+        target = settings.current_setpoint
+        variance = settings.zone_temperature_setpoint_variance
         return max(limit, target - variance)
 
     # Command generation methods
