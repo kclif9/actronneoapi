@@ -116,6 +116,19 @@ class ActronAirStatus(BaseModel):
         a malformed section is logged and skipped so the remaining components are
         still available.
         """
+        # Reset all parsed fields so a re-parse after last_known_state
+        # changes never leaves stale objects from a previous call.
+        # serial_number is intentionally preserved: it may have been set
+        # externally and will be overwritten by _parse_aircon_system when
+        # AirconSystem data is present.
+        self.ac_system = None
+        self.user_aircon_settings = None
+        self.master_info = None
+        self.live_aircon = None
+        self.alerts = None
+        self.remote_zone_info = []
+        self.peripherals = []
+
         self._parse_aircon_system()
         self._parse_user_aircon_settings()
         self._parse_master_info()
@@ -131,6 +144,11 @@ class ActronAirStatus(BaseModel):
         aircon_system_data = self.last_known_state.get("AirconSystem")
         if not isinstance(aircon_system_data, dict):
             return
+
+        # Peripherals live under AirconSystem but are parsed independently
+        # so they survive even when the ACSystem model itself is invalid.
+        self._process_peripherals()
+
         try:
             self.ac_system = ActronAirACSystem.model_validate(aircon_system_data)
         except (ValidationError, ValueError, TypeError) as e:
@@ -151,9 +169,6 @@ class ActronAirStatus(BaseModel):
         # Set parent reference for ACSystem
         if self.ac_system:
             self.ac_system.set_parent_status(self)
-
-        # Process peripherals if available
-        self._process_peripherals()
 
     def _parse_user_aircon_settings(self) -> None:
         """Parse UserAirconSettings data from last_known_state."""

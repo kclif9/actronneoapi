@@ -570,11 +570,24 @@ class TestStatusParseNestedComponents:
         assert status.remote_zone_info[1].zone_id == 1
 
     def test_malformed_aircon_system_graceful(self):
-        """Malformed AirconSystem is skipped; other components still parse."""
+        """Malformed AirconSystem is skipped; peripherals and other components still parse."""
         status_data = {
             "isOnline": True,
             "lastKnownState": {
-                "AirconSystem": {"MasterSerial": [1, 2, 3]},  # wrong type
+                "AirconSystem": {
+                    "MasterSerial": [1, 2, 3],  # wrong type
+                    "Peripherals": [
+                        {
+                            "ZoneAssignment": [1],
+                            "SensorInputs": {
+                                "SHTC1": {
+                                    "Temperature_oC": 22.5,
+                                    "RelativeHumidity_pc": 55.0,
+                                }
+                            },
+                        }
+                    ],
+                },
                 "UserAirconSettings": {
                     "isOn": True,
                     "Mode": "COOL",
@@ -589,6 +602,8 @@ class TestStatusParseNestedComponents:
 
         assert status.ac_system is None
         assert status.user_aircon_settings is not None
+        # Peripherals survive even when ACSystem model validation fails
+        assert len(status.peripherals) == 1
 
     def test_malformed_user_aircon_settings_graceful(self):
         """Malformed UserAirconSettings is skipped; other components still parse."""
@@ -631,7 +646,7 @@ class TestStatusParseNestedComponents:
         status_data = {
             "isOnline": True,
             "lastKnownState": {
-                "LiveAircon": {"SystemOn": "invalid_bool_struct", "OutdoorUnit": 42},
+                "LiveAircon": {"OutdoorUnit": {"CompSpeed": ["not", "valid"]}},
                 "Alerts": {"CleanFilter": True, "Defrosting": False},
             },
         }
@@ -639,7 +654,9 @@ class TestStatusParseNestedComponents:
         status = ActronAirStatus.model_validate(status_data)
         status.parse_nested_components()
 
-        # Alerts should still parse regardless of LiveAircon failure
+        # LiveAircon should be cleared on validation failure
+        assert status.live_aircon is None
+        # Alerts should still parse regardless
         assert status.alerts is not None
 
     def test_malformed_alerts_graceful(self):
@@ -675,8 +692,35 @@ class TestStatusParseNestedComponents:
         status = ActronAirStatus.model_validate(status_data)
         status.parse_nested_components()
 
-        # Alerts should still work
+        assert len(status.remote_zone_info) == 0
         assert status.alerts is not None
+
+    def test_reparse_clears_stale_state(self, full_status_data):
+        """Re-parsing after last_known_state changes clears stale objects."""
+        status = ActronAirStatus.model_validate(full_status_data)
+        status.parse_nested_components()
+
+        # First parse should populate everything
+        assert status.ac_system is not None
+        assert status.user_aircon_settings is not None
+        assert status.live_aircon is not None
+        assert len(status.remote_zone_info) == 3
+        assert status.serial_number == "TEST123"
+
+        # Replace with empty state and re-parse
+        status.last_known_state = {}
+        status.parse_nested_components()
+
+        assert status.ac_system is None
+        assert status.user_aircon_settings is None
+        assert status.master_info is None
+        assert status.live_aircon is None
+        assert status.alerts is None
+        assert len(status.remote_zone_info) == 0
+        assert len(status.peripherals) == 0
+        # serial_number is preserved (may have been set externally);
+        # it is only overwritten when AirconSystem data is present.
+        assert status.serial_number == "TEST123"
 
 
 class TestZoneAssignmentMapping:
