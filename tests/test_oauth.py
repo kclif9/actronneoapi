@@ -81,6 +81,49 @@ class TestActronAirOAuth2DeviceCodeAuth:
             assert auth.is_token_valid
 
     @pytest.mark.asyncio
+    async def test_poll_for_token_string_expires_in(self) -> None:
+        """Test that a string expires_in from poll response is coerced to int."""
+        auth = ActronAirOAuth2DeviceCodeAuth("https://example.com", "test_client")
+
+        mock_response = {
+            "access_token": "tok",
+            "refresh_token": "ref",
+            "token_type": "Bearer",
+            "expires_in": "7200",  # String instead of int
+        }
+
+        with patch("aiohttp.ClientSession.post") as mock_post:
+            mock_post.return_value.__aenter__.return_value.status = 200
+            mock_post.return_value.__aenter__.return_value.json.return_value = mock_response
+
+            result = await auth.poll_for_token("test_device_code")
+
+            assert result is not None
+            assert auth.is_token_valid
+            assert auth.token_expiry is not None
+
+    @pytest.mark.asyncio
+    async def test_poll_for_token_unparseable_expires_in(self) -> None:
+        """Test that an unparseable expires_in uses fallback and Pydantic raises."""
+        auth = ActronAirOAuth2DeviceCodeAuth("https://example.com", "test_client")
+
+        mock_response = {
+            "access_token": "tok",
+            "refresh_token": "ref",
+            "token_type": "Bearer",
+            "expires_in": {"nested": "object"},
+        }
+
+        with patch("aiohttp.ClientSession.post") as mock_post:
+            mock_post.return_value.__aenter__.return_value.status = 200
+            mock_post.return_value.__aenter__.return_value.json.return_value = mock_response
+
+            # ActronAirToken model validation will fail on the bad expires_in,
+            # which is caught and re-raised as ActronAirAuthError
+            with pytest.raises(ActronAirAuthError, match="Polling failed"):
+                await auth.poll_for_token("test_device_code")
+
+    @pytest.mark.asyncio
     async def test_poll_for_token_pending(self) -> None:
         """Test token polling when authorization is pending and times out."""
         auth = ActronAirOAuth2DeviceCodeAuth("https://example.com", "test_client")

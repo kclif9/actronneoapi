@@ -231,7 +231,11 @@ class ActronAirOAuth2DeviceCodeAuth:
                                 self.token_type = data.get("token_type", "Bearer")
                                 self.authenticated_platform = self.base_url
 
-                                expires_in = data.get("expires_in", OAUTH_DEFAULT_EXPIRY)
+                                raw_expires_in = data.get("expires_in", OAUTH_DEFAULT_EXPIRY)
+                                try:
+                                    expires_in = int(raw_expires_in)
+                                except (TypeError, ValueError):
+                                    expires_in = OAUTH_DEFAULT_EXPIRY
                                 self.token_expiry = time.monotonic() + expires_in
 
                             return ActronAirToken(**data)
@@ -282,7 +286,10 @@ class ActronAirOAuth2DeviceCodeAuth:
         :meth:`_refresh_access_token_unlocked` instead.
 
         Returns:
-            Tuple of (access_token, expiry_timestamp)
+            Tuple of (access_token, monotonic_expiry_deadline) where the
+            deadline is a :func:`time.monotonic` value. It is only valid
+            within the current process and must not be persisted or
+            converted to a wall-clock timestamp.
 
         Raises:
             ActronAirAuthError: If token refresh fails
@@ -299,7 +306,10 @@ class ActronAirOAuth2DeviceCodeAuth:
         deadlocking on the non-reentrant :class:`asyncio.Lock`.
 
         Returns:
-            Tuple of (access_token, expiry_timestamp)
+            Tuple of (access_token, monotonic_expiry_deadline) where the
+            deadline is a :func:`time.monotonic` value. It is only valid
+            within the current process and must not be persisted or
+            converted to a wall-clock timestamp.
 
         Raises:
             ActronAirAuthError: If token refresh fails
