@@ -26,14 +26,14 @@ class ActronAirStatus(BaseModel):
     """
 
     is_online: bool = Field(False, alias="isOnline")
-    last_known_state: dict[str, Any] = Field({}, alias="lastKnownState")
+    last_known_state: dict[str, Any] = Field(default_factory=dict, alias="lastKnownState")
     ac_system: ActronAirACSystem | None = None
     user_aircon_settings: ActronAirUserAirconSettings | None = None
     master_info: ActronAirMasterInfo | None = None
     live_aircon: ActronAirLiveAircon | None = None
     alerts: ActronAirAlerts | None = None
-    remote_zone_info: list[ActronAirZone] = Field([], alias="RemoteZoneInfo")
-    peripherals: list[ActronAirPeripheral] = []
+    remote_zone_info: list[ActronAirZone] = Field(default_factory=list, alias="RemoteZoneInfo")
+    peripherals: list[ActronAirPeripheral] = Field(default_factory=list)
     _api: Any | None = None
     serial_number: str | None = None
 
@@ -96,14 +96,14 @@ class ActronAirStatus(BaseModel):
         """Current compressor speed."""
         if self.live_aircon and self.live_aircon.outdoor_unit:
             return self.live_aircon.outdoor_unit.comp_speed
-        return 0.0
+        return None
 
     @property
     def compressor_power(self) -> int | None:
         """Current compressor power consumption in watts."""
         if self.live_aircon and self.live_aircon.outdoor_unit:
             return self.live_aircon.outdoor_unit.comp_power
-        return 0
+        return None
 
     def parse_nested_components(self) -> None:
         """Parse nested components from the last_known_state.

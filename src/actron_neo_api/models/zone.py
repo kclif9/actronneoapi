@@ -10,10 +10,16 @@ from pydantic import BaseModel, Field
 from ..const import (
     AC_MODE_AUTO,
     AC_MODE_COOL,
+    AC_MODE_FAN,
     AC_MODE_HEAT,
     AC_MODE_OFF,
     DEFAULT_MAX_SETPOINT,
     DEFAULT_MIN_SETPOINT,
+    TEMP_AUTO_HEAT_MIN,
+    TEMP_DEFAULT_TARGET,
+    TEMP_DEFAULT_VARIANCE,
+    TEMP_PHYSICAL_MAX,
+    TEMP_PHYSICAL_MIN,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -48,7 +54,7 @@ class ActronAirPeripheral(BaseModel):
 
     logical_address: int = Field(0, alias="LogicalAddress")
     device_type: str = Field("", alias="DeviceType")
-    zone_assignments: list[int] = Field([], alias="ZoneAssignment")
+    zone_assignments: list[int] = Field(default_factory=list, alias="ZoneAssignment")
     serial_number: str = Field("", alias="SerialNumber")
     battery_level: float | None = Field(None, alias="RemainingBatteryCapacity_pc")
     temperature: float | None = None
@@ -141,7 +147,7 @@ class ActronAirZone(BaseModel):
     exists: bool = Field(False, alias="NV_Exists")
     temperature_setpoint_cool_c: float = Field(0.0, alias="TemperatureSetpoint_Cool_oC")
     temperature_setpoint_heat_c: float = Field(0.0, alias="TemperatureSetpoint_Heat_oC")
-    sensors: dict[str, ActronAirZoneSensor] = Field({}, alias="Sensors")
+    sensors: dict[str, ActronAirZoneSensor] = Field(default_factory=dict, alias="Sensors")
     actual_humidity_pc: float | None = None
     zone_id: int | None = None
     _parent_status: "ActronAirStatus | None" = None
@@ -296,13 +302,15 @@ class ActronAirZone(BaseModel):
 
         setpoint_key = "TemperatureSetpoint_Heat_oC" if is_heat else "TemperatureSetpoint_Cool_oC"
         try:
-            target_setpoint = float(user_settings.get(setpoint_key, 24.0))
+            target_setpoint = float(user_settings.get(setpoint_key, TEMP_DEFAULT_TARGET))
         except (TypeError, ValueError):
-            target_setpoint = 24.0
+            target_setpoint = TEMP_DEFAULT_TARGET
         try:
-            temp_variance = float(user_settings.get("ZoneTemperatureSetpointVariance_oC", 3.0))
+            temp_variance = float(
+                user_settings.get("ZoneTemperatureSetpointVariance_oC", TEMP_DEFAULT_VARIANCE)
+            )
         except (TypeError, ValueError):
-            temp_variance = 3.0
+            temp_variance = TEMP_DEFAULT_VARIANCE
 
         if max_setpoint < target_setpoint + temp_variance:
             return max_setpoint
@@ -336,13 +344,15 @@ class ActronAirZone(BaseModel):
 
         setpoint_key = "TemperatureSetpoint_Heat_oC" if is_heat else "TemperatureSetpoint_Cool_oC"
         try:
-            target_setpoint = float(user_settings.get(setpoint_key, 24.0))
+            target_setpoint = float(user_settings.get(setpoint_key, TEMP_DEFAULT_TARGET))
         except (TypeError, ValueError):
-            target_setpoint = 24.0
+            target_setpoint = TEMP_DEFAULT_TARGET
         try:
-            temp_variance = float(user_settings.get("ZoneTemperatureSetpointVariance_oC", 3.0))
+            temp_variance = float(
+                user_settings.get("ZoneTemperatureSetpointVariance_oC", TEMP_DEFAULT_VARIANCE)
+            )
         except (TypeError, ValueError):
-            temp_variance = 3.0
+            temp_variance = TEMP_DEFAULT_VARIANCE
 
         if min_setpoint > target_setpoint - temp_variance:
             return min_setpoint
@@ -366,6 +376,10 @@ class ActronAirZone(BaseModel):
             raise ValueError("No parent AC status available to determine mode")
 
         mode = self._parent_status.user_aircon_settings.mode.upper()
+
+        if mode in (AC_MODE_FAN, AC_MODE_OFF):
+            raise ValueError(f"Cannot set temperature in {mode} mode")
+
         command: dict[str, Any] = {"type": "set-settings"}
 
         if mode == AC_MODE_COOL:
@@ -386,9 +400,7 @@ class ActronAirZone(BaseModel):
             # Apply the same differential to the new temperature
             # For AUTO mode, we assume the provided temperature is for cooling
             cool_setpoint = float(temperature)
-            heat_setpoint = float(
-                max(10.0, temperature - differential)
-            )  # Ensure we don't go below a reasonable minimum
+            heat_setpoint = float(max(TEMP_AUTO_HEAT_MIN, temperature - differential))
 
             command[f"RemoteZoneInfo[{self.zone_id}].TemperatureSetpoint_Cool_oC"] = cool_setpoint
             command[f"RemoteZoneInfo[{self.zone_id}].TemperatureSetpoint_Heat_oC"] = heat_setpoint
@@ -459,20 +471,17 @@ class ActronAirZone(BaseModel):
         # Validate temperature is a reasonable value
         if not isinstance(temperature, (int, float)):
             raise ValueError(f"Temperature must be a number, got {type(temperature).__name__}")
-        if not -50 <= temperature <= 100:  # Reasonable physical limits
+        if not TEMP_PHYSICAL_MIN <= temperature <= TEMP_PHYSICAL_MAX:
             raise ValueError(
-                f"Temperature {temperature}°C is outside reasonable range (-50 to 100)"
+                f"Temperature {temperature}°C is outside reasonable range "
+                f"({TEMP_PHYSICAL_MIN} to {TEMP_PHYSICAL_MAX})"
             )
 
         # Ensure temperature is within valid range for this zone
         temperature = max(self.min_temp, min(self.max_temp, temperature))
 
         command = self.set_temperature_command(temperature)
-        if (
-            self._parent_status
-            and self._parent_status.api
-            and hasattr(self._parent_status, "serial_number")
-        ):
+        if self._parent_status and self._parent_status.api and self._parent_status.serial_number:
             # Capture optimistic values before await to avoid races
             settings = self._parent_status.user_aircon_settings
             mode = settings.mode.upper() if settings else ""
@@ -483,11 +492,11 @@ class ActronAirZone(BaseModel):
             elif mode == AC_MODE_HEAT:
                 optimistic_heat = temperature
             elif mode == AC_MODE_AUTO:
-                cool = settings.temperature_setpoint_cool_c if settings else 24.0
+                cool = settings.temperature_setpoint_cool_c if settings else TEMP_DEFAULT_TARGET
                 heat = settings.temperature_setpoint_heat_c if settings else 20.0
                 differential = cool - heat
                 optimistic_cool = temperature
-                optimistic_heat = max(10.0, temperature - differential)
+                optimistic_heat = max(TEMP_AUTO_HEAT_MIN, temperature - differential)
 
             await self._parent_status.api.send_command(self._parent_status.serial_number, command)
 
@@ -511,11 +520,7 @@ class ActronAirZone(BaseModel):
 
         """
         command = self.set_enable_command(is_enabled)
-        if (
-            self._parent_status
-            and self._parent_status.api
-            and hasattr(self._parent_status, "serial_number")
-        ):
+        if self._parent_status and self._parent_status.api and self._parent_status.serial_number:
             await self._parent_status.api.send_command(self._parent_status.serial_number, command)
 
             # Optimistic local state update — apply the exact EnabledZones sent

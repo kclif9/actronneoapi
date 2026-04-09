@@ -128,6 +128,20 @@ class TestZoneAsyncSetTemperature:
         with pytest.raises(ValueError, match="No parent AC status available"):
             await zone_without_api.set_temperature(24.0)
 
+    @pytest.mark.asyncio
+    async def test_set_temperature_raises_in_fan_mode(self, zone_with_api: ActronAirZone) -> None:
+        """Test setting temperature in FAN mode raises ValueError."""
+        zone_with_api._parent_status.user_aircon_settings.mode = "FAN"
+        with pytest.raises(ValueError, match="Cannot set temperature in FAN mode"):
+            await zone_with_api.set_temperature(22.0)
+
+    @pytest.mark.asyncio
+    async def test_set_temperature_raises_in_off_mode(self, zone_with_api: ActronAirZone) -> None:
+        """Test setting temperature in OFF mode raises ValueError."""
+        zone_with_api._parent_status.user_aircon_settings.mode = "OFF"
+        with pytest.raises(ValueError, match="Cannot set temperature in OFF mode"):
+            await zone_with_api.set_temperature(22.0)
+
 
 class TestZoneAsyncEnable:
     """Test async enable method."""

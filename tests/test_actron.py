@@ -614,10 +614,9 @@ class TestActronAirAPITokenProperties:
         assert api.refresh_token_value == "test_refresh"
 
     def test_latest_event_id_property(self) -> None:
-        """Test latest_event_id property."""
+        """Test latest_event_id property returns empty dict (deprecated)."""
         api = ActronAirAPI()
-        api.state_manager.latest_event_id = {"abc123": "event_1"}
-        assert api.latest_event_id == {"abc123": "event_1"}
+        assert api.latest_event_id == {}
 
 
 class TestActronAirAPIUpdateStatus:
