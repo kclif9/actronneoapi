@@ -17,7 +17,15 @@ def ac_system_with_api(mock_api: Any) -> ActronAirACSystem:
             "AirconSystem": {
                 "MasterSerial": "TEST123",
                 "CanOperate": True,
-            }
+            },
+            "UserAirconSettings": {
+                "isOn": False,
+                "Mode": "FAN",
+                "FanMode": "AUTO",
+                "EnabledZones": [True, False, False, False, False, False, False, False],
+                "TemperatureSetpoint_Cool_oC": 24.0,
+                "TemperatureSetpoint_Heat_oC": 20.0,
+            },
         },
         serial_number="TEST123",
     )
@@ -43,6 +51,12 @@ class TestACSystemSetMode:
         assert mock_api.last_command["command"]["UserAirconSettings.isOn"] is True
         assert mock_api.last_command["command"]["UserAirconSettings.Mode"] == "COOL"
 
+        # Optimistic state update
+        settings = ac_system_with_api._parent_status.user_aircon_settings
+        assert settings is not None
+        assert settings.is_on is True
+        assert settings.mode == "COOL"
+
     @pytest.mark.asyncio
     async def test_set_mode_to_off(
         self, ac_system_with_api: ActronAirACSystem, mock_api: Any
@@ -55,6 +69,11 @@ class TestACSystemSetMode:
         assert mock_api.last_command["command"]["UserAirconSettings.isOn"] is False
         # Mode should not be set when turning off
         assert "UserAirconSettings.Mode" not in mock_api.last_command["command"]
+
+        # Optimistic state update
+        settings = ac_system_with_api._parent_status.user_aircon_settings
+        assert settings is not None
+        assert settings.is_on is False
 
     @pytest.mark.asyncio
     async def test_set_mode_without_api(self) -> None:
