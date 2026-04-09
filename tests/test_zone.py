@@ -220,7 +220,7 @@ class TestZoneSetEnableCommand:
         )
         zone.zone_id = 0  # Set zone_id but no parent
 
-        with pytest.raises(ValueError, match="Zone index not set"):
+        with pytest.raises(ValueError, match="No parent AC status available"):
             zone.set_enable_command(True)
 
     def test_set_enable_command_empty_enabled_zones(self) -> None:

@@ -46,15 +46,15 @@ class ActronAirOutdoorUnit(BaseModel):
     compressor speed, power consumption, and operational status.
     """
 
-    model_number: str | None = Field(None, alias="ModelNumber")
-    serial_number: str | None = Field(None, alias="SerialNumber")
-    software_version: str | None = Field(None, alias="SoftwareVersion")
-    comp_speed: float | None = Field(None, alias="CompSpeed")
-    comp_power: int | None = Field(None, alias="CompPower")
-    comp_running_pwm: int | None = Field(None, alias="CompRunningPWM")
-    compressor_on: bool | None = Field(None, alias="CompressorOn")
-    amb_temp: float | None = Field(None, alias="AmbTemp")
-    family: str | None = Field(None, alias="Family")
+    model_number: str = Field("", alias="ModelNumber")
+    serial_number: str = Field("", alias="SerialNumber")
+    software_version: str = Field("", alias="SoftwareVersion")
+    comp_speed: float = Field(0.0, alias="CompSpeed")
+    comp_power: int = Field(0, alias="CompPower")
+    comp_running_pwm: int = Field(0, alias="CompRunningPWM")
+    compressor_on: bool = Field(False, alias="CompressorOn")
+    amb_temp: float = Field(0.0, alias="AmbTemp")
+    family: str = Field("", alias="Family")
 
 
 class ActronAirLiveAircon(BaseModel):
@@ -71,9 +71,12 @@ class ActronAirLiveAircon(BaseModel):
     compressor_capacity: int = Field(0, alias="CompressorCapacity")
     fan_rpm: int = Field(0, alias="FanRPM")
     defrost: bool = Field(False, alias="Defrost")
-    compressor_chasing_temperature: float | None = Field(None, alias="CompressorChasingTemperature")
-    compressor_live_temperature: float | None = Field(None, alias="CompressorLiveTemperature")
-    outdoor_unit: ActronAirOutdoorUnit | None = Field(None, alias="OutdoorUnit")
+    compressor_chasing_temperature: float = Field(0.0, alias="CompressorChasingTemperature")
+    compressor_live_temperature: float = Field(0.0, alias="CompressorLiveTemperature")
+    outdoor_unit: ActronAirOutdoorUnit = Field(
+        default_factory=lambda: ActronAirOutdoorUnit.model_validate({}),
+        alias="OutdoorUnit",
+    )
 
 
 class ActronAirMasterInfo(BaseModel):
@@ -117,7 +120,10 @@ class ActronAirACSystem(BaseModel):
     master_serial: str = Field("", alias="MasterSerial")
     master_wc_firmware_version: str = Field("", alias="MasterWCFirmwareVersion")
     system_name: str = Field("", alias="SystemName")
-    outdoor_unit: ActronAirOutdoorUnit | None = Field(None, alias="OutdoorUnit")
+    outdoor_unit: ActronAirOutdoorUnit = Field(
+        default_factory=lambda: ActronAirOutdoorUnit.model_validate({}),
+        alias="OutdoorUnit",
+    )
     _parent_status: "ActronAirStatus | None" = None
 
     def set_parent_status(self, parent: "ActronAirStatus") -> None:

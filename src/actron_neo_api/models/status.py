@@ -70,12 +70,12 @@ class ActronAirStatus(BaseModel):
         return self.alerts.defrosting
 
     @property
-    def compressor_chasing_temperature(self) -> float | None:
+    def compressor_chasing_temperature(self) -> float:
         """Compressor target temperature."""
         return self.live_aircon.compressor_chasing_temperature
 
     @property
-    def compressor_live_temperature(self) -> float | None:
+    def compressor_live_temperature(self) -> float:
         """Current compressor temperature."""
         return self.live_aircon.compressor_live_temperature
 
@@ -100,18 +100,14 @@ class ActronAirStatus(BaseModel):
         return self.master_info.live_humidity_pc
 
     @property
-    def compressor_speed(self) -> float | None:
+    def compressor_speed(self) -> float:
         """Current compressor speed."""
-        if self.live_aircon.outdoor_unit:
-            return self.live_aircon.outdoor_unit.comp_speed
-        return None
+        return self.live_aircon.outdoor_unit.comp_speed
 
     @property
-    def compressor_power(self) -> int | None:
+    def compressor_power(self) -> int:
         """Current compressor power consumption in watts."""
-        if self.live_aircon.outdoor_unit:
-            return self.live_aircon.outdoor_unit.comp_power
-        return None
+        return self.live_aircon.outdoor_unit.comp_power
 
     def parse_nested_components(self) -> None:
         """Parse nested components from the last_known_state.
@@ -167,15 +163,16 @@ class ActronAirStatus(BaseModel):
         nv_system_settings = self.last_known_state.get("NV_SystemSettings")
         if isinstance(nv_system_settings, dict):
             system_name = nv_system_settings.get("SystemName", "")
-            if system_name:
+            if system_name and self.ac_system:
                 self.ac_system.system_name = system_name
 
         # Set serial number from the AirconSystem data
-        if self.ac_system.master_serial:
+        if self.ac_system and self.ac_system.master_serial:
             self.serial_number = self.ac_system.master_serial
 
         # Set parent reference for ACSystem
-        self.ac_system.set_parent_status(self)
+        if self.ac_system:
+            self.ac_system.set_parent_status(self)
 
     def _parse_user_aircon_settings(self) -> None:
         """Parse UserAirconSettings data from last_known_state."""
@@ -190,7 +187,8 @@ class ActronAirStatus(BaseModel):
             _LOGGER.warning("Failed to parse UserAirconSettings: %s", e)
             return
         # Set parent reference
-        self.user_aircon_settings.set_parent_status(self)
+        if self.user_aircon_settings:
+            self.user_aircon_settings.set_parent_status(self)
 
     def _parse_master_info(self) -> None:
         """Parse MasterInfo data from last_known_state."""
@@ -275,7 +273,7 @@ class ActronAirStatus(BaseModel):
             Returns empty string if mode is unavailable.
 
         """
-        if self.user_aircon_settings.mode:
+        if self.user_aircon_settings and self.user_aircon_settings.mode:
             return self.user_aircon_settings.mode.upper()
         return ""
 

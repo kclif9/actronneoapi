@@ -7,10 +7,14 @@ from actron_neo_api.models import ActronAirStatus
 
 @pytest.fixture
 def minimal_status():
-    """Minimal status data."""
+    """Minimal status data with always-present API sections."""
     return ActronAirStatus(
         isOnline=True,
-        lastKnownState={},
+        lastKnownState={
+            "LiveAircon": {},
+            "MasterInfo": {},
+            "Alerts": {},
+        },
     )
 
 
@@ -145,7 +149,7 @@ class TestStatusProperties:
 
     def test_compressor_chasing_temperature_without_live_aircon(self, minimal_status):
         """Test compressor_chasing_temperature without live aircon data."""
-        assert minimal_status.compressor_chasing_temperature is None
+        assert minimal_status.compressor_chasing_temperature == 0.0
 
     def test_compressor_live_temperature_with_live_aircon(self, full_status_data):
         """Test compressor_live_temperature with live aircon data."""
@@ -156,7 +160,7 @@ class TestStatusProperties:
 
     def test_compressor_live_temperature_without_live_aircon(self, minimal_status):
         """Test compressor_live_temperature without live aircon data."""
-        assert minimal_status.compressor_live_temperature is None
+        assert minimal_status.compressor_live_temperature == 0.0
 
     def test_compressor_mode_with_live_aircon(self, full_status_data):
         """Test compressor_mode with live aircon data."""
@@ -213,7 +217,7 @@ class TestStatusProperties:
 
     def test_compressor_speed_without_outdoor_unit(self, minimal_status):
         """Test compressor_speed without outdoor unit data."""
-        assert minimal_status.compressor_speed is None
+        assert minimal_status.compressor_speed == 0.0
 
     def test_compressor_power_with_outdoor_unit(self, full_status_data):
         """Test compressor_power with outdoor unit data."""
@@ -224,7 +228,7 @@ class TestStatusProperties:
 
     def test_compressor_power_without_outdoor_unit(self, minimal_status):
         """Test compressor_power without outdoor unit data."""
-        assert minimal_status.compressor_power is None
+        assert minimal_status.compressor_power == 0
 
     def test_min_temp_with_limits(self, full_status_data):
         """Test min_temp property with NV_Limits."""

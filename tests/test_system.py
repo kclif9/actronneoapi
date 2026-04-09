@@ -164,8 +164,8 @@ class TestOutdoorUnitAliasParsing:
         unit = ActronAirOutdoorUnit.model_validate({"SoftwareVersion": "v3.5.1"})
         assert unit.software_version == "v3.5.1"
 
-    def test_defaults_to_none_when_missing(self) -> None:
-        """Fields default to None when not in data."""
+    def test_defaults_to_empty_when_missing(self) -> None:
+        """Fields default to empty values when not in data."""
         unit = ActronAirOutdoorUnit.model_validate({})
-        assert unit.model_number is None
-        assert unit.software_version is None
+        assert unit.model_number == ""
+        assert unit.software_version == ""
