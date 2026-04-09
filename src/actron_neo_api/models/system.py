@@ -124,8 +124,10 @@ class ActronAirACSystem(BaseModel):
     async def set_system_mode(self, mode: str) -> None:
         """Set the system mode for this AC unit.
 
-        After successful command delivery the local settings ``is_on`` and
-        ``mode`` fields are updated optimistically.
+        After successful command delivery the local settings are updated
+        optimistically: when turning on, both ``is_on`` and ``mode`` are
+        set; when turning off, only ``is_on`` is updated and the previous
+        mode is preserved.
 
         Args:
             mode: Mode to set ('AUTO', 'COOL', 'FAN', 'HEAT', 'OFF')
