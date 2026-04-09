@@ -129,12 +129,17 @@ class ActronAirACSystem(BaseModel):
         set; when turning off, only ``is_on`` is updated and the previous
         mode is preserved.
 
+        The serial number is resolved from ``master_serial`` first, falling
+        back to the parent status ``serial_number`` (which may have been set
+        externally, e.g. during system discovery).
+
         Args:
             mode: Mode to set ('AUTO', 'COOL', 'FAN', 'HEAT', 'OFF')
                  Use 'OFF' to turn the system off.
 
         Raises:
-            ValueError: If mode is invalid or no API reference available
+            ValueError: If mode is invalid, no API reference available,
+                or no serial number can be resolved
 
         """
         if not mode or not isinstance(mode, str):
@@ -150,7 +155,10 @@ class ActronAirACSystem(BaseModel):
         if not self._parent_status or not self._parent_status.api:
             raise ValueError("No API reference available")
 
-        if not self.master_serial:
+        serial = self.master_serial or (
+            self._parent_status.serial_number if self._parent_status else None
+        )
+        if not serial:
             raise ValueError("No serial number available")
 
         # Determine if system should be on or off based on mode
@@ -161,7 +169,7 @@ class ActronAirACSystem(BaseModel):
         if is_on:
             command["command"]["UserAirconSettings.Mode"] = mode_upper
 
-        await self._parent_status.api.send_command(self.master_serial, command)
+        await self._parent_status.api.send_command(serial, command)
 
         # Optimistic local state update
         if self._parent_status.user_aircon_settings:

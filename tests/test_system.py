@@ -105,7 +105,7 @@ class TestACSystemSetMode:
 
     @pytest.mark.asyncio
     async def test_set_mode_empty_serial_number(self, mock_api: Any) -> None:
-        """Test set_mode with empty master_serial raises ValueError."""
+        """Test set_mode with empty master_serial and no fallback raises ValueError."""
         status = ActronAirStatus(
             isOnline=True,
             lastKnownState={
@@ -121,6 +121,32 @@ class TestACSystemSetMode:
         assert status.ac_system is not None
         with pytest.raises(ValueError, match="No serial number available"):
             await status.ac_system.set_system_mode("COOL")
+
+    @pytest.mark.asyncio
+    async def test_set_mode_falls_back_to_status_serial(self, mock_api: Any) -> None:
+        """Test set_mode uses status.serial_number when master_serial is empty."""
+        status = ActronAirStatus(
+            isOnline=True,
+            lastKnownState={
+                "AirconSystem": {
+                    "MasterSerial": "",
+                    "CanOperate": True,
+                },
+                "UserAirconSettings": {
+                    "isOn": False,
+                    "Mode": "FAN",
+                    "FanMode": "AUTO",
+                },
+            },
+            serial_number="EXTERNAL123",
+        )
+        status.parse_nested_components()
+        status.set_api(mock_api)
+
+        assert status.ac_system is not None
+        await status.ac_system.set_system_mode("COOL")
+
+        assert mock_api.last_serial == "EXTERNAL123"
 
 
 class TestOutdoorUnitAliasParsing:
