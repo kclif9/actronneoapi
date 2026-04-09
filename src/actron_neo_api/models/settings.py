@@ -91,8 +91,12 @@ class ActronAirUserAirconSettings(BaseModel):
     def supported_modes(self) -> list[str]:
         """Get the list of HVAC modes supported by this system.
 
+        The returned modes depend on the hardware's ``ModeSupport`` flags.
+        Possible values are ``COOL``, ``HEAT``, ``FAN``, ``AUTO``, and ``DRY``.
+
         Returns:
-            List of supported mode strings (e.g., ['COOL', 'HEAT', 'FAN', 'AUTO'])
+            List of supported mode strings
+                (e.g., ``['COOL', 'HEAT', 'FAN', 'AUTO', 'DRY']``)
 
         """
         return [

@@ -148,8 +148,9 @@ class ActronAirACSystem(BaseModel):
         externally, e.g. during system discovery).
 
         Args:
-            mode: Mode to set ('AUTO', 'COOL', 'FAN', 'HEAT', 'OFF')
-                 Use 'OFF' to turn the system off.
+            mode: Mode to set ('AUTO', 'COOL', 'DRY', 'FAN', 'HEAT', 'OFF')
+                 Use 'OFF' to turn the system off. Note that not all
+                 hardware supports every mode — check ``ModeSupport``.
 
         Raises:
             ValueError: If mode is invalid, no API reference available,
