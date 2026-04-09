@@ -240,6 +240,11 @@ class TestZoneProperties:
 
         assert zone.hvac_mode == "COOL"
 
+    def test_temperature(self) -> None:
+        """Test temperature property returns live_temp_c."""
+        zone = ActronAirZone(LiveTemp_oC=23.5)
+        assert zone.temperature == 23.5
+
     def test_humidity_with_actual(self) -> None:
         """Test humidity property uses actual_humidity_pc when available."""
         zone = ActronAirZone(LiveHumidity_pc=50.0, actual_humidity_pc=55.0)

@@ -201,6 +201,14 @@ class ActronAirZone(BaseModel):
         return settings.mode
 
     @property
+    def temperature(self) -> float:
+        """Get the current temperature reading for this zone.
+
+        Returns the zone controller's live temperature.
+        """
+        return self.live_temp_c
+
+    @property
     def humidity(self) -> float:
         """Get the best available humidity reading for this zone.
 
