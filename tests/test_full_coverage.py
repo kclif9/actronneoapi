@@ -11,11 +11,10 @@ import pytest
 from actron_neo_api import ActronAirAPI
 from actron_neo_api.exceptions import ActronAirAPIError, ActronAirAuthError
 from actron_neo_api.models import ActronAirStatus
-from actron_neo_api.models.system import ActronAirACSystem, ActronAirSystemInfo
+from actron_neo_api.models.system import ActronAirACSystem
 from actron_neo_api.models.zone import ActronAirPeripheral, ActronAirZone
 from actron_neo_api.oauth import ActronAirOAuth2DeviceCodeAuth
 from actron_neo_api.state import StateManager
-
 
 # ---------------------------------------------------------------------------
 # actron.py – _CommandCoalescer._flush edge cases (lines 171, 194)
@@ -32,7 +31,9 @@ class TestCoalescerFlushEdgeCases:
 
         send_fn = AsyncMock()
         state_mgr = MagicMock()
-        coalescer = CommandCoalescer(send_fn=send_fn, state_manager=state_mgr, debounce_seconds=0.01)
+        coalescer = CommandCoalescer(
+            send_fn=send_fn, state_manager=state_mgr, debounce_seconds=0.01
+        )
         # Flush a serial that was never enqueued
         await coalescer._flush("nonexistent_serial")
         send_fn.assert_not_called()
@@ -127,9 +128,7 @@ class TestMakeRequest401RetryPaths:
         """Line 562: ValueError from refresh is wrapped in ActronAirAuthError."""
         api = self._make_api_with_valid_token()
         api._session = self._make_401_session()
-        api.oauth2_auth.refresh_access_token = AsyncMock(
-            side_effect=ValueError("Bad token format")
-        )
+        api.oauth2_auth.refresh_access_token = AsyncMock(side_effect=ValueError("Bad token format"))
 
         with pytest.raises(
             ActronAirAuthError, match="Authentication failed and token refresh failed"
@@ -155,9 +154,7 @@ class TestMakeRequest401RetryPaths:
 class TestGetACSystemsValidation:
     """Test get_ac_systems with invalid response structures."""
 
-    def _make_api_with_mock_request(
-        self, response_data: dict[str, Any]
-    ) -> ActronAirAPI:
+    def _make_api_with_mock_request(self, response_data: dict[str, Any]) -> ActronAirAPI:
         """Create an API that returns a specific response from _make_request."""
         api = ActronAirAPI(refresh_token="test")
         api._initialized = True
@@ -187,9 +184,7 @@ class TestGetACSystemsValidation:
     @pytest.mark.asyncio
     async def test_ac_system_not_a_list(self) -> None:
         """Line 601: 'ac-system' is not a list."""
-        api = self._make_api_with_mock_request(
-            {"_embedded": {"ac-system": "not_a_list"}}
-        )
+        api = self._make_api_with_mock_request({"_embedded": {"ac-system": "not_a_list"}})
 
         with pytest.raises(ActronAirAPIError, match="is not a list"):
             await api.get_ac_systems()
@@ -288,8 +283,8 @@ class TestACSystemSetModeValidation:
     """Test set_system_mode with invalid inputs."""
 
     @pytest.mark.asyncio
-    async def test_set_mode_non_string(self) -> None:
-        """Line 134: Mode must be a non-empty string."""
+    async def test_set_mode_empty_string(self) -> None:
+        """Line 134: Empty string is rejected as a mode."""
         ac_system = ActronAirACSystem(master_serial="TEST")
         parent = MagicMock()
         parent.api = MagicMock()
@@ -383,7 +378,7 @@ class TestPeripheralDataExceptionHandlers:
                 raise ValueError("mock conversion error")
             return original_float(val)
 
-        with patch("actron_neo_api.models.zone.float", patched_float):
+        with patch("actron_neo_api.models.zone.float", patched_float, create=True):
             peripheral = ActronAirPeripheral.from_peripheral_data(data)
 
         assert peripheral.temperature is None
@@ -410,7 +405,7 @@ class TestPeripheralDataExceptionHandlers:
                 raise ValueError("mock conversion error")
             return original_float(val)
 
-        with patch("actron_neo_api.models.zone.float", patched_float):
+        with patch("actron_neo_api.models.zone.float", patched_float, create=True):
             peripheral = ActronAirPeripheral.from_peripheral_data(data)
 
         assert peripheral.humidity is None
@@ -594,9 +589,7 @@ class TestRefreshTokenEdgeCases:
         assert auth.token_type == "Bearer"
 
     @pytest.mark.asyncio
-    async def test_unparseable_expires_in_defaults_to_3600(
-        self, mock_aiohttp_session: Any
-    ) -> None:
+    async def test_unparseable_expires_in_defaults_to_3600(self, mock_aiohttp_session: Any) -> None:
         """Line 320: Non-parseable expires_in defaults to 3600."""
         auth = ActronAirOAuth2DeviceCodeAuth("https://example.com", "client")
         auth.refresh_token = "refresh_tok"
@@ -620,9 +613,7 @@ class TestRefreshTokenEdgeCases:
         assert expiry >= before + 3500
 
     @pytest.mark.asyncio
-    async def test_access_token_none_after_refresh(
-        self, mock_aiohttp_session: Any
-    ) -> None:
+    async def test_access_token_none_after_refresh(self, mock_aiohttp_session: Any) -> None:
         """Line 320: Force the post-refresh None check.
 
         Use __setattr__ override to silently discard the token_expiry assignment
@@ -673,9 +664,7 @@ class TestEnsureTokenValidProactiveRefresh:
         # Token valid but expiring soon (within 15 min)
         auth.token_expiry = time.time() + 600
 
-        auth.refresh_access_token = AsyncMock(
-            side_effect=ActronAirAuthError("Refresh server down")
-        )
+        auth.refresh_access_token = AsyncMock(side_effect=ActronAirAuthError("Refresh server down"))
 
         # Should succeed because token is still valid (not expired)
         result = await auth.ensure_token_valid()
@@ -745,9 +734,7 @@ class TestExtractPeripheralHumidity:
     def test_invalid_shtc1_type(self) -> None:
         """Non-dict SHTC1 returns None."""
         sm = StateManager()
-        result = sm._extract_peripheral_humidity(
-            {"SensorInputs": {"SHTC1": "not_a_dict"}}
-        )
+        result = sm._extract_peripheral_humidity({"SensorInputs": {"SHTC1": "not_a_dict"}})
         assert result is None
 
     def test_shtc1_missing_humidity_key(self) -> None:
