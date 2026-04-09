@@ -277,6 +277,27 @@ class ActronAirOAuth2DeviceCodeAuth:
     async def refresh_access_token(self) -> tuple[str, float]:
         """Refresh the access token using the refresh token.
 
+        Acquires ``_token_lock`` to serialise concurrent refresh attempts.
+        Internal callers that already hold the lock should use
+        :meth:`_refresh_access_token_unlocked` instead.
+
+        Returns:
+            Tuple of (access_token, expiry_timestamp)
+
+        Raises:
+            ActronAirAuthError: If token refresh fails
+
+        """
+        async with self._token_lock:
+            return await self._refresh_access_token_unlocked()
+
+    async def _refresh_access_token_unlocked(self) -> tuple[str, float]:
+        """Refresh the access token without acquiring ``_token_lock``.
+
+        This is the real implementation; callers that already hold the lock
+        (e.g. :meth:`ensure_token_valid`) call this directly to avoid
+        deadlocking on the non-reentrant :class:`asyncio.Lock`.
+
         Returns:
             Tuple of (access_token, expiry_timestamp)
 
@@ -320,11 +341,6 @@ class ActronAirOAuth2DeviceCodeAuth:
 
                         token_expiry = time.time() + expires_in
 
-                        # Update all token fields. These assignments are not
-                        # interleaved with awaits, so they execute atomically
-                        # in the single-threaded asyncio event loop.  The
-                        # higher-level lock in ensure_token_valid prevents
-                        # concurrent refresh attempts.
                         self.access_token = access_token
                         if refresh_token and isinstance(refresh_token, str):
                             self.refresh_token = refresh_token
@@ -397,7 +413,7 @@ class ActronAirOAuth2DeviceCodeAuth:
             # Double-check after acquiring lock
             if not self.is_token_valid or self.is_token_expiring_soon:
                 try:
-                    await self.refresh_access_token()
+                    await self._refresh_access_token_unlocked()
                 except ActronAirAuthError:
                     if self.is_token_valid:
                         _LOGGER.warning(

@@ -99,7 +99,11 @@ class CommandCoalescer:
             return
         exc = task.exception()
         if exc is not None:
-            _LOGGER.error("Command flush failed: %s", exc, exc_info=exc)
+            _LOGGER.error(
+                "Command flush failed: %s",
+                exc,
+                exc_info=(type(exc), exc, exc.__traceback__),
+            )
 
     async def enqueue(self, serial_number: str, command: dict[str, Any]) -> None:
         """Enqueue a ``set-settings`` command for coalescing.
@@ -207,11 +211,13 @@ class CommandCoalescer:
 
         try:
             await self._send_fn(serial_number, merged_command)
-        except Exception as exc:
+        except BaseException as exc:
             for future in batch.futures:
                 if not future.done():
                     future.set_exception(exc)
-            return
+            if isinstance(exc, Exception):
+                return
+            raise
 
         for future in batch.futures:
             if not future.done():
@@ -777,5 +783,12 @@ class ActronAirAPI:
         """Get the latest event ID for each system.
 
         .. deprecated:: Event-based updates were removed in v0.5.
+            Event-based updates are no longer supported, so this property is
+            retained only for backward compatibility and always returns an
+            empty dictionary.
+
+        Returns:
+            An empty dictionary, because event IDs are no longer tracked.
+
         """
         return {}

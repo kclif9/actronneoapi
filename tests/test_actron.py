@@ -1,5 +1,6 @@
 """Tests for ActronAirAPI core client functionality."""
 
+import time
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -552,6 +553,9 @@ class TestActronAirAPIErrorHandling:
         api = ActronAirAPI(refresh_token="test_token")
         api._initialized = True
         api._session = mock_session
+        # Set valid token so ensure_token_valid passes through
+        api.oauth2_auth.access_token = "valid_token"
+        api.oauth2_auth.token_expiry = time.time() + 3600
         api.oauth2_auth.refresh_access_token = AsyncMock(
             side_effect=ActronAirAuthError("Refresh failed")
         )

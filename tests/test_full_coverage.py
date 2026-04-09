@@ -41,7 +41,7 @@ class TestCoalescerFlushEdgeCases:
 
     @pytest.mark.asyncio
     async def test_flush_base_exception_propagates(self) -> None:
-        """BaseException (e.g. KeyboardInterrupt) propagates without catching."""
+        """BaseException (e.g. KeyboardInterrupt) resolves futures then re-raises."""
         from actron_neo_api.actron import CommandCoalescer, _PendingBatch
 
         send_fn = AsyncMock(side_effect=KeyboardInterrupt("interrupted"))
@@ -61,8 +61,10 @@ class TestCoalescerFlushEdgeCases:
         with pytest.raises(KeyboardInterrupt):
             await coalescer._flush("serial1")
 
-        # BaseException is not caught — future remains pending
-        assert not future.done()
+        # BaseException sets the exception on futures before re-raising
+        assert future.done()
+        with pytest.raises(KeyboardInterrupt):
+            future.result()
 
 
 # ---------------------------------------------------------------------------
@@ -652,7 +654,9 @@ class TestEnsureTokenValidProactiveRefresh:
         # Token valid but expiring soon (within 15 min)
         auth.token_expiry = time.time() + 600
 
-        auth.refresh_access_token = AsyncMock(side_effect=ActronAirAuthError("Refresh server down"))
+        auth._refresh_access_token_unlocked = AsyncMock(
+            side_effect=ActronAirAuthError("Refresh server down")
+        )
 
         # Should succeed because token is still valid (not expired)
         result = await auth.ensure_token_valid()
@@ -672,7 +676,7 @@ class TestEnsureTokenValidProactiveRefresh:
             auth.token_expiry = time.time() + 3600
             return "", 0.0
 
-        auth.refresh_access_token = bad_refresh  # type: ignore[assignment]
+        auth._refresh_access_token_unlocked = bad_refresh  # type: ignore[assignment]
 
         with pytest.raises(ActronAirAuthError, match="Access token is not available"):
             await auth.ensure_token_valid()
