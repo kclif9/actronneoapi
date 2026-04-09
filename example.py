@@ -182,7 +182,7 @@ async def api_usage_example(refresh_token: str) -> None:
                         if zone.live_temp_c is not None and zone.live_temp_c > 0:
                             current_temp = zone.live_temp_c
                             break
-                        elif zone.zone_id is not None:
+                        else:
                             peripheral = status.get_peripheral_for_zone(zone.zone_id)
                             if peripheral and peripheral.temperature is not None:
                                 current_temp = peripheral.temperature
@@ -211,14 +211,12 @@ async def api_usage_example(refresh_token: str) -> None:
                     # Display actual temperature from zone or peripheral
                     if zone.live_temp_c is not None and zone.live_temp_c > 0:
                         print(f"  Current Temperature: {zone.live_temp_c}°C")
-                    elif zone.zone_id is not None:
+                    else:
                         peripheral = status.get_peripheral_for_zone(zone.zone_id)
                         if peripheral and peripheral.temperature is not None:
                             print(f"  Current Temperature: {peripheral.temperature}°C (sensor)")
                         else:
                             print("  Current Temperature: Not available")
-                    else:
-                        print("  Current Temperature: Not available")
 
                     # Display humidity
                     if zone.humidity is not None and zone.humidity > 0:
@@ -227,12 +225,9 @@ async def api_usage_example(refresh_token: str) -> None:
                         print("  Current Humidity: Not available")
 
                     # Display battery level if available
-                    if zone.zone_id is not None:
-                        peripheral = status.get_peripheral_for_zone(zone.zone_id)
-                        if peripheral:
-                            print(f"  Sensor Battery: {peripheral.battery_level}%")
-                        else:
-                            print("  Sensor Battery: Not available")
+                    peripheral = status.get_peripheral_for_zone(zone.zone_id)
+                    if peripheral:
+                        print(f"  Sensor Battery: {peripheral.battery_level}%")
                     else:
                         print("  Sensor Battery: Not available")
 

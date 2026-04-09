@@ -437,31 +437,13 @@ class TestZoneIsActiveOutOfRange:
 
     def test_zone_id_exceeds_enabled_zones(self) -> None:
         """Line 156: zone_id >= len(enabled_zones) returns False."""
-        zone = ActronAirZone(CanOperate=True)
+        zone = ActronAirZone(zone_id=5, CanOperate=True)
         parent = MagicMock()
         parent.user_aircon_settings.enabled_zones = [True]  # Only 1 zone
         zone._parent_status = parent
-        zone.zone_id = 5  # Out of range
         zone.can_operate = True
 
         assert zone.is_active is False
-
-
-# ---------------------------------------------------------------------------
-# zone.py – set_parent_status negative index (line 379)
-# ---------------------------------------------------------------------------
-
-
-class TestZoneSetParentStatusNegative:
-    """Test zone set_parent_status with negative zone_index."""
-
-    def test_negative_zone_index(self) -> None:
-        """Line 379: Negative zone_index raises ValueError."""
-        zone = ActronAirZone()
-        parent = MagicMock()
-
-        with pytest.raises(ValueError, match="zone_index must be non-negative"):
-            zone.set_parent_status(parent, zone_index=-1)
 
 
 # ---------------------------------------------------------------------------
@@ -475,11 +457,11 @@ class TestZoneAsyncSetTemperatureValidation:
     @pytest.mark.asyncio
     async def test_set_temperature_non_numeric(self) -> None:
         """Line 402: Non-numeric temperature raises ValueError."""
-        zone = ActronAirZone()
+        zone = ActronAirZone(zone_id=0)
         parent = MagicMock()
         parent.user_aircon_settings.mode = "COOL"
         parent.api = MagicMock()
-        zone.set_parent_status(parent, 0)
+        zone.set_parent_status(parent)
 
         with pytest.raises(ValueError, match="Temperature must be a number"):
             await zone.set_temperature("warm")  # type: ignore[arg-type]
@@ -487,11 +469,11 @@ class TestZoneAsyncSetTemperatureValidation:
     @pytest.mark.asyncio
     async def test_set_temperature_out_of_range(self) -> None:
         """Line 404: Temperature outside physical limits raises ValueError."""
-        zone = ActronAirZone()
+        zone = ActronAirZone(zone_id=0)
         parent = MagicMock()
         parent.user_aircon_settings.mode = "COOL"
         parent.api = MagicMock()
-        zone.set_parent_status(parent, 0)
+        zone.set_parent_status(parent)
 
         with pytest.raises(ValueError, match="outside reasonable range"):
             await zone.set_temperature(150.0)

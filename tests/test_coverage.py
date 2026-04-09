@@ -219,7 +219,7 @@ class TestZoneEdgeCases:
 
         # Create a zone manually with out of range zone_id
         zone = ActronAirZone(zone_id=5, can_operate=True)  # id 5 >= len([True, False])
-        zone.set_parent_status(status, zone_index=5)
+        zone.set_parent_status(status)
 
         # Should return False due to out of range
         assert zone.is_active is False

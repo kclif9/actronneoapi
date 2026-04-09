@@ -35,7 +35,7 @@ class ActronAirZoneSensor(BaseModel):
     kind: str = Field("", alias="NV_Kind")
     is_paired: bool = Field(False, alias="NV_isPaired")
     signal_strength: str = Field("NA", alias="Signal_of3")
-    temperature: float = Field(0.0)
+    temperature: float = Field(0.0, alias="LiveTemp_oC")
     humidity: float = Field(0.0, alias="RelativeHumidity_pc")
     battery_level: float = Field(0.0, alias="RemainingBatteryCapacity_pc")
 
@@ -144,7 +144,7 @@ class ActronAirZone(BaseModel):
     temperature_setpoint_cool_c: float = Field(0.0, alias="TemperatureSetpoint_Cool_oC")
     temperature_setpoint_heat_c: float = Field(0.0, alias="TemperatureSetpoint_Heat_oC")
     sensors: dict[str, ActronAirZoneSensor] = Field(default_factory=dict, alias="Sensors")
-    zone_id: int | None = None
+    zone_id: int
     _parent_status: "ActronAirStatus | None" = None
 
     @property
@@ -174,7 +174,7 @@ class ActronAirZone(BaseModel):
 
         if not self.can_operate:
             return False
-        if self.zone_id is None or self.zone_id >= len(enabled_zones):
+        if self.zone_id >= len(enabled_zones):
             return False
         return enabled_zones[self.zone_id]
 
@@ -250,9 +250,6 @@ class ActronAirZone(BaseModel):
             Command dictionary
 
         """
-        if self.zone_id is None:
-            raise ValueError("Zone index not set")
-
         if not self.parent_status.user_aircon_settings.mode:
             raise ValueError("No AC mode available to determine temperature setpoint")
 
@@ -298,9 +295,6 @@ class ActronAirZone(BaseModel):
             Command dictionary
 
         """
-        if self.zone_id is None:
-            raise ValueError("Zone index not set")
-
         if not self.parent_status.user_aircon_settings.enabled_zones:
             raise ValueError("No enabled zones available to determine current zones")
 
@@ -317,20 +311,14 @@ class ActronAirZone(BaseModel):
             "command": {"type": "set-settings", "UserAirconSettings.EnabledZones": current_zones}
         }
 
-    def set_parent_status(self, parent: "ActronAirStatus", zone_index: int) -> None:
-        """Set reference to parent ActronStatus object and this zone's index.
+    def set_parent_status(self, parent: "ActronAirStatus") -> None:
+        """Set reference to parent ActronStatus object.
 
         Args:
             parent: Parent ActronAirStatus instance
-            zone_index: Zone index (must be non-negative)
 
-        Raises:
-            ValueError: If zone_index is negative
         """
-        if zone_index < 0:
-            raise ValueError(f"zone_index must be non-negative, got {zone_index}")
         self._parent_status = parent
-        self.zone_id = zone_index
 
     async def set_temperature(self, temperature: float) -> None:
         """Set temperature for this zone based on the current AC mode and send the command.
@@ -343,12 +331,9 @@ class ActronAirZone(BaseModel):
             temperature: The temperature to set (in degrees Celsius)
 
         Raises:
-            ValueError: If zone_id is not set, temperature is invalid, or no API reference
+            ValueError: If temperature is invalid or no API reference
 
         """
-        if self.zone_id is None:
-            raise ValueError("Zone index not set")
-
         # Validate temperature is a reasonable value
         if not isinstance(temperature, (int, float)):
             raise ValueError(f"Temperature must be a number, got {type(temperature).__name__}")

@@ -120,19 +120,6 @@ class TestZoneAsyncSetTemperature:
         assert mock_api.last_command is not None
 
     @pytest.mark.asyncio
-    async def test_set_temperature_without_zone_id(self) -> None:
-        """Test setting temperature without zone_id raises."""
-        zone = ActronAirZone(
-            zone_number=0,
-            live_temp_c=22.0,
-            enabled_zone=True,
-            can_operate=True,
-        )
-
-        with pytest.raises(ValueError, match="Zone index not set"):
-            await zone.set_temperature(24.0)
-
-    @pytest.mark.asyncio
     async def test_set_temperature_without_api(self, zone_without_api: ActronAirZone) -> None:
         """Test setting temperature without API reference raises."""
         with pytest.raises(ValueError, match="No API reference available"):
@@ -184,19 +171,6 @@ class TestZoneAsyncEnable:
         assert zone_with_api._parent_status.user_aircon_settings.enabled_zones[0] is False
 
     @pytest.mark.asyncio
-    async def test_enable_without_zone_id(self) -> None:
-        """Test enabling without zone_id raises."""
-        zone = ActronAirZone(
-            zone_number=0,
-            live_temp_c=22.0,
-            enabled_zone=True,
-            can_operate=True,
-        )
-
-        with pytest.raises(ValueError, match="Zone index not set"):
-            await zone.enable(True)
-
-    @pytest.mark.asyncio
     async def test_enable_without_api(self, zone_without_api: ActronAirZone) -> None:
         """Test enabling without API reference raises."""
         with pytest.raises(ValueError, match="No API reference available"):
@@ -217,12 +191,12 @@ class TestZoneSetEnableCommand:
     def test_set_enable_command_without_parent(self) -> None:
         """Test set_enable_command without parent status."""
         zone = ActronAirZone(
+            zone_id=0,
             zone_number=0,
             live_temp_c=22.0,
             enabled_zone=True,
             can_operate=True,
         )
-        zone.zone_id = 0  # Set zone_id but no parent
 
         with pytest.raises(RuntimeError, match="Zone must be attached to a parent status"):
             zone.set_enable_command(True)

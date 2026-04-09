@@ -238,15 +238,16 @@ class ActronAirStatus(BaseModel):
             return
         try:
             self.remote_zone_info = [
-                ActronAirZone.model_validate(zone) for zone in remote_zone_data
+                ActronAirZone.model_validate({**zone, "zone_id": i})
+                for i, zone in enumerate(remote_zone_data)
             ]
         except (ValidationError, ValueError, TypeError) as e:
             _LOGGER.warning("Failed to parse RemoteZoneInfo: %s", e)
             self.remote_zone_info = []
             return
         # Set parent reference for each zone
-        for i, zone in enumerate(self.remote_zone_info):
-            zone.set_parent_status(self, i)
+        for zone in self.remote_zone_info:
+            zone.set_parent_status(self)
 
     def set_api(self, api: Any) -> None:
         """Set the API reference to enable direct command sending.
