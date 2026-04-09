@@ -485,3 +485,87 @@ class TestZoneTempLimitsFallback:
         ] = "bad"
         # default target (24) - variance (3) = 21 < min_setpoint (22), clamps to 22
         assert zone.min_temp == 22.0
+
+    def test_max_temp_nv_limits_is_none(self) -> None:
+        """max_temp falls back when NV_Limits is None (not missing, explicitly null)."""
+        zone = self._make_zone_with_state(
+            {
+                "NV_Limits": None,
+                "UserAirconSettings": {"EnabledZones": [True]},
+                "RemoteZoneInfo": [
+                    {"ZoneNumber": 0, "LiveTemp_oC": 22.0, "EnabledZone": True, "CanOperate": True}
+                ],
+            }
+        )
+        # max_setpoint defaults to 30.0, target 24.0, variance 3.0 → 27
+        assert zone.max_temp == 27.0
+
+    def test_min_temp_nv_limits_is_none(self) -> None:
+        """min_temp falls back when NV_Limits is None."""
+        zone = self._make_zone_with_state(
+            {
+                "NV_Limits": None,
+                "UserAirconSettings": {"EnabledZones": [True]},
+                "RemoteZoneInfo": [
+                    {"ZoneNumber": 0, "LiveTemp_oC": 22.0, "EnabledZone": True, "CanOperate": True}
+                ],
+            }
+        )
+        # min_setpoint defaults to 16.0, target 24.0, variance 3.0 → 21
+        assert zone.min_temp == 21.0
+
+    def test_max_temp_user_setpoint_is_none(self) -> None:
+        """max_temp falls back when UserSetpoint_oC is None."""
+        zone = self._make_zone_with_state(
+            {
+                "NV_Limits": {"UserSetpoint_oC": None},
+                "UserAirconSettings": {"EnabledZones": [True]},
+                "RemoteZoneInfo": [
+                    {"ZoneNumber": 0, "LiveTemp_oC": 22.0, "EnabledZone": True, "CanOperate": True}
+                ],
+            }
+        )
+        assert zone.max_temp == 27.0
+
+    def test_min_temp_user_setpoint_is_none(self) -> None:
+        """min_temp falls back when UserSetpoint_oC is None."""
+        zone = self._make_zone_with_state(
+            {
+                "NV_Limits": {"UserSetpoint_oC": None},
+                "UserAirconSettings": {"EnabledZones": [True]},
+                "RemoteZoneInfo": [
+                    {"ZoneNumber": 0, "LiveTemp_oC": 22.0, "EnabledZone": True, "CanOperate": True}
+                ],
+            }
+        )
+        assert zone.min_temp == 21.0
+
+    def test_max_temp_user_aircon_settings_is_none(self) -> None:
+        """max_temp falls back when UserAirconSettings is None."""
+        zone = self._make_zone_with_state(
+            {
+                "UserAirconSettings": {"EnabledZones": [True]},
+                "RemoteZoneInfo": [
+                    {"ZoneNumber": 0, "LiveTemp_oC": 22.0, "EnabledZone": True, "CanOperate": True}
+                ],
+            }
+        )
+        # Inject None after validation since Pydantic will reject it
+        zone._parent_status.last_known_state["UserAirconSettings"] = None
+        # max_setpoint 30, target 24, variance 3 → 27
+        assert zone.max_temp == 27.0
+
+    def test_min_temp_user_aircon_settings_is_none(self) -> None:
+        """min_temp falls back when UserAirconSettings is None."""
+        zone = self._make_zone_with_state(
+            {
+                "UserAirconSettings": {"EnabledZones": [True]},
+                "RemoteZoneInfo": [
+                    {"ZoneNumber": 0, "LiveTemp_oC": 22.0, "EnabledZone": True, "CanOperate": True}
+                ],
+            }
+        )
+        # Inject None after validation since Pydantic will reject it
+        zone._parent_status.last_known_state["UserAirconSettings"] = None
+        # min_setpoint 16, target 24, variance 3 → 21
+        assert zone.min_temp == 21.0

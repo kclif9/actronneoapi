@@ -249,16 +249,16 @@ class ActronAirZone(BaseModel):
         if not self._parent_status or not self._parent_status.last_known_state:
             return 30.0  # Default fallback value
 
+        nv_limits = self._parent_status.last_known_state.get("NV_Limits") or {}
+        user_setpoint = nv_limits.get("UserSetpoint_oC") if isinstance(nv_limits, dict) else {}
+        user_setpoint = user_setpoint if isinstance(user_setpoint, dict) else {}
         try:
-            max_setpoint = float(
-                self._parent_status.last_known_state.get("NV_Limits", {})
-                .get("UserSetpoint_oC", {})
-                .get("setCool_Max", 30.0)
-            )
+            max_setpoint = float(user_setpoint.get("setCool_Max", 30.0))
         except (TypeError, ValueError):
             max_setpoint = 30.0
 
-        user_settings = self._parent_status.last_known_state.get("UserAirconSettings", {})
+        user_settings = self._parent_status.last_known_state.get("UserAirconSettings")
+        user_settings = user_settings if isinstance(user_settings, dict) else {}
         try:
             target_setpoint = float(user_settings.get("TemperatureSetpoint_Cool_oC", 24.0))
         except (TypeError, ValueError):
@@ -278,16 +278,16 @@ class ActronAirZone(BaseModel):
         if not self._parent_status or not self._parent_status.last_known_state:
             return 16.0  # Default fallback value
 
+        nv_limits = self._parent_status.last_known_state.get("NV_Limits") or {}
+        user_setpoint = nv_limits.get("UserSetpoint_oC") if isinstance(nv_limits, dict) else {}
+        user_setpoint = user_setpoint if isinstance(user_setpoint, dict) else {}
         try:
-            min_setpoint = float(
-                self._parent_status.last_known_state.get("NV_Limits", {})
-                .get("UserSetpoint_oC", {})
-                .get("setCool_Min", 16.0)
-            )
+            min_setpoint = float(user_setpoint.get("setCool_Min", 16.0))
         except (TypeError, ValueError):
             min_setpoint = 16.0
 
-        user_settings = self._parent_status.last_known_state.get("UserAirconSettings", {})
+        user_settings = self._parent_status.last_known_state.get("UserAirconSettings")
+        user_settings = user_settings if isinstance(user_settings, dict) else {}
         try:
             target_setpoint = float(user_settings.get("TemperatureSetpoint_Cool_oC", 24.0))
         except (TypeError, ValueError):
