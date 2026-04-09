@@ -15,7 +15,6 @@ from actron_neo_api.models import ActronAirStatus
 from actron_neo_api.models.system import ActronAirACSystem
 from actron_neo_api.models.zone import ActronAirPeripheral, ActronAirZone
 from actron_neo_api.oauth import ActronAirOAuth2DeviceCodeAuth
-from actron_neo_api.state import StateManager
 
 # ---------------------------------------------------------------------------
 # actron.py – _CommandCoalescer._flush edge cases (lines 171, 194)
@@ -712,54 +711,6 @@ class TestSetTokensValidation:
 # ---------------------------------------------------------------------------
 # state.py – _extract_peripheral_humidity edge cases (lines 169, 173, 177-180)
 # ---------------------------------------------------------------------------
-
-
-class TestExtractPeripheralHumidity:
-    """Test StateManager._extract_peripheral_humidity edge cases."""
-
-    def test_invalid_sensor_inputs_type(self) -> None:
-        """Line 169: Non-dict sensor_inputs returns None."""
-        sm = StateManager()
-        result = sm._extract_peripheral_humidity({"SensorInputs": "invalid"})
-        assert result is None
-
-    def test_invalid_shtc1_type(self) -> None:
-        """Non-dict SHTC1 returns None."""
-        sm = StateManager()
-        result = sm._extract_peripheral_humidity({"SensorInputs": {"SHTC1": "not_a_dict"}})
-        assert result is None
-
-    def test_shtc1_missing_humidity_key(self) -> None:
-        """Line 173: SHTC1 dict exists but has no RelativeHumidity_pc key."""
-        sm = StateManager()
-        result = sm._extract_peripheral_humidity(
-            {"SensorInputs": {"SHTC1": {"Temperature_oC": 22.5}}}
-        )
-        assert result is None
-
-    def test_non_numeric_humidity(self) -> None:
-        """Lines 177-178: Non-numeric humidity returns None."""
-        sm = StateManager()
-        result = sm._extract_peripheral_humidity(
-            {"SensorInputs": {"SHTC1": {"RelativeHumidity_pc": "fifty"}}}
-        )
-        assert result is None
-
-    def test_humidity_out_of_range_high(self) -> None:
-        """Lines 179-180: Humidity > 100 returns None."""
-        sm = StateManager()
-        result = sm._extract_peripheral_humidity(
-            {"SensorInputs": {"SHTC1": {"RelativeHumidity_pc": 150.0}}}
-        )
-        assert result is None
-
-    def test_humidity_out_of_range_negative(self) -> None:
-        """Lines 179-180: Negative humidity returns None."""
-        sm = StateManager()
-        result = sm._extract_peripheral_humidity(
-            {"SensorInputs": {"SHTC1": {"RelativeHumidity_pc": -5.0}}}
-        )
-        assert result is None
 
 
 # ---------------------------------------------------------------------------

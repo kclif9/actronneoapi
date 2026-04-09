@@ -730,20 +730,15 @@ class TestStatusParseNestedComponents:
 class TestZoneAssignmentMapping:
     """Test that peripheral zone assignments use 1-based API convention."""
 
-    def test_peripheral_humidity_maps_to_correct_zone(self, full_status_data):
-        """Peripheral with ZoneAssignment [1, 2] maps humidity to zones 0 and 1."""
+    def test_peripherals_parsed_with_zone_assignments(self, full_status_data):
+        """Peripherals are parsed with correct zone assignments."""
         status = ActronAirStatus.model_validate(full_status_data)
         status.parse_nested_components()
 
-        # First peripheral has ZoneAssignment [1, 2] → zones 0, 1
-        zone0 = status.remote_zone_info[0]
-        zone1 = status.remote_zone_info[1]
-        assert zone0.actual_humidity_pc == 55.0
-        assert zone1.actual_humidity_pc == 55.0
-
-        # Second peripheral has ZoneAssignment [3] → zone 2
-        zone2 = status.remote_zone_info[2]
-        assert zone2.actual_humidity_pc == 60.0
+        # Peripherals should be parsed with their zone assignments
+        assert len(status.peripherals) >= 2
+        assert 1 in status.peripherals[0].zone_assignments
+        assert 2 in status.peripherals[0].zone_assignments
 
     def test_get_peripheral_for_zone_uses_1_based_lookup(self):
         """get_peripheral_for_zone converts 0-based zone_index to 1-based assignment."""
@@ -780,37 +775,3 @@ class TestZoneAssignmentMapping:
 
         # Zone index 0 should not find this peripheral
         assert status.get_peripheral_for_zone(0) is None
-
-    def test_non_int_zone_assignment_skipped_in_mapping(self):
-        """Non-int entries in ZoneAssignment are skipped without raising."""
-        status = ActronAirStatus(
-            isOnline=True,
-            lastKnownState={
-                "AirconSystem": {
-                    "MasterSerial": "TEST",
-                    "Peripherals": [
-                        {
-                            "ZoneAssignment": [1],
-                            "SerialNumber": "P1",
-                            "SensorInputs": {
-                                "SHTC1": {
-                                    "Temperature_oC": 22.0,
-                                    "RelativeHumidity_pc": 50.0,
-                                }
-                            },
-                        }
-                    ],
-                },
-                "RemoteZoneInfo": [
-                    {"CanOperate": True, "LiveTemp_oC": 22.0},
-                ],
-            },
-        )
-        status.parse_nested_components()
-
-        # Inject a non-int assignment after Pydantic validation
-        status.peripherals[0].zone_assignments = ["bad", None, 1]
-        status._map_peripheral_data_to_zones()
-
-        # Zone 0 should still get humidity from the valid assignment (1 → index 0)
-        assert status.remote_zone_info[0].actual_humidity_pc == 50.0

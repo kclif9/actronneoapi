@@ -153,48 +153,6 @@ class TestStatusPeripheralEdgeCases:
         status.parse_nested_components()
         # Peripheral should be parsed but not mapped to any zone
         assert len(status.peripherals) == 1
-        assert status.remote_zone_info[0].actual_humidity_pc is None
-
-    def test_map_peripheral_data_updates_zone_humidity(self) -> None:
-        """Test _map_peripheral_data_to_zones updates actual_humidity_pc."""
-        status_data = {
-            "isOnline": True,
-            "lastKnownState": {
-                "AirconSystem": {
-                    "MasterSerial": "TEST123",
-                    "Peripherals": [
-                        {
-                            "ZoneAssignment": [1],
-                            "SensorInputs": {
-                                "SHTC1": {
-                                    "Temperature_oC": 22.5,
-                                    "RelativeHumidity_pc": 55.0,
-                                }
-                            },
-                        }
-                    ],
-                },
-                "RemoteZoneInfo": [
-                    {
-                        "ZoneNumber": 0,
-                        "LiveTemp_oC": 22.0,
-                        "EnabledZone": True,
-                        "CanOperate": True,
-                    }
-                ],
-            },
-        }
-
-        status = ActronAirStatus.model_validate(status_data)
-        status.parse_nested_components()
-        # Peripheral mapping runs and updates humidity
-        # Verify peripheral was created
-        assert len(status.peripherals) == 1
-        assert status.peripherals[0].humidity == 55.0
-        # Test that code path for updating zone humidity is executed
-        status._map_peripheral_data_to_zones()
-        # After mapping, zone should have humidity
-        assert status.remote_zone_info[0].actual_humidity_pc == 55.0
 
 
 class TestOAuthEdgeCases:
@@ -236,48 +194,6 @@ class TestOAuthEdgeCases:
 
         with pytest.raises(ActronAirAuthError, match="Refresh token is required"):
             await auth.ensure_token_valid()
-
-
-class TestStateManagerPeripheralMapping:
-    """Test state manager peripheral mapping (line 129)."""
-
-    def test_map_peripheral_humidity_skips_none(self) -> None:
-        """Test that peripheral humidity mapping skips None humidity values."""
-        from actron_neo_api.state import StateManager
-
-        state_manager = StateManager()
-
-        status_data = {
-            "isOnline": True,
-            "lastKnownState": {
-                "AirconSystem": {
-                    "MasterSerial": "TEST123",
-                    "Peripherals": [
-                        {
-                            "ZoneAssignment": [1],
-                            "SensorInputs": {},  # No humidity sensor
-                        }
-                    ],
-                },
-                "RemoteZoneInfo": [
-                    {
-                        "ZoneNumber": 0,
-                        "LiveTemp_oC": 22.0,
-                        "EnabledZone": True,
-                        "CanOperate": True,
-                    }
-                ],
-            },
-        }
-
-        status = ActronAirStatus.model_validate(status_data)
-        status.parse_nested_components()
-
-        # This should execute the continue statement on line 129
-        state_manager._map_peripheral_humidity_to_zones(status)
-
-        # Zone should not have humidity data
-        assert status.remote_zone_info[0].actual_humidity_pc is None
 
 
 class TestZoneEdgeCases:

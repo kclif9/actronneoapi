@@ -145,9 +145,6 @@ class ActronAirStatus(BaseModel):
         self._parse_alerts()
         self._parse_remote_zones()
 
-        # Map peripheral sensor data to zones (must run after both peripherals and zones are parsed)
-        self._map_peripheral_data_to_zones()
-
     def _parse_aircon_system(self) -> None:
         """Parse AirconSystem data from last_known_state."""
         aircon_system_data = self.last_known_state.get("AirconSystem")
@@ -339,41 +336,6 @@ class ActronAirStatus(BaseModel):
             except (ValidationError, ValueError, TypeError, KeyError) as e:
                 # Graceful degradation: log warning and continue with other peripherals
                 _LOGGER.warning("Failed to parse peripheral: %s", e)
-
-    def _map_peripheral_data_to_zones(self) -> None:
-        """Map peripheral sensor data to their assigned zones.
-
-        Updates zone objects with actual humidity readings from their assigned
-        peripheral devices, replacing the default system-wide humidity value
-        with zone-specific sensor data.
-
-        Note:
-            ZoneAssignment values from the API are 1-based (Zone 1, Zone 2, etc.)
-            while remote_zone_info is a 0-based list. The offset is applied here.
-        """
-        if not self.peripherals or not self.remote_zone_info:
-            return
-
-        # Create mapping of zone list index to peripheral
-        zone_peripheral_map: dict[int, ActronAirPeripheral] = {}
-
-        for peripheral in self.peripherals:
-            for zone_assignment in peripheral.zone_assignments:
-                # API zone assignments are 1-based; convert to 0-based list index
-                if not isinstance(zone_assignment, int):
-                    continue
-                adjusted_idx = zone_assignment - 1
-                if 0 <= adjusted_idx < len(self.remote_zone_info):
-                    zone_peripheral_map[adjusted_idx] = peripheral
-
-        # Update zones with peripheral data
-        for i, zone in enumerate(self.remote_zone_info):
-            if i in zone_peripheral_map:
-                peripheral = zone_peripheral_map[i]
-                # Update zone with peripheral sensor data
-                if peripheral.humidity is not None:
-                    zone.actual_humidity_pc = peripheral.humidity
-                # The temperature will be automatically used through the existing properties
 
     def get_peripheral_for_zone(self, zone_index: int) -> ActronAirPeripheral | None:
         """Get the peripheral device assigned to a specific zone.

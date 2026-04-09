@@ -245,14 +245,9 @@ class TestZoneProperties:
         zone = ActronAirZone(LiveTemp_oC=23.5)
         assert zone.temperature == 23.5
 
-    def test_humidity_with_actual(self) -> None:
-        """Test humidity property uses actual_humidity_pc when available."""
-        zone = ActronAirZone(LiveHumidity_pc=50.0, actual_humidity_pc=55.0)
-        assert zone.humidity == 55.0
-
-    def test_humidity_without_actual(self) -> None:
-        """Test humidity property falls back to live_humidity_pc."""
-        zone = ActronAirZone(LiveHumidity_pc=50.0, actual_humidity_pc=None)
+    def test_humidity(self) -> None:
+        """Test humidity property returns live_humidity_pc."""
+        zone = ActronAirZone(LiveHumidity_pc=50.0)
         assert zone.humidity == 50.0
 
     def test_max_temp_without_parent(self) -> None:

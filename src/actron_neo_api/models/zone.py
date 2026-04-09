@@ -144,7 +144,6 @@ class ActronAirZone(BaseModel):
     temperature_setpoint_cool_c: float = Field(0.0, alias="TemperatureSetpoint_Cool_oC")
     temperature_setpoint_heat_c: float = Field(0.0, alias="TemperatureSetpoint_Heat_oC")
     sensors: dict[str, ActronAirZoneSensor] = Field(default_factory=dict, alias="Sensors")
-    actual_humidity_pc: float | None = None
     zone_id: int | None = None
     _parent_status: "ActronAirStatus | None" = None
 
@@ -208,12 +207,10 @@ class ActronAirZone(BaseModel):
 
     @property
     def humidity(self) -> float:
-        """Get the best available humidity reading for this zone.
+        """Get the humidity reading for this zone.
 
-        Returns the actual sensor reading if available, otherwise the system-reported value.
+        Returns the zone controller's live humidity.
         """
-        if self.actual_humidity_pc is not None:
-            return self.actual_humidity_pc
         return self.live_humidity_pc
 
     @property
