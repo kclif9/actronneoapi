@@ -54,7 +54,8 @@ class ActronAirOAuth2DeviceCodeAuth:
         if not client_id or not client_id.strip():
             raise ValueError("client_id cannot be empty")
 
-        self.base_url: str = base_url.rstrip("/")
+        base_url = base_url.strip().rstrip("/")
+        self.base_url: str = base_url
         self.client_id: Final[str] = client_id
         self.access_token: str | None = None
         self.refresh_token: str | None = None
@@ -119,7 +120,8 @@ class ActronAirOAuth2DeviceCodeAuth:
         if not base_url or not base_url.strip():
             raise ValueError("base_url cannot be empty")
 
-        self.base_url = base_url.rstrip("/")
+        base_url = base_url.strip().rstrip("/")
+        self.base_url = base_url
         self.token_url = f"{self.base_url}/api/v0/oauth/token"
         self.authorize_url = f"{self.base_url}/authorize"
         self.device_auth_url = f"{self.base_url}/connect"

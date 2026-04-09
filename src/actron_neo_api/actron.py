@@ -392,12 +392,15 @@ class ActronAirAPI:
             incompatible platforms (Neo vs Que).
 
         """
+        base_url = base_url.strip().rstrip("/")
         if self.base_url == base_url and self._platform == platform:
             return
 
+        # Update OAuth endpoints first so a ValueError does not leave
+        # self.base_url / self._platform in a partially-updated state.
+        self.oauth2_auth.update_base_url(base_url)
         self.base_url = base_url
         self._platform = platform
-        self.oauth2_auth.update_base_url(base_url)
 
     def _maybe_update_base_url_from_systems(self, systems: list[ActronAirSystemInfo]) -> None:
         """Automatically update base URL based on system types if auto-management is enabled.
