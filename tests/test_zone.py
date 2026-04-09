@@ -343,7 +343,7 @@ class TestZoneTempLimitsFallback:
         return status.remote_zone_info[0]
 
     def test_max_temp_non_numeric_setpoint(self) -> None:
-        """max_temp returns fallback when setCool_Max is non-numeric."""
+        """max_temp uses default setpoint (30.0) when setCool_Max is non-numeric."""
         zone = self._make_zone_with_state(
             {
                 "NV_Limits": {"UserSetpoint_oC": {"setCool_Max": "not_a_number"}},
@@ -353,10 +353,12 @@ class TestZoneTempLimitsFallback:
                 ],
             }
         )
-        assert zone.max_temp == 30.0
+        # max_setpoint defaults to 30.0, target defaults to 24.0, variance to 3.0
+        # target + variance = 27 < max_setpoint (30), so returns 27
+        assert zone.max_temp == 27.0
 
     def test_min_temp_non_numeric_setpoint(self) -> None:
-        """min_temp returns fallback when setCool_Min is non-numeric."""
+        """min_temp uses default setpoint (16.0) when setCool_Min is non-numeric."""
         zone = self._make_zone_with_state(
             {
                 "NV_Limits": {"UserSetpoint_oC": {"setCool_Min": "bad"}},
@@ -366,10 +368,12 @@ class TestZoneTempLimitsFallback:
                 ],
             }
         )
-        assert zone.min_temp == 16.0
+        # min_setpoint defaults to 16.0, target defaults to 24.0, variance to 3.0
+        # min_setpoint (16) < target - variance (21), so returns 21
+        assert zone.min_temp == 21.0
 
     def test_max_temp_none_variance(self) -> None:
-        """max_temp returns fallback when variance is None."""
+        """max_temp uses default variance (3.0) when variance is None."""
         zone = self._make_zone_with_state(
             {
                 "UserAirconSettings": {
@@ -381,10 +385,12 @@ class TestZoneTempLimitsFallback:
                 ],
             }
         )
-        assert zone.max_temp == 30.0
+        # max_setpoint defaults to 30.0, target defaults to 24.0, variance defaults to 3.0
+        # target + variance = 27 < max_setpoint (30), so returns 27
+        assert zone.max_temp == 27.0
 
     def test_min_temp_none_variance(self) -> None:
-        """min_temp returns fallback when variance is None."""
+        """min_temp uses default variance (3.0) when variance is None."""
         zone = self._make_zone_with_state(
             {
                 "UserAirconSettings": {
@@ -396,4 +402,86 @@ class TestZoneTempLimitsFallback:
                 ],
             }
         )
-        assert zone.min_temp == 16.0
+        # min_setpoint defaults to 16.0, target defaults to 24.0, variance defaults to 3.0
+        # min_setpoint (16) < target - variance (21), so returns 21
+        assert zone.min_temp == 21.0
+
+    def test_max_temp_bad_variance_preserves_valid_limit(self) -> None:
+        """max_temp honors NV_Limits even when variance is non-numeric."""
+        zone = self._make_zone_with_state(
+            {
+                "NV_Limits": {"UserSetpoint_oC": {"setCool_Max": 25.0}},
+                "UserAirconSettings": {
+                    "EnabledZones": [True],
+                    "TemperatureSetpoint_Cool_oC": 24.0,
+                    "ZoneTemperatureSetpointVariance_oC": "bad",
+                },
+                "RemoteZoneInfo": [
+                    {"ZoneNumber": 0, "LiveTemp_oC": 22.0, "EnabledZone": True, "CanOperate": True}
+                ],
+            }
+        )
+        # target (24) + default variance (3) = 27 > max_setpoint (25), so clamps to 25
+        assert zone.max_temp == 25.0
+
+    def test_min_temp_bad_variance_preserves_valid_limit(self) -> None:
+        """min_temp honors NV_Limits even when variance is non-numeric."""
+        zone = self._make_zone_with_state(
+            {
+                "NV_Limits": {"UserSetpoint_oC": {"setCool_Min": 22.0}},
+                "UserAirconSettings": {
+                    "EnabledZones": [True],
+                    "TemperatureSetpoint_Cool_oC": 24.0,
+                    "ZoneTemperatureSetpointVariance_oC": "bad",
+                },
+                "RemoteZoneInfo": [
+                    {"ZoneNumber": 0, "LiveTemp_oC": 22.0, "EnabledZone": True, "CanOperate": True}
+                ],
+            }
+        )
+        # target (24) - default variance (3) = 21 < min_setpoint (22), so clamps to 22
+        assert zone.min_temp == 22.0
+
+    def test_max_temp_bad_target_preserves_valid_limit(self) -> None:
+        """max_temp honors NV_Limits even when target setpoint is non-numeric."""
+        zone = self._make_zone_with_state(
+            {
+                "NV_Limits": {"UserSetpoint_oC": {"setCool_Max": 25.0}},
+                "UserAirconSettings": {
+                    "EnabledZones": [True],
+                    "TemperatureSetpoint_Cool_oC": 24.0,
+                    "ZoneTemperatureSetpointVariance_oC": 3.0,
+                },
+                "RemoteZoneInfo": [
+                    {"ZoneNumber": 0, "LiveTemp_oC": 22.0, "EnabledZone": True, "CanOperate": True}
+                ],
+            }
+        )
+        # Inject bad value into last_known_state after Pydantic validation
+        zone._parent_status.last_known_state["UserAirconSettings"][
+            "TemperatureSetpoint_Cool_oC"
+        ] = "bad"
+        # default target (24) + variance (3) = 27 > max_setpoint (25), clamps to 25
+        assert zone.max_temp == 25.0
+
+    def test_min_temp_bad_target_preserves_valid_limit(self) -> None:
+        """min_temp honors NV_Limits even when target setpoint is non-numeric."""
+        zone = self._make_zone_with_state(
+            {
+                "NV_Limits": {"UserSetpoint_oC": {"setCool_Min": 22.0}},
+                "UserAirconSettings": {
+                    "EnabledZones": [True],
+                    "TemperatureSetpoint_Cool_oC": 24.0,
+                    "ZoneTemperatureSetpointVariance_oC": 3.0,
+                },
+                "RemoteZoneInfo": [
+                    {"ZoneNumber": 0, "LiveTemp_oC": 22.0, "EnabledZone": True, "CanOperate": True}
+                ],
+            }
+        )
+        # Inject bad value into last_known_state after Pydantic validation
+        zone._parent_status.last_known_state["UserAirconSettings"][
+            "TemperatureSetpoint_Cool_oC"
+        ] = "bad"
+        # default target (24) - variance (3) = 21 < min_setpoint (22), clamps to 22
+        assert zone.min_temp == 22.0

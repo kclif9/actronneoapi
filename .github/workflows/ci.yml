@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, code-quality-improvements]
+    branches: [main]
   pull_request:
     branches: [main]
 
@@ -13,7 +13,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        python-version: ["3.12", "3.13"]
+        python-version: ["3.12", "3.13", "3.14"]
 
     steps:
       - uses: actions/checkout@v4
@@ -30,7 +30,7 @@ jobs:
 
       - name: Run tests with pytest
         run: |
-          pytest tests/ -v --cov=src/actron_neo_api --cov-report=xml --cov-report=term --junitxml=junit.xml
+          pytest tests/ -v --cov=src/actron_neo_api --cov-report=xml --cov-report=term --cov-fail-under=100 --junitxml=junit.xml
 
       - name: Upload coverage reports to Codecov
         if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
