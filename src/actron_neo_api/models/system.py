@@ -124,6 +124,11 @@ class ActronAirACSystem(BaseModel):
     async def set_system_mode(self, mode: str) -> None:
         """Set the system mode for this AC unit.
 
+        After successful command delivery the local settings are updated
+        optimistically: when turning on, both ``is_on`` and ``mode`` are
+        set; when turning off, only ``is_on`` is updated and the previous
+        mode is preserved.
+
         Args:
             mode: Mode to set ('AUTO', 'COOL', 'FAN', 'HEAT', 'OFF')
                  Use 'OFF' to turn the system off.
@@ -154,3 +159,11 @@ class ActronAirACSystem(BaseModel):
             command["command"]["UserAirconSettings.Mode"] = mode_upper
 
         await self._parent_status.api.send_command(self.master_serial, command)
+
+        # Optimistic local state update
+        if self._parent_status.user_aircon_settings:
+            if is_on:
+                self._parent_status.user_aircon_settings.is_on = True
+                self._parent_status.user_aircon_settings.mode = mode_upper
+            else:
+                self._parent_status.user_aircon_settings.is_on = False
