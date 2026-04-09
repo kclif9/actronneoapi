@@ -133,6 +133,11 @@ class ActronAirStatus(BaseModel):
         self.remote_zone_info = []
         self.peripherals = []
 
+        # Set parent references on default instances so callers can
+        # safely access properties even when sections are missing/malformed.
+        self.ac_system.set_parent_status(self)
+        self.user_aircon_settings.set_parent_status(self)
+
         self._parse_aircon_system()
         self._parse_user_aircon_settings()
         self._parse_master_info()

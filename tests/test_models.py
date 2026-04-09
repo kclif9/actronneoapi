@@ -367,7 +367,7 @@ class TestZoneCommands:
         zone = ActronAirZone()
         zone.zone_id = 0
 
-        with pytest.raises(ValueError, match="No parent AC status available"):
+        with pytest.raises(ValueError, match="Zone is not attached to a parent status"):
             zone.set_temperature_command(22.0)
 
     def test_set_enable_command_enable(self) -> None:

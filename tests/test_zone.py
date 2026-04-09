@@ -220,7 +220,7 @@ class TestZoneSetEnableCommand:
         )
         zone.zone_id = 0  # Set zone_id but no parent
 
-        with pytest.raises(ValueError, match="No parent AC status available"):
+        with pytest.raises(ValueError, match="Zone is not attached to a parent status"):
             zone.set_enable_command(True)
 
     def test_set_enable_command_empty_enabled_zones(self) -> None:
@@ -235,7 +235,7 @@ class TestZoneSetEnableCommand:
         )
         zone = status.remote_zone_info[0]
 
-        with pytest.raises(ValueError, match="No parent AC status available"):
+        with pytest.raises(ValueError, match="No enabled zones available"):
             zone.set_enable_command(True)
 
     def test_set_temperature_command_empty_mode(self) -> None:
@@ -250,7 +250,7 @@ class TestZoneSetEnableCommand:
         )
         zone = status.remote_zone_info[0]
 
-        with pytest.raises(ValueError, match="No parent AC status available"):
+        with pytest.raises(ValueError, match="No AC mode available"):
             zone.set_temperature_command(22.0)
 
 

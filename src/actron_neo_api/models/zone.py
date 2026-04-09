@@ -298,8 +298,11 @@ class ActronAirZone(BaseModel):
         if self.zone_id is None:
             raise ValueError("Zone index not set")
 
-        if not self._parent_status or not self._parent_status.user_aircon_settings.mode:
-            raise ValueError("No parent AC status available to determine mode")
+        if not self._parent_status:
+            raise ValueError("Zone is not attached to a parent status")
+
+        if not self._parent_status.user_aircon_settings.mode:
+            raise ValueError("No AC mode available to determine temperature setpoint")
 
         mode = self._parent_status.user_aircon_settings.mode.upper()
 
@@ -346,8 +349,11 @@ class ActronAirZone(BaseModel):
         if self.zone_id is None:
             raise ValueError("Zone index not set")
 
-        if not self._parent_status or not self._parent_status.user_aircon_settings.enabled_zones:
-            raise ValueError("No parent AC status available to determine current zones")
+        if not self._parent_status:
+            raise ValueError("Zone is not attached to a parent status")
+
+        if not self._parent_status.user_aircon_settings.enabled_zones:
+            raise ValueError("No enabled zones available to determine current zones")
 
         # Get current zones from parent
         current_zones = self._parent_status.user_aircon_settings.enabled_zones.copy()
