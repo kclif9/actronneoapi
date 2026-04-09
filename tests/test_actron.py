@@ -93,6 +93,16 @@ class TestActronAirAPIPlatformManagement:
         assert api.oauth2_auth.refresh_token == "old_refresh"
         assert api.oauth2_auth.token_expiry == 1234567890.0
 
+    def test_set_base_url_preserves_handler_identity(self) -> None:
+        """Test that _set_base_url mutates in-place, not replaces."""
+        api = ActronAirAPI(platform="neo")
+        original_oauth = api.oauth2_auth
+
+        api._set_base_url("https://que.actronair.com.au", "que")
+
+        assert api.oauth2_auth is original_oauth
+        assert api.oauth2_auth.base_url == "https://que.actronair.com.au"
+
     def test_set_base_url_no_change(self) -> None:
         """Test no-op when setting same URL."""
         api = ActronAirAPI(platform="neo")
@@ -919,8 +929,8 @@ class TestActronAirAPIInjectableSession:
         # Verify the external session was used
         external_session.request.assert_called_once()
 
-    def test_set_base_url_passes_session_to_new_oauth(self) -> None:
-        """Test _set_base_url passes session to recreated OAuth handler."""
+    def test_set_base_url_preserves_session(self) -> None:
+        """Test _set_base_url preserves session on in-place mutation."""
         from unittest.mock import MagicMock
 
         external_session = MagicMock()

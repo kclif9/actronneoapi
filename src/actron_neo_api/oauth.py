@@ -54,7 +54,8 @@ class ActronAirOAuth2DeviceCodeAuth:
         if not client_id or not client_id.strip():
             raise ValueError("client_id cannot be empty")
 
-        self.base_url: Final[str] = base_url.rstrip("/")
+        base_url = base_url.strip().rstrip("/")
+        self.base_url: str = base_url
         self.client_id: Final[str] = client_id
         self.access_token: str | None = None
         self.refresh_token: str | None = None
@@ -65,10 +66,10 @@ class ActronAirOAuth2DeviceCodeAuth:
         self._token_lock: asyncio.Lock = asyncio.Lock()
 
         # OAuth2 endpoints
-        self.token_url: Final[str] = f"{self.base_url}/api/v0/oauth/token"
-        self.authorize_url: Final[str] = f"{self.base_url}/authorize"
-        self.device_auth_url: Final[str] = f"{self.base_url}/connect"
-        self.user_info_url: Final[str] = f"{self.base_url}/api/v0/client/account"
+        self.token_url: str = f"{self.base_url}/api/v0/oauth/token"
+        self.authorize_url: str = f"{self.base_url}/authorize"
+        self.device_auth_url: str = f"{self.base_url}/connect"
+        self.user_info_url: str = f"{self.base_url}/api/v0/client/account"
 
     @property
     def is_token_valid(self) -> bool:
@@ -101,6 +102,30 @@ class ActronAirOAuth2DeviceCodeAuth:
 
         """
         self._session = session
+
+    def update_base_url(self, base_url: str) -> None:
+        """Update the base URL and derived endpoints in-place.
+
+        Mutates the existing handler rather than requiring object
+        replacement, so coroutines that hold a reference to this instance
+        continue to see the updated endpoints.
+
+        Args:
+            base_url: New base URL for the Actron Air API
+
+        Raises:
+            ValueError: If base_url is empty
+
+        """
+        if not base_url or not base_url.strip():
+            raise ValueError("base_url cannot be empty")
+
+        base_url = base_url.strip().rstrip("/")
+        self.base_url = base_url
+        self.token_url = f"{self.base_url}/api/v0/oauth/token"
+        self.authorize_url = f"{self.base_url}/authorize"
+        self.device_auth_url = f"{self.base_url}/connect"
+        self.user_info_url = f"{self.base_url}/api/v0/client/account"
 
     @contextlib.asynccontextmanager
     async def _get_session(self) -> AsyncIterator[aiohttp.ClientSession]:
@@ -447,6 +472,11 @@ class ActronAirOAuth2DeviceCodeAuth:
     ) -> None:
         """Set tokens manually (useful for restoring saved tokens).
 
+        This method is synchronous and performs all writes without yielding,
+        so it is safe within a single-threaded asyncio event loop.  For
+        thread-safe usage (e.g. from an executor), use :meth:`async_set_tokens`
+        which acquires ``_token_lock``.
+
         Args:
             access_token: The access token
             refresh_token: The refresh token (optional)
@@ -471,3 +501,29 @@ class ActronAirOAuth2DeviceCodeAuth:
         else:
             # No expiry known — force a refresh on next use
             self.token_expiry = None
+
+    async def async_set_tokens(
+        self,
+        access_token: str,
+        refresh_token: str | None = None,
+        expires_in: int | None = None,
+        token_type: str = "Bearer",
+    ) -> None:
+        """Set tokens under ``_token_lock`` for thread-safe usage.
+
+        Acquires the token lock before delegating to :meth:`set_tokens`.
+        Prefer this method when calling from a concurrent context or
+        off the event-loop thread.
+
+        Args:
+            access_token: The access token
+            refresh_token: The refresh token (optional)
+            expires_in: Token expiration time in seconds from now (optional)
+            token_type: Token type (default: "Bearer")
+
+        Raises:
+            ValueError: If access_token is empty or expires_in is negative
+
+        """
+        async with self._token_lock:
+            self.set_tokens(access_token, refresh_token, expires_in, token_type)
