@@ -306,14 +306,16 @@ class TestZoneProperties:
         assert zone.peripheral is peripheral
 
     def test_max_temp_without_parent(self) -> None:
-        """Test max_temp without parent returns default."""
+        """Test max_temp without parent raises AssertionError (fail fast)."""
         zone = ActronAirZone()
-        assert zone.max_temp == 30.0
+        with pytest.raises(AssertionError, match="Zone must be attached to a parent status"):
+            _ = zone.max_temp
 
     def test_min_temp_without_parent(self) -> None:
-        """Test min_temp without parent returns default."""
+        """Test min_temp without parent raises AssertionError (fail fast)."""
         zone = ActronAirZone()
-        assert zone.min_temp == 16.0
+        with pytest.raises(AssertionError, match="Zone must be attached to a parent status"):
+            _ = zone.min_temp
 
 
 class TestZoneCommands:

@@ -13,8 +13,6 @@ from ..const import (
     AC_MODE_FAN,
     AC_MODE_HEAT,
     AC_MODE_OFF,
-    DEFAULT_MAX_SETPOINT,
-    DEFAULT_MIN_SETPOINT,
     TEMP_AUTO_HEAT_MIN,
     TEMP_DEFAULT_TARGET,
     TEMP_DEFAULT_VARIANCE,
@@ -261,8 +259,7 @@ class ActronAirZone(BaseModel):
         Mode-aware: uses heat limits/setpoint when in HEAT mode,
         cool limits/setpoint otherwise (COOL, AUTO, FAN).
         """
-        if not self._parent_status:
-            return DEFAULT_MAX_SETPOINT
+        assert self._parent_status, "Zone must be attached to a parent status"
         settings = self._parent_status.user_aircon_settings
         limit = self._parent_status.max_temp
         target = settings.current_setpoint or TEMP_DEFAULT_TARGET
@@ -276,8 +273,7 @@ class ActronAirZone(BaseModel):
         Mode-aware: uses heat limits/setpoint when in HEAT mode,
         cool limits/setpoint otherwise (COOL, AUTO, FAN).
         """
-        if not self._parent_status:
-            return DEFAULT_MIN_SETPOINT
+        assert self._parent_status, "Zone must be attached to a parent status"
         settings = self._parent_status.user_aircon_settings
         limit = self._parent_status.min_temp
         target = settings.current_setpoint or TEMP_DEFAULT_TARGET
