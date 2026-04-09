@@ -155,14 +155,24 @@ class ActronAirStatus(BaseModel):
 
         remote_zone_data = self.last_known_state.get("RemoteZoneInfo")
         if isinstance(remote_zone_data, list):
-            self.remote_zone_info = [
-                ActronAirZone.model_validate(zone)
-                for zone in remote_zone_data
-                if isinstance(zone, dict)
-            ]
-            # Set parent reference for each zone
-            for i, zone in enumerate(self.remote_zone_info):
-                zone.set_parent_status(self, i)
+            # Validate all entries are dicts before parsing to preserve positional
+            # indices. Silently dropping non-dict entries would shift zone indices,
+            # causing commands and peripheral mapping to target the wrong zone.
+            if all(isinstance(zone, dict) for zone in remote_zone_data):
+                self.remote_zone_info = [
+                    ActronAirZone.model_validate(zone) for zone in remote_zone_data
+                ]
+                # Set parent reference for each zone
+                for i, zone in enumerate(self.remote_zone_info):
+                    zone.set_parent_status(self, i)
+            else:
+                _LOGGER.warning(
+                    "RemoteZoneInfo contains non-dict entries, skipping zone parsing "
+                    "to prevent index misalignment"
+                )
+
+        # Map peripheral sensor data to zones (must run after both peripherals and zones are parsed)
+        self._map_peripheral_data_to_zones()
 
     def set_api(self, api: Any) -> None:
         """Set the API reference to enable direct command sending.
@@ -229,26 +239,31 @@ class ActronAirStatus(BaseModel):
                 # Graceful degradation: log warning and continue with other peripherals
                 _LOGGER.warning("Failed to parse peripheral: %s", e)
 
-        # Map peripheral sensor data to zones
-        self._map_peripheral_data_to_zones()
-
     def _map_peripheral_data_to_zones(self) -> None:
         """Map peripheral sensor data to their assigned zones.
 
         Updates zone objects with actual humidity readings from their assigned
         peripheral devices, replacing the default system-wide humidity value
         with zone-specific sensor data.
+
+        Note:
+            ZoneAssignment values from the API are 1-based (Zone 1, Zone 2, etc.)
+            while remote_zone_info is a 0-based list. The offset is applied here.
         """
         if not self.peripherals or not self.remote_zone_info:
             return
 
-        # Create mapping of zone index to peripheral
-        zone_peripheral_map = {}
+        # Create mapping of zone list index to peripheral
+        zone_peripheral_map: dict[int, ActronAirPeripheral] = {}
 
         for peripheral in self.peripherals:
-            for zone_index in peripheral.zone_assignments:
-                if isinstance(zone_index, int) and 0 <= zone_index < len(self.remote_zone_info):
-                    zone_peripheral_map[zone_index] = peripheral
+            for zone_assignment in peripheral.zone_assignments:
+                # API zone assignments are 1-based; convert to 0-based list index
+                adjusted_idx = zone_assignment - 1
+                if isinstance(zone_assignment, int) and 0 <= adjusted_idx < len(
+                    self.remote_zone_info
+                ):
+                    zone_peripheral_map[adjusted_idx] = peripheral
 
         # Update zones with peripheral data
         for i, zone in enumerate(self.remote_zone_info):
@@ -263,7 +278,7 @@ class ActronAirStatus(BaseModel):
         """Get the peripheral device assigned to a specific zone.
 
         Args:
-            zone_index: The index of the zone
+            zone_index: The 0-based index of the zone in remote_zone_info
 
         Returns:
             The peripheral device assigned to the zone, or None if not found
@@ -278,8 +293,10 @@ class ActronAirStatus(BaseModel):
         if not self.peripherals:
             return None
 
+        # API zone assignments are 1-based; convert zone_index to match
+        api_zone_number = zone_index + 1
         for peripheral in self.peripherals:
-            if zone_index in peripheral.zone_assignments:
+            if api_zone_number in peripheral.zone_assignments:
                 return peripheral
 
         return None

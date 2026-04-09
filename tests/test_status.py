@@ -25,7 +25,7 @@ def full_status_data():
                 "CanOperate": True,
                 "Peripherals": [
                     {
-                        "ZoneAssignment": [0, 1],
+                        "ZoneAssignment": [1, 2],
                         "SensorInputs": {
                             "SHTC1": {
                                 "Temperature_oC": 22.5,
@@ -34,7 +34,7 @@ def full_status_data():
                         },
                     },
                     {
-                        "ZoneAssignment": [2],
+                        "ZoneAssignment": [3],
                         "SensorInputs": {
                             "SHTC1": {
                                 "Temperature_oC": 23.0,
@@ -332,7 +332,7 @@ class TestStatusPeripheralMethods:
                 "AirconSystem": {
                     "Peripherals": [
                         {
-                            "ZoneAssignment": [0],
+                            "ZoneAssignment": [1],
                             "SensorInputs": {
                                 "SHTC1": {
                                     "Temperature_oC": 22.5,
@@ -356,15 +356,15 @@ class TestStatusPeripheralMethods:
         status = ActronAirStatus.model_validate(full_status_data)
         status.parse_nested_components()
 
-        # Zone 0 should have first peripheral
+        # Zone 0 should have first peripheral (ZoneAssignment [1, 2] → zones 0, 1)
         peripheral0 = status.get_peripheral_for_zone(0)
         assert peripheral0 is not None
-        assert 0 in peripheral0.zone_assignments
+        assert 1 in peripheral0.zone_assignments
 
-        # Zone 2 should have second peripheral
+        # Zone 2 should have second peripheral (ZoneAssignment [3] → zone 2)
         peripheral2 = status.get_peripheral_for_zone(2)
         assert peripheral2 is not None
-        assert 2 in peripheral2.zone_assignments
+        assert 3 in peripheral2.zone_assignments
 
         # Zone 99 shouldn't have any peripheral
         peripheral_none = status.get_peripheral_for_zone(99)
@@ -435,3 +435,118 @@ class TestStatusParseNestedComponents:
         assert status.master_info is None
         assert status.live_aircon is None
         assert status.alerts is None
+
+    def test_remote_zone_info_with_non_dict_entry_skips_all_zones(self):
+        """RemoteZoneInfo with non-dict entries is skipped entirely to preserve indices."""
+        status_data = {
+            "isOnline": True,
+            "lastKnownState": {
+                "RemoteZoneInfo": [
+                    {"ZoneNumber": 0, "LiveTemp_oC": 22.0, "EnabledZone": True, "CanOperate": True},
+                    None,
+                    {"ZoneNumber": 2, "LiveTemp_oC": 24.0, "EnabledZone": True, "CanOperate": True},
+                ],
+            },
+        }
+
+        status = ActronAirStatus.model_validate(status_data)
+        status.parse_nested_components()
+
+        # Non-dict entry means entire list is skipped to avoid index misalignment
+        assert len(status.remote_zone_info) == 0
+
+    def test_remote_zone_info_with_string_entry_skips_all_zones(self):
+        """RemoteZoneInfo with a string entry is skipped entirely."""
+        status_data = {
+            "isOnline": True,
+            "lastKnownState": {
+                "RemoteZoneInfo": [
+                    {"ZoneNumber": 0, "LiveTemp_oC": 22.0, "EnabledZone": True, "CanOperate": True},
+                    "bad_entry",
+                ],
+            },
+        }
+
+        status = ActronAirStatus.model_validate(status_data)
+        status.parse_nested_components()
+
+        assert len(status.remote_zone_info) == 0
+
+    def test_remote_zone_info_all_valid_dicts_parses_normally(self):
+        """RemoteZoneInfo with all valid dict entries parses normally."""
+        status_data = {
+            "isOnline": True,
+            "lastKnownState": {
+                "RemoteZoneInfo": [
+                    {"ZoneNumber": 0, "LiveTemp_oC": 22.0, "EnabledZone": True, "CanOperate": True},
+                    {
+                        "ZoneNumber": 1,
+                        "LiveTemp_oC": 23.0,
+                        "EnabledZone": False,
+                        "CanOperate": True,
+                    },
+                ],
+            },
+        }
+
+        status = ActronAirStatus.model_validate(status_data)
+        status.parse_nested_components()
+
+        assert len(status.remote_zone_info) == 2
+        assert status.remote_zone_info[0].zone_id == 0
+        assert status.remote_zone_info[1].zone_id == 1
+
+
+class TestZoneAssignmentMapping:
+    """Test that peripheral zone assignments use 1-based API convention."""
+
+    def test_peripheral_humidity_maps_to_correct_zone(self, full_status_data):
+        """Peripheral with ZoneAssignment [1, 2] maps humidity to zones 0 and 1."""
+        status = ActronAirStatus.model_validate(full_status_data)
+        status.parse_nested_components()
+
+        # First peripheral has ZoneAssignment [1, 2] → zones 0, 1
+        zone0 = status.remote_zone_info[0]
+        zone1 = status.remote_zone_info[1]
+        assert zone0.actual_humidity_pc == 55.0
+        assert zone1.actual_humidity_pc == 55.0
+
+        # Second peripheral has ZoneAssignment [3] → zone 2
+        zone2 = status.remote_zone_info[2]
+        assert zone2.actual_humidity_pc == 60.0
+
+    def test_get_peripheral_for_zone_uses_1_based_lookup(self):
+        """get_peripheral_for_zone converts 0-based zone_index to 1-based assignment."""
+        status = ActronAirStatus(
+            isOnline=True,
+            lastKnownState={
+                "AirconSystem": {
+                    "MasterSerial": "TEST",
+                    "Peripherals": [
+                        {
+                            "ZoneAssignment": [2],
+                            "SerialNumber": "P1",
+                            "SensorInputs": {
+                                "SHTC1": {
+                                    "Temperature_oC": 22.0,
+                                    "RelativeHumidity_pc": 50.0,
+                                }
+                            },
+                        }
+                    ],
+                },
+                "RemoteZoneInfo": [
+                    {"CanOperate": True, "LiveTemp_oC": 22.0},
+                    {"CanOperate": True, "LiveTemp_oC": 23.0},
+                ],
+            },
+        )
+        status.parse_nested_components()
+
+        # Zone index 1 (0-based) should find peripheral with ZoneAssignment [2]
+        result = status.get_peripheral_for_zone(1)
+        assert result is not None
+        assert result.serial_number == "P1"
+
+        # Zone index 0 should not find this peripheral
+        assert status.get_peripheral_for_zone(0) is None

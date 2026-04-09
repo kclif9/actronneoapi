@@ -6,6 +6,7 @@ import pytest
 
 from actron_neo_api.exceptions import ActronAirAPIError
 from actron_neo_api.models import ActronAirStatus, ActronAirZone
+from actron_neo_api.models.zone import ActronAirZoneSensor
 
 
 @pytest.fixture
@@ -641,3 +642,19 @@ class TestZoneTempLimitsFallback:
             }
         )
         assert zone.min_temp == 21.0
+
+
+class TestZoneSensorAliasParsing:
+    """Test that ZoneSensor fields parse from API aliases correctly."""
+
+    def test_signal_strength_parses_from_alias(self) -> None:
+        """signal_strength correctly parses from Signal_of3 alias."""
+        sensor = ActronAirZoneSensor.model_validate(
+            {"Signal_of3": "3", "Connected": True, "NV_Kind": "Wireless"}
+        )
+        assert sensor.signal_strength == "3"
+
+    def test_signal_strength_default_when_missing(self) -> None:
+        """signal_strength defaults to 'NA' when not in data."""
+        sensor = ActronAirZoneSensor.model_validate({})
+        assert sensor.signal_strength == "NA"

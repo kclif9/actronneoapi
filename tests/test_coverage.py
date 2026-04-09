@@ -164,7 +164,7 @@ class TestStatusPeripheralEdgeCases:
                     "MasterSerial": "TEST123",
                     "Peripherals": [
                         {
-                            "ZoneAssignment": [0],
+                            "ZoneAssignment": [1],
                             "SensorInputs": {
                                 "SHTC1": {
                                     "Temperature_oC": 22.5,
@@ -254,7 +254,7 @@ class TestStateManagerPeripheralMapping:
                     "MasterSerial": "TEST123",
                     "Peripherals": [
                         {
-                            "ZoneAssignment": [0],
+                            "ZoneAssignment": [1],
                             "SensorInputs": {},  # No humidity sensor
                         }
                     ],

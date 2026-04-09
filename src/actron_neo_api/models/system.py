@@ -44,9 +44,9 @@ class ActronAirOutdoorUnit(BaseModel):
     compressor speed, power consumption, and operational status.
     """
 
-    model_number: str | None = str(Field(None, alias="ModelNumber"))
+    model_number: str | None = Field(None, alias="ModelNumber")
     serial_number: str | None = Field(None, alias="SerialNumber")
-    software_version: str | None = str(Field(None, alias="SoftwareVersion"))
+    software_version: str | None = Field(None, alias="SoftwareVersion")
     comp_speed: float | None = Field(None, alias="CompSpeed")
     comp_power: int | None = Field(None, alias="CompPower")
     comp_running_pwm: int | None = Field(None, alias="CompRunningPWM")

@@ -991,3 +991,52 @@ class TestTokenRefreshLock:
 
         with pytest.raises(ActronAirAuthError, match="refresh failed"):
             await auth.ensure_token_valid()
+
+
+class TestOAuthClientErrorWrapping:
+    """Test that aiohttp.ClientError is wrapped into ActronAirAuthError."""
+
+    @pytest.mark.asyncio
+    async def test_request_device_code_wraps_client_error(self) -> None:
+        """request_device_code wraps aiohttp.ClientError in ActronAirAuthError."""
+        auth = ActronAirOAuth2DeviceCodeAuth("https://example.com", "test_client")
+
+        mock_session = AsyncMock()
+        mock_session.post = MagicMock(side_effect=aiohttp.ClientError("connection refused"))
+        mock_session.closed = False
+
+        auth._session = mock_session
+
+        with pytest.raises(ActronAirAuthError, match="Device code request failed"):
+            await auth.request_device_code()
+
+    @pytest.mark.asyncio
+    async def test_refresh_access_token_wraps_client_error(self) -> None:
+        """refresh_access_token wraps aiohttp.ClientError in ActronAirAuthError."""
+        auth = ActronAirOAuth2DeviceCodeAuth("https://example.com", "test_client")
+        auth.refresh_token = "test_refresh"
+
+        mock_session = AsyncMock()
+        mock_session.post = MagicMock(side_effect=aiohttp.ClientError("timeout"))
+        mock_session.closed = False
+
+        auth._session = mock_session
+
+        with pytest.raises(ActronAirAuthError, match="Token refresh request failed"):
+            await auth.refresh_access_token()
+
+    @pytest.mark.asyncio
+    async def test_get_user_info_wraps_client_error(self) -> None:
+        """get_user_info wraps aiohttp.ClientError in ActronAirAuthError."""
+        auth = ActronAirOAuth2DeviceCodeAuth("https://example.com", "test_client")
+        auth.access_token = "valid_token"
+        auth.token_expiry = time.time() + 3600
+
+        mock_session = AsyncMock()
+        mock_session.get = MagicMock(side_effect=aiohttp.ClientError("dns failure"))
+        mock_session.closed = False
+
+        auth._session = mock_session
+
+        with pytest.raises(ActronAirAuthError, match="User info request failed"):
+            await auth.get_user_info()

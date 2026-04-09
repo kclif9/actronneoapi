@@ -24,7 +24,7 @@ def sample_status_data() -> Dict[str, Any]:
                 "CanOperate": True,
                 "Peripherals": [
                     {
-                        "ZoneAssignment": [0, 1],
+                        "ZoneAssignment": [1, 2],
                         "SensorInputs": {
                             "SHTC1": {
                                 "Temperature_oC": 22.5,
