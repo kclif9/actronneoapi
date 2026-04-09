@@ -213,6 +213,24 @@ class TestSettingsAsyncSetTemperature:
         with pytest.raises(ValueError, match="No API reference available"):
             await settings_without_api.set_temperature(24.0)
 
+    @pytest.mark.asyncio
+    async def test_set_temperature_raises_in_fan_mode(
+        self, settings_with_api: ActronAirUserAirconSettings
+    ) -> None:
+        """Test setting temperature in FAN mode raises ValueError."""
+        settings_with_api.mode = "FAN"
+        with pytest.raises(ValueError, match="Cannot set temperature in FAN mode"):
+            await settings_with_api.set_temperature(22.0)
+
+    @pytest.mark.asyncio
+    async def test_set_temperature_raises_in_off_mode(
+        self, settings_with_api: ActronAirUserAirconSettings
+    ) -> None:
+        """Test setting temperature in OFF mode raises ValueError."""
+        settings_with_api.mode = "OFF"
+        with pytest.raises(ValueError, match="Cannot set temperature in OFF mode"):
+            await settings_with_api.set_temperature(22.0)
+
 
 class TestSettingsAsyncSetAwayMode:
     """Test async set_away_mode method."""

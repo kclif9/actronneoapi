@@ -72,7 +72,6 @@ class TestStateManager:
     def test_init(self, state_manager: StateManager) -> None:
         """Test StateManager initialization."""
         assert state_manager.status == {}
-        assert state_manager.latest_event_id == {}
         assert state_manager._observers == []
         assert state_manager._api is None
 
@@ -113,6 +112,28 @@ class TestStateManager:
         state_manager.add_observer(observer2)
         assert len(state_manager._observers) == 2
         assert observer2 in state_manager._observers
+
+    def test_remove_observer(self, state_manager: StateManager) -> None:
+        """Test removing a registered observer."""
+
+        def observer(serial: str, data: Dict[str, Any]) -> None:
+            pass
+
+        state_manager.add_observer(observer)
+        assert observer in state_manager._observers
+
+        state_manager.remove_observer(observer)
+        assert observer not in state_manager._observers
+
+    def test_remove_observer_not_registered(self, state_manager: StateManager) -> None:
+        """Test removing an unregistered observer is a no-op."""
+
+        def observer(serial: str, data: Dict[str, Any]) -> None:
+            pass
+
+        # Should not raise
+        state_manager.remove_observer(observer)
+        assert state_manager._observers == []
 
     def test_get_status(
         self, state_manager: StateManager, sample_status_data: Dict[str, Any]

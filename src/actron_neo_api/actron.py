@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections.abc import Awaitable, Callable
 from typing import Any, Literal
 
@@ -13,6 +14,10 @@ from .const import (
     BASE_URL_NIMBUS,
     BASE_URL_QUE,
     COMMAND_DEBOUNCE_SECONDS,
+    HTTP_CONNECT_TIMEOUT,
+    HTTP_TOTAL_TIMEOUT,
+    MAX_ERROR_RESPONSE_LENGTH,
+    OAUTH_CLIENT_ID,
     PLATFORM_NEO,
     PLATFORM_QUE,
 )
@@ -26,6 +31,8 @@ from .models import (
 )
 from .oauth import ActronAirOAuth2DeviceCodeAuth
 from .state import StateManager
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class _PendingBatch:
@@ -78,7 +85,25 @@ class CommandCoalescer:
         self._debounce = debounce_seconds
         self._batches: dict[str, _PendingBatch] = {}
 
+    @property
+    def debounce_seconds(self) -> float:
+        """Return the debounce window in seconds."""
+        return self._debounce
+
     # -- public -----------------------------------------------------------------
+
+    @staticmethod
+    def _flush_task_done(task: asyncio.Task[None]) -> None:
+        """Log unhandled errors from background flush tasks."""
+        if task.cancelled():
+            return
+        exc = task.exception()
+        if exc is not None:
+            _LOGGER.error(
+                "Command flush failed: %s",
+                exc,
+                exc_info=(type(exc), exc, exc.__traceback__),
+            )
 
     async def enqueue(self, serial_number: str, command: dict[str, Any]) -> None:
         """Enqueue a ``set-settings`` command for coalescing.
@@ -107,7 +132,8 @@ class CommandCoalescer:
             batch.timer.cancel()
 
         def _schedule_flush(sn: str = serial_number) -> None:
-            asyncio.ensure_future(self._flush(sn))
+            task = asyncio.ensure_future(self._flush(sn))
+            task.add_done_callback(self._flush_task_done)
 
         batch.timer = loop.call_later(self._debounce, _schedule_flush)
 
@@ -207,7 +233,7 @@ class ActronAirAPI:
 
     def __init__(
         self,
-        oauth2_client_id: str = "home_assistant",
+        oauth2_client_id: str = OAUTH_CLIENT_ID,
         refresh_token: str | None = None,
         platform: Literal["neo", "que"] | None = None,
         session: aiohttp.ClientSession | None = None,
@@ -434,7 +460,10 @@ class ActronAirAPI:
         """Get or create an aiohttp ClientSession."""
         async with self._session_lock:
             if self._session is None or self._session.closed:
-                self._session = aiohttp.ClientSession()
+                timeout = aiohttp.ClientTimeout(
+                    total=HTTP_TOTAL_TIMEOUT, connect=HTTP_CONNECT_TIMEOUT
+                )
+                self._session = aiohttp.ClientSession(timeout=timeout)
                 self._external_session = False
                 self.oauth2_auth.set_session(self._session)
                 return self._session
@@ -524,9 +553,9 @@ class ActronAirAPI:
 
         auth_header = self.oauth2_auth.authorization_header
 
-        # Prepare the request
+        # Prepare the request — clone headers to avoid mutating caller's dict
         url = f"{self.base_url}/{endpoint.lstrip('/')}"
-        request_headers = headers or {}
+        request_headers = dict(headers) if headers else {}
         request_headers.update(auth_header)
 
         # Get a session
@@ -539,6 +568,7 @@ class ActronAirAPI:
             ) as response:
                 if response.status == 401:
                     response_text = await response.text()
+                    safe_text = response_text[:MAX_ERROR_RESPONSE_LENGTH]
 
                     # If we have a refresh token and haven't retried yet, attempt refresh
                     if _retry and self.oauth2_auth.refresh_token:
@@ -556,16 +586,21 @@ class ActronAirAPI:
                             KeyError,
                         ) as refresh_error:
                             raise ActronAirAuthError(
-                                f"Authentication failed and token refresh failed: {response_text}"
+                                f"Authentication failed and token refresh failed: {safe_text}"
                             ) from refresh_error
 
-                    raise ActronAirAuthError(f"Authentication failed: {response_text}")
+                    raise ActronAirAuthError(f"Authentication failed: {safe_text}")
 
-                if response.status != 200:
+                if not 200 <= response.status < 300:
                     response_text = await response.text()
                     raise ActronAirAPIError(
-                        f"API request failed. Status: {response.status}, Response: {response_text}"
+                        f"API request failed. "
+                        f"Status: {response.status}, "
+                        f"Response: {response_text[:MAX_ERROR_RESPONSE_LENGTH]}"
                     )
+
+                if response.status == 204:
+                    return {}
 
                 result: dict[str, Any] = await response.json()
                 return result
@@ -654,7 +689,7 @@ class ActronAirAPI:
         serial_number = serial_number.lower()
 
         inner = command.get("command", {})
-        if inner.get("type") == "set-settings" and self._coalescer._debounce > 0:
+        if inner.get("type") == "set-settings" and self._coalescer.debounce_seconds > 0:
             await self._coalescer.enqueue(serial_number, command)
         else:
             await self._send_command_direct(serial_number, command)
@@ -745,5 +780,15 @@ class ActronAirAPI:
 
     @property
     def latest_event_id(self) -> dict[str, str]:
-        """Get the latest event ID for each system."""
-        return self.state_manager.latest_event_id.copy()
+        """Get the latest event ID for each system.
+
+        .. deprecated:: Event-based updates were removed in v0.5.
+            Event-based updates are no longer supported, so this property is
+            retained only for backward compatibility and always returns an
+            empty dictionary.
+
+        Returns:
+            An empty dictionary, because event IDs are no longer tracked.
+
+        """
+        return {}

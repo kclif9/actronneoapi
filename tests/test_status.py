@@ -213,7 +213,7 @@ class TestStatusProperties:
 
     def test_compressor_speed_without_outdoor_unit(self, minimal_status):
         """Test compressor_speed without outdoor unit data."""
-        assert minimal_status.compressor_speed == 0.0
+        assert minimal_status.compressor_speed is None
 
     def test_compressor_power_with_outdoor_unit(self, full_status_data):
         """Test compressor_power with outdoor unit data."""
@@ -224,7 +224,7 @@ class TestStatusProperties:
 
     def test_compressor_power_without_outdoor_unit(self, minimal_status):
         """Test compressor_power without outdoor unit data."""
-        assert minimal_status.compressor_power == 0
+        assert minimal_status.compressor_power is None
 
     def test_min_temp_with_limits(self, full_status_data):
         """Test min_temp property with NV_Limits."""

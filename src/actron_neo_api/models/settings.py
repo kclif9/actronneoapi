@@ -9,10 +9,14 @@ from pydantic import BaseModel, Field
 from ..const import (
     AC_MODE_AUTO,
     AC_MODE_COOL,
+    AC_MODE_FAN,
     AC_MODE_HEAT,
     AC_MODE_OFF,
     DEFAULT_MAX_SETPOINT,
     DEFAULT_MIN_SETPOINT,
+    TEMP_AUTO_HEAT_MIN,
+    TEMP_PHYSICAL_MAX,
+    TEMP_PHYSICAL_MIN,
 )
 
 if TYPE_CHECKING:
@@ -33,7 +37,7 @@ class ActronAirUserAirconSettings(BaseModel):
     away_mode: bool = Field(False, alias="AwayMode")
     temperature_setpoint_cool_c: float = Field(0.0, alias="TemperatureSetpoint_Cool_oC")
     temperature_setpoint_heat_c: float = Field(0.0, alias="TemperatureSetpoint_Heat_oC")
-    enabled_zones: list[bool] = Field([], alias="EnabledZones")
+    enabled_zones: list[bool] = Field(default_factory=list, alias="EnabledZones")
     quiet_mode_enabled: bool = Field(False, alias="QuietModeEnabled")
     turbo_mode_enabled: bool | dict[str, bool] = Field(
         default_factory=lambda: {"Enabled": False}, alias="TurboMode"
@@ -190,6 +194,10 @@ class ActronAirUserAirconSettings(BaseModel):
             raise ValueError("No mode available in settings")
 
         mode = self.mode.upper()
+
+        if mode in (AC_MODE_FAN, AC_MODE_OFF):
+            raise ValueError(f"Cannot set temperature in {mode} mode")
+
         command: dict[str, Any] = {"command": {"type": "set-settings"}}
 
         if mode == AC_MODE_COOL:
@@ -207,9 +215,7 @@ class ActronAirUserAirconSettings(BaseModel):
             # Apply the same differential to the new temperature
             # For AUTO mode, we assume the provided temperature is for cooling
             cool_setpoint = float(temperature)
-            heat_setpoint = float(
-                max(10.0, temperature - differential)
-            )  # Ensure we don't go below a reasonable minimum
+            heat_setpoint = float(max(TEMP_AUTO_HEAT_MIN, temperature - differential))
 
             command["command"]["UserAirconSettings.TemperatureSetpoint_Cool_oC"] = cool_setpoint
             command["command"]["UserAirconSettings.TemperatureSetpoint_Heat_oC"] = heat_setpoint
@@ -279,11 +285,7 @@ class ActronAirUserAirconSettings(BaseModel):
 
         """
         command = self._set_system_mode_command(mode)
-        if (
-            self._parent_status
-            and self._parent_status.api
-            and hasattr(self._parent_status, "serial_number")
-        ):
+        if self._parent_status and self._parent_status.api and self._parent_status.serial_number:
             await self._parent_status.api.send_command(self._parent_status.serial_number, command)
 
             # Optimistic local state update
@@ -306,11 +308,7 @@ class ActronAirUserAirconSettings(BaseModel):
 
         """
         command = self._set_fan_mode_command(fan_mode)
-        if (
-            self._parent_status
-            and self._parent_status.api
-            and hasattr(self._parent_status, "serial_number")
-        ):
+        if self._parent_status and self._parent_status.api and self._parent_status.serial_number:
             # Capture optimistic value before await to avoid races
             optimistic_fan = f"{fan_mode}+CONT" if self.continuous_fan_enabled else fan_mode
 
@@ -332,11 +330,7 @@ class ActronAirUserAirconSettings(BaseModel):
 
         """
         command = self._set_continuous_mode_command(enabled)
-        if (
-            self._parent_status
-            and self._parent_status.api
-            and hasattr(self._parent_status, "serial_number")
-        ):
+        if self._parent_status and self._parent_status.api and self._parent_status.serial_number:
             # Capture optimistic value before await to avoid races
             base = self.base_fan_mode
             optimistic_fan = f"{base}+CONT" if enabled else base
@@ -361,9 +355,10 @@ class ActronAirUserAirconSettings(BaseModel):
         # Validate temperature is a reasonable value
         if not isinstance(temperature, (int, float)):
             raise ValueError(f"Temperature must be a number, got {type(temperature).__name__}")
-        if not -50 <= temperature <= 100:  # Reasonable physical limits
+        if not TEMP_PHYSICAL_MIN <= temperature <= TEMP_PHYSICAL_MAX:
             raise ValueError(
-                f"Temperature {temperature}°C is outside reasonable range (-50 to 100)"
+                f"Temperature {temperature}°C is outside reasonable range "
+                f"({TEMP_PHYSICAL_MIN} to {TEMP_PHYSICAL_MAX})"
             )
 
         # Apply limits if they are available
@@ -382,11 +377,7 @@ class ActronAirUserAirconSettings(BaseModel):
                 temperature = max(min_temp, min(max_temp, temperature))
 
         command = self._set_temperature_command(temperature)
-        if (
-            self._parent_status
-            and self._parent_status.api
-            and hasattr(self._parent_status, "serial_number")
-        ):
+        if self._parent_status and self._parent_status.api and self._parent_status.serial_number:
             # Capture optimistic values before await to avoid races
             mode = self.mode.upper()
             optimistic_cool: float | None = None
@@ -398,7 +389,7 @@ class ActronAirUserAirconSettings(BaseModel):
             elif mode == AC_MODE_AUTO:
                 differential = self.temperature_setpoint_cool_c - self.temperature_setpoint_heat_c
                 optimistic_cool = temperature
-                optimistic_heat = max(10.0, temperature - differential)
+                optimistic_heat = max(TEMP_AUTO_HEAT_MIN, temperature - differential)
 
             await self._parent_status.api.send_command(self._parent_status.serial_number, command)
 
@@ -421,11 +412,7 @@ class ActronAirUserAirconSettings(BaseModel):
 
         """
         command = self._set_away_mode_command(enabled)
-        if (
-            self._parent_status
-            and self._parent_status.api
-            and hasattr(self._parent_status, "serial_number")
-        ):
+        if self._parent_status and self._parent_status.api and self._parent_status.serial_number:
             await self._parent_status.api.send_command(self._parent_status.serial_number, command)
 
             # Optimistic local state update
@@ -444,11 +431,7 @@ class ActronAirUserAirconSettings(BaseModel):
 
         """
         command = self._set_quiet_mode_command(enabled)
-        if (
-            self._parent_status
-            and self._parent_status.api
-            and hasattr(self._parent_status, "serial_number")
-        ):
+        if self._parent_status and self._parent_status.api and self._parent_status.serial_number:
             await self._parent_status.api.send_command(self._parent_status.serial_number, command)
 
             # Optimistic local state update
@@ -467,11 +450,7 @@ class ActronAirUserAirconSettings(BaseModel):
 
         """
         command = self._set_turbo_mode_command(enabled)
-        if (
-            self._parent_status
-            and self._parent_status.api
-            and hasattr(self._parent_status, "serial_number")
-        ):
+        if self._parent_status and self._parent_status.api and self._parent_status.serial_number:
             await self._parent_status.api.send_command(self._parent_status.serial_number, command)
 
             # Optimistic local state update

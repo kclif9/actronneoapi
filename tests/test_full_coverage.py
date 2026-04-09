@@ -9,6 +9,7 @@ import aiohttp
 import pytest
 
 from actron_neo_api import ActronAirAPI
+from actron_neo_api.actron import CommandCoalescer
 from actron_neo_api.exceptions import ActronAirAPIError, ActronAirAuthError
 from actron_neo_api.models import ActronAirStatus
 from actron_neo_api.models.system import ActronAirACSystem
@@ -40,7 +41,7 @@ class TestCoalescerFlushEdgeCases:
 
     @pytest.mark.asyncio
     async def test_flush_base_exception_propagates(self) -> None:
-        """Line 194: BaseException (not Exception) re-raises after setting futures."""
+        """BaseException (e.g. KeyboardInterrupt) resolves futures then re-raises."""
         from actron_neo_api.actron import CommandCoalescer, _PendingBatch
 
         send_fn = AsyncMock(side_effect=KeyboardInterrupt("interrupted"))
@@ -60,7 +61,7 @@ class TestCoalescerFlushEdgeCases:
         with pytest.raises(KeyboardInterrupt):
             await coalescer._flush("serial1")
 
-        # Future should have the exception set
+        # BaseException sets the exception on futures before re-raising
         assert future.done()
         with pytest.raises(KeyboardInterrupt):
             future.result()
@@ -613,12 +614,8 @@ class TestRefreshTokenEdgeCases:
         assert expiry >= before + 3500
 
     @pytest.mark.asyncio
-    async def test_access_token_none_after_refresh(self, mock_aiohttp_session: Any) -> None:
-        """Line 320: Force the post-refresh None check.
-
-        Use __setattr__ override to silently discard the token_expiry assignment
-        so the defensive check fires.
-        """
+    async def test_refresh_sets_tokens_atomically(self, mock_aiohttp_session: Any) -> None:
+        """Refresh atomically sets access_token, token_expiry, and authenticated_platform."""
         auth = ActronAirOAuth2DeviceCodeAuth("https://example.com", "client")
         auth.refresh_token = "refresh_tok"
 
@@ -632,20 +629,13 @@ class TestRefreshTokenEdgeCases:
             }
         )
 
-        original_setattr = auth.__class__.__setattr__
-
-        def intercepting_setattr(self: Any, name: str, value: Any) -> None:
-            """Silently drop the token_expiry assignment to force the None check."""
-            if name == "token_expiry":
-                return  # Don't store it, leave as None
-            original_setattr(self, name, value)
-
         with patch("aiohttp.ClientSession", return_value=mock_aiohttp_session(mock_resp)):
-            with patch.object(auth.__class__, "__setattr__", intercepting_setattr):
-                with pytest.raises(
-                    ActronAirAuthError, match="Access token or expiry missing after refresh"
-                ):
-                    await auth.refresh_access_token()
+            token, expiry = await auth.refresh_access_token()
+
+        assert token == "new_token"
+        assert auth.access_token == "new_token"
+        assert auth.token_expiry is not None
+        assert auth.authenticated_platform == "https://example.com"
 
 
 # ---------------------------------------------------------------------------
@@ -664,7 +654,9 @@ class TestEnsureTokenValidProactiveRefresh:
         # Token valid but expiring soon (within 15 min)
         auth.token_expiry = time.time() + 600
 
-        auth.refresh_access_token = AsyncMock(side_effect=ActronAirAuthError("Refresh server down"))
+        auth._refresh_access_token_unlocked = AsyncMock(
+            side_effect=ActronAirAuthError("Refresh server down")
+        )
 
         # Should succeed because token is still valid (not expired)
         result = await auth.ensure_token_valid()
@@ -684,7 +676,7 @@ class TestEnsureTokenValidProactiveRefresh:
             auth.token_expiry = time.time() + 3600
             return "", 0.0
 
-        auth.refresh_access_token = bad_refresh  # type: ignore[assignment]
+        auth._refresh_access_token_unlocked = bad_refresh  # type: ignore[assignment]
 
         with pytest.raises(ActronAirAuthError, match="Access token is not available"):
             await auth.ensure_token_valid()
@@ -768,3 +760,74 @@ class TestExtractPeripheralHumidity:
             {"SensorInputs": {"SHTC1": {"RelativeHumidity_pc": -5.0}}}
         )
         assert result is None
+
+
+# ---------------------------------------------------------------------------
+# actron.py – _flush_task_done callback (lines 99, 102)
+# ---------------------------------------------------------------------------
+
+
+class TestFlushTaskDoneCallback:
+    """Test CommandCoalescer._flush_task_done static method."""
+
+    @pytest.mark.asyncio
+    async def test_flush_task_done_logs_exception(self) -> None:
+        """Task that raised an exception is logged via _LOGGER.error."""
+
+        async def _raise() -> None:
+            raise RuntimeError("boom")
+
+        task: asyncio.Task[None] = asyncio.get_running_loop().create_task(_raise())
+        await asyncio.sleep(0)  # let task complete
+
+        with patch("actron_neo_api.actron._LOGGER") as mock_logger:
+            CommandCoalescer._flush_task_done(task)
+            mock_logger.error.assert_called_once()
+            assert "Command flush failed" in mock_logger.error.call_args.args[0]
+
+    @pytest.mark.asyncio
+    async def test_flush_task_done_cancelled_noop(self) -> None:
+        """Cancelled task returns without logging."""
+        task: asyncio.Task[None] = asyncio.get_running_loop().create_task(asyncio.sleep(10))
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+        with patch("actron_neo_api.actron._LOGGER") as mock_logger:
+            CommandCoalescer._flush_task_done(task)
+            mock_logger.error.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# actron.py – _make_request 204 response (line 597)
+# ---------------------------------------------------------------------------
+
+
+class TestMakeRequest204Response:
+    """Test _make_request returns empty dict for 204 No Content."""
+
+    @pytest.mark.asyncio
+    async def test_204_returns_empty_dict(self) -> None:
+        """204 response returns {} without calling response.json()."""
+        api = ActronAirAPI(refresh_token="test_refresh")
+        api._initialized = True
+        api.oauth2_auth.access_token = "valid_token"
+        api.oauth2_auth.token_expiry = time.time() + 3600
+
+        mock_response = AsyncMock()
+        mock_response.status = 204
+        mock_response.json = AsyncMock()
+
+        mock_ctx = AsyncMock()
+        mock_ctx.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_ctx.__aexit__ = AsyncMock(return_value=None)
+
+        session = MagicMock()
+        session.closed = False
+        session.request = MagicMock(return_value=mock_ctx)
+        api._session = session
+
+        result = await api._make_request("delete", "some/endpoint")
+
+        assert result == {}
+        mock_response.json.assert_not_called()
