@@ -148,7 +148,7 @@ def min_temp(self) -> float:
     try:
         return self.last_known_state["NV_Limits"]["UserSetpoint_oC"]["setCool_Min"]
     except (KeyError, TypeError):
-        return DEFAULT_MIN_SETPOINT  # Sensible default
+        return 16.0  # Sensible default
 ```
 
 ### 6. Testing Requirements
