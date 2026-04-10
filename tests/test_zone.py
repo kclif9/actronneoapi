@@ -569,3 +569,65 @@ class TestZoneSensorAliasParsing:
         """signal_strength defaults to 'NA' when not in data."""
         sensor = ActronAirZoneSensor.model_validate({})
         assert sensor.signal_strength == "NA"
+
+
+class TestZoneCapabilityFields:
+    """Test zone capability fields parse from API aliases correctly."""
+
+    @staticmethod
+    def _make_zone(zone_data: dict[str, Any]) -> ActronAirZone:
+        """Create a zone with the given RemoteZoneInfo data."""
+        status = ActronAirStatus(
+            isOnline=True,
+            lastKnownState={
+                "UserAirconSettings": {
+                    "isOn": True,
+                    "Mode": "COOL",
+                    "EnabledZones": [True],
+                },
+                "RemoteZoneInfo": [zone_data],
+            },
+        )
+        return status.remote_zone_info[0]
+
+    def test_capabilities_parse_from_aliases(self) -> None:
+        """Zone capability fields parse from their NV_ aliases."""
+        zone = self._make_zone(
+            {
+                "LiveTemp_oC": 22.0,
+                "CanOperate": True,
+                "NV_VAV": True,
+                "NV_ITC": True,
+                "NV_ITD": True,
+                "NV_IHD": True,
+                "NV_IAC": True,
+            }
+        )
+        assert zone.variable_air_volume is True
+        assert zone.individual_temperature_control is True
+        assert zone.individual_temperature_deadband is True
+        assert zone.integrated_humidity_tracking is True
+        assert zone.indoor_air_compensation is True
+
+    def test_capabilities_default_to_false(self) -> None:
+        """Zone capability fields default to False when not present."""
+        zone = self._make_zone({"LiveTemp_oC": 22.0, "CanOperate": True})
+        assert zone.variable_air_volume is False
+        assert zone.individual_temperature_control is False
+        assert zone.individual_temperature_deadband is False
+        assert zone.integrated_humidity_tracking is False
+        assert zone.indoor_air_compensation is False
+
+    def test_mixed_capabilities(self) -> None:
+        """Capabilities can be independently set."""
+        zone = self._make_zone(
+            {
+                "LiveTemp_oC": 22.0,
+                "CanOperate": True,
+                "NV_IHD": True,
+                "NV_VAV": False,
+            }
+        )
+        assert zone.variable_air_volume is False
+        assert zone.individual_temperature_control is False
+        assert zone.integrated_humidity_tracking is True
