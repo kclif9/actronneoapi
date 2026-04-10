@@ -135,6 +135,24 @@ class ActronAirACSystem(BaseModel):
         """
         self._parent_status = parent
 
+    def _set_system_mode_command(self, mode_upper: str) -> dict[str, Any]:
+        """Build command dict for setting the system mode.
+
+        Args:
+            mode_upper: Validated, upper-cased mode string
+
+        Returns:
+            Command dictionary ready for ``send_command``
+
+        """
+        is_on = mode_upper != AC_MODE_OFF
+        command: dict[str, Any] = {
+            "command": {"UserAirconSettings.isOn": is_on, "type": "set-settings"}
+        }
+        if is_on:
+            command["command"]["UserAirconSettings.Mode"] = mode_upper
+        return command
+
     async def set_system_mode(self, mode: str) -> None:
         """Set the system mode for this AC unit.
 
@@ -183,17 +201,12 @@ class ActronAirACSystem(BaseModel):
         if not serial:
             raise ValueError("No serial number available")
 
-        # Determine if system should be on or off based on mode
-        is_on = mode_upper != AC_MODE_OFF
-
-        command = {"command": {"UserAirconSettings.isOn": is_on, "type": "set-settings"}}
-
-        if is_on:
-            command["command"]["UserAirconSettings.Mode"] = mode_upper
+        command = self._set_system_mode_command(mode_upper)
 
         await self._parent_status.api.send_command(serial, command)
 
         # Optimistic local state update
+        is_on = mode_upper != AC_MODE_OFF
         if is_on:
             self._parent_status.user_aircon_settings.is_on = True
             self._parent_status.user_aircon_settings.mode = mode_upper

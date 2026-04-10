@@ -178,18 +178,18 @@ class TestZoneAsyncEnable:
 
 
 class TestZoneSetEnableCommand:
-    """Test set_enable_command method edge cases."""
+    """Test _set_enable_command method edge cases."""
 
     def test_set_enable_command_out_of_range(self, zone_with_api: ActronAirZone) -> None:
-        """Test set_enable_command with zone_id out of range."""
+        """Test _set_enable_command with zone_id out of range."""
         # Manually set zone_id to invalid value
         zone_with_api.zone_id = 10  # Out of range (only 3 zones)
 
         with pytest.raises(ValueError, match="Zone index .* out of range"):
-            zone_with_api.set_enable_command(True)
+            zone_with_api._set_enable_command(True)
 
     def test_set_enable_command_without_parent(self) -> None:
-        """Test set_enable_command without parent status."""
+        """Test _set_enable_command without parent status."""
         zone = ActronAirZone(
             zone_id=0,
             zone_number=0,
@@ -199,10 +199,10 @@ class TestZoneSetEnableCommand:
         )
 
         with pytest.raises(RuntimeError, match="Zone must be attached to a parent status"):
-            zone.set_enable_command(True)
+            zone._set_enable_command(True)
 
     def test_set_enable_command_empty_enabled_zones(self) -> None:
-        """Test set_enable_command when enabled_zones is empty (no real data parsed)."""
+        """Test _set_enable_command when enabled_zones is empty (no real data parsed)."""
         status = ActronAirStatus(
             isOnline=True,
             lastKnownState={
@@ -214,10 +214,10 @@ class TestZoneSetEnableCommand:
         zone = status.remote_zone_info[0]
 
         with pytest.raises(ValueError, match="No enabled zones available"):
-            zone.set_enable_command(True)
+            zone._set_enable_command(True)
 
     def test_set_temperature_command_empty_mode(self) -> None:
-        """Test set_temperature_command when mode is empty (no real data parsed)."""
+        """Test _set_temperature_command when mode is empty (no real data parsed)."""
         status = ActronAirStatus(
             isOnline=True,
             lastKnownState={
@@ -229,7 +229,7 @@ class TestZoneSetEnableCommand:
         zone = status.remote_zone_info[0]
 
         with pytest.raises(ValueError, match="No AC mode available"):
-            zone.set_temperature_command(22.0)
+            zone._set_temperature_command(22.0)
 
 
 class TestZoneOptimisticStateNotUpdatedOnError:
