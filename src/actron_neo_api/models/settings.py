@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from ..const import (
     AC_MODE_AUTO,
     AC_MODE_COOL,
+    AC_MODE_DRY,
     AC_MODE_FAN,
     AC_MODE_HEAT,
     AC_MODE_OFF,
@@ -21,6 +22,30 @@ from ..const import (
 
 if TYPE_CHECKING:
     from .status import ActronAirStatus
+
+# Mapping from ModeSupport keys to AC_MODE constants
+_MODE_SUPPORT_MAP: dict[str, str] = {
+    "Cool": AC_MODE_COOL,
+    "Heat": AC_MODE_HEAT,
+    "Fan": AC_MODE_FAN,
+    "Auto": AC_MODE_AUTO,
+    "Dry": AC_MODE_DRY,
+}
+
+
+class ActronAirModeSupport(BaseModel):
+    """Mode support flags from the AC system.
+
+    Indicates which HVAC modes the system hardware supports.
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    cool: bool = Field(True, alias="Cool")
+    heat: bool = Field(True, alias="Heat")
+    fan: bool = Field(True, alias="Fan")
+    auto: bool = Field(True, alias="Auto")
+    dry: bool = Field(False, alias="Dry")
 
 
 class ActronAirUserAirconSettings(BaseModel):
@@ -47,6 +72,10 @@ class ActronAirUserAirconSettings(BaseModel):
     turbo_mode_enabled: bool | dict[str, bool] = Field(
         default_factory=lambda: {"Enabled": False}, alias="TurboMode"
     )
+    mode_support: ActronAirModeSupport = Field(
+        default_factory=lambda: ActronAirModeSupport.model_validate({}),
+        alias="ModeSupport",
+    )
     _parent_status: "ActronAirStatus | None" = None
 
     def set_parent_status(self, parent: "ActronAirStatus") -> None:
@@ -57,6 +86,24 @@ class ActronAirUserAirconSettings(BaseModel):
 
         """
         self._parent_status = parent
+
+    @property
+    def supported_modes(self) -> list[str]:
+        """Get the list of HVAC modes supported by this system.
+
+        The returned modes depend on the hardware's ``ModeSupport`` flags.
+        Possible values are ``COOL``, ``HEAT``, ``FAN``, ``AUTO``, and ``DRY``.
+
+        Returns:
+            List of supported mode strings
+                (e.g., ``['COOL', 'HEAT', 'FAN', 'AUTO', 'DRY']``)
+
+        """
+        return [
+            mode_const
+            for key, mode_const in _MODE_SUPPORT_MAP.items()
+            if getattr(self.mode_support, key.lower(), False)
+        ]
 
     @property
     def current_setpoint(self) -> float:

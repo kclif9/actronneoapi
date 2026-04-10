@@ -485,3 +485,91 @@ class TestOptimisticStateOff:
         await settings_with_api.set_turbo_mode(True)
 
         assert settings_with_api.turbo_mode_enabled is True
+
+
+class TestModeSupport:
+    """Test ModeSupport parsing and supported_modes property."""
+
+    def test_default_mode_support(self) -> None:
+        """Default mode support includes cool, heat, fan, auto but not dry."""
+        settings = ActronAirUserAirconSettings.model_validate({})
+        assert "COOL" in settings.supported_modes
+        assert "HEAT" in settings.supported_modes
+        assert "FAN" in settings.supported_modes
+        assert "AUTO" in settings.supported_modes
+        assert "DRY" not in settings.supported_modes
+
+    def test_mode_support_from_api_data(self) -> None:
+        """Mode support is parsed from API data."""
+        settings = ActronAirUserAirconSettings.model_validate(
+            {
+                "isOn": True,
+                "Mode": "COOL",
+                "FanMode": "AUTO",
+                "ModeSupport": {
+                    "Cool": True,
+                    "Heat": True,
+                    "Fan": True,
+                    "Auto": True,
+                    "Dry": False,
+                },
+            }
+        )
+        assert "COOL" in settings.supported_modes
+        assert "HEAT" in settings.supported_modes
+        assert "FAN" in settings.supported_modes
+        assert "AUTO" in settings.supported_modes
+        assert "DRY" not in settings.supported_modes
+
+    def test_mode_support_with_dry_enabled(self) -> None:
+        """Dry mode appears in supported_modes when enabled."""
+        settings = ActronAirUserAirconSettings.model_validate(
+            {
+                "ModeSupport": {
+                    "Cool": True,
+                    "Heat": True,
+                    "Fan": True,
+                    "Auto": True,
+                    "Dry": True,
+                },
+            }
+        )
+        assert "DRY" in settings.supported_modes
+
+    def test_mode_support_partial(self) -> None:
+        """Only supported modes are returned when some are disabled."""
+        settings = ActronAirUserAirconSettings.model_validate(
+            {
+                "ModeSupport": {
+                    "Cool": True,
+                    "Heat": False,
+                    "Fan": True,
+                    "Auto": False,
+                    "Dry": False,
+                },
+            }
+        )
+        assert settings.supported_modes == ["COOL", "FAN"]
+
+    def test_mode_support_via_status_parsing(self) -> None:
+        """Mode support is parsed correctly through ActronAirStatus."""
+        status = ActronAirStatus(
+            isOnline=True,
+            lastKnownState={
+                "UserAirconSettings": {
+                    "isOn": True,
+                    "Mode": "COOL",
+                    "FanMode": "AUTO",
+                    "ModeSupport": {
+                        "Cool": True,
+                        "Heat": True,
+                        "Fan": True,
+                        "Auto": True,
+                        "Dry": False,
+                    },
+                },
+            },
+        )
+        status.parse_nested_components()
+        assert "COOL" in status.user_aircon_settings.supported_modes
+        assert "DRY" not in status.user_aircon_settings.supported_modes
