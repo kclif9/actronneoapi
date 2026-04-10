@@ -144,6 +144,11 @@ class ActronAirZone(BaseModel):
     temperature_setpoint_cool_c: float = Field(0.0, alias="TemperatureSetpoint_Cool_oC")
     temperature_setpoint_heat_c: float = Field(0.0, alias="TemperatureSetpoint_Heat_oC")
     sensors: dict[str, ActronAirZoneSensor] = Field(default_factory=dict, alias="Sensors")
+    variable_air_volume: bool = Field(False, alias="NV_VAV")
+    individual_temperature_control: bool = Field(False, alias="NV_ITC")
+    individual_temperature_deadband: bool = Field(False, alias="NV_ITD")
+    integrated_humidity_tracking: bool = Field(False, alias="NV_IHD")
+    indoor_air_compensation: bool = Field(False, alias="NV_IAC")
     zone_id: int
     _parent_status: "ActronAirStatus | None" = None
 
