@@ -155,10 +155,13 @@ class CommandCoalescer:
                 batch.timer.cancel()
             await self._flush(serial)
 
-        # Await any in-flight flush tasks that were scheduled before this call
+        # Await any in-flight flush tasks that were scheduled before this call.
+        # Snapshot first — done-callbacks mutate the set concurrently.
         if self._pending_tasks:
-            await asyncio.gather(*self._pending_tasks, return_exceptions=True)
-            self._pending_tasks.clear()
+            pending = list(self._pending_tasks)
+            await asyncio.gather(*pending, return_exceptions=True)
+            for task in pending:
+                self._pending_tasks.discard(task)
 
     # -- internals --------------------------------------------------------------
 
