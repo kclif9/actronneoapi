@@ -300,6 +300,62 @@ class TestCommandCoalescer:
         assert sent["UserAirconSettings.EnabledZones"] == [False, False, True, True]
 
 
+class TestCommandCoalescerTaskTracking:
+    """Tests for flush task tracking and cleanup."""
+
+    @pytest.mark.asyncio
+    async def test_pending_tasks_set_initialised(self) -> None:
+        """The _pending_tasks set is initialised empty."""
+        send_fn = AsyncMock()
+        sm = StateManager()
+        coalescer = CommandCoalescer(send_fn, sm, debounce_seconds=0.05)
+        assert isinstance(coalescer._pending_tasks, set)
+        assert len(coalescer._pending_tasks) == 0
+
+    @pytest.mark.asyncio
+    async def test_flush_task_tracked_and_discarded(self) -> None:
+        """Flush tasks are added to _pending_tasks and discarded on completion."""
+        send_fn = AsyncMock()
+        sm = _state_manager_with_zones("abc", [True, True])
+        coalescer = CommandCoalescer(send_fn, sm, debounce_seconds=0.05)
+
+        await coalescer.enqueue("abc", _make_zone_command([False, True]))
+
+        # Allow done-callbacks to execute
+        await asyncio.sleep(0)
+
+        # After the enqueue completes the flush has finished and the
+        # done-callback should have discarded the task from the set.
+        assert len(coalescer._pending_tasks) == 0
+
+    @pytest.mark.asyncio
+    async def test_flush_all_awaits_inflight_tasks(self) -> None:
+        """flush_all awaits a genuinely in-flight background flush task."""
+        gate = asyncio.Event()
+
+        async def _blocking_send(serial: str, cmd: dict[str, Any]) -> None:
+            await gate.wait()
+
+        sm = _state_manager_with_zones("abc", [True, True])
+        coalescer = CommandCoalescer(_blocking_send, sm, debounce_seconds=0.02)
+
+        # Start enqueue — it will block on _blocking_send until gate is set
+        enqueue_task = asyncio.create_task(
+            coalescer.enqueue("abc", _make_zone_command([False, True]))
+        )
+        # Let the debounce timer fire and create the background flush task
+        await asyncio.sleep(0.05)
+        assert len(coalescer._pending_tasks) > 0
+
+        # Release the gate so the flush can finish, then flush_all
+        gate.set()
+        await coalescer.flush_all()
+        await enqueue_task
+
+        # After flush_all, no pending tasks should remain
+        assert len(coalescer._pending_tasks) == 0
+
+
 class TestActronAirAPISendCommandCoalescing:
     """Integration tests for command coalescing through ActronAirAPI.send_command."""
 
