@@ -11,8 +11,8 @@ class ActronAirDeviceCode(BaseModel):
     device_code: str = Field(..., description="Device verification code")
     user_code: str = Field(..., description="User verification code")
     verification_uri: str = Field(..., description="Verification URI")
-    verification_uri_complete: str | None = Field(
-        None, description="Complete verification URI with user code"
+    verification_uri_complete: str = Field(
+        ..., description="Complete verification URI with user code"
     )
     expires_in: int = Field(..., description="Expiration time in seconds")
     interval: int = Field(..., description="Polling interval in seconds")
