@@ -773,6 +773,7 @@ class TestActronAirAPIOAuth2Methods:
             device_code="test",
             user_code="TEST",
             verification_uri="http://test",
+            verification_uri_complete="http://test?user_code=TEST",
             expires_in=600,
             interval=5,
         )
