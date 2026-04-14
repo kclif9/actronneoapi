@@ -245,7 +245,7 @@ class ActronAirZone(BaseModel):
         return max(limit, target - variance)
 
     # Command generation methods
-    def set_temperature_command(self, temperature: float) -> dict[str, Any]:
+    def _set_temperature_command(self, temperature: float) -> dict[str, Any]:
         """Create a command to set temperature for this zone based on the current AC mode.
 
         Args:
@@ -290,7 +290,7 @@ class ActronAirZone(BaseModel):
 
         return {"command": command}
 
-    def set_enable_command(self, is_enabled: bool) -> dict[str, Any]:
+    def _set_enable_command(self, is_enabled: bool) -> dict[str, Any]:
         """Create a command to enable or disable this zone.
 
         Args:
@@ -351,7 +351,7 @@ class ActronAirZone(BaseModel):
         # Ensure temperature is within valid range for this zone
         temperature = max(self.min_temp, min(self.max_temp, temperature))
 
-        command = self.set_temperature_command(temperature)
+        command = self._set_temperature_command(temperature)
         if self.parent_status.api and self.parent_status.serial_number:
             # Capture optimistic values before await to avoid races
             settings = self.parent_status.user_aircon_settings
@@ -390,7 +390,7 @@ class ActronAirZone(BaseModel):
             is_enabled: True to enable, False to disable
 
         """
-        command = self.set_enable_command(is_enabled)
+        command = self._set_enable_command(is_enabled)
         if self.parent_status.api and self.parent_status.serial_number:
             await self.parent_status.api.send_command(self.parent_status.serial_number, command)
 
