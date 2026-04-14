@@ -84,6 +84,7 @@ class CommandCoalescer:
         self._state_manager = state_manager
         self._debounce = debounce_seconds
         self._batches: dict[str, _PendingBatch] = {}
+        self._pending_tasks: set[asyncio.Task[None]] = set()
 
     @property
     def debounce_seconds(self) -> float:
@@ -133,6 +134,8 @@ class CommandCoalescer:
 
         def _schedule_flush(sn: str = serial_number) -> None:
             task = asyncio.ensure_future(self._flush(sn))
+            self._pending_tasks.add(task)
+            task.add_done_callback(self._pending_tasks.discard)
             task.add_done_callback(self._flush_task_done)
 
         batch.timer = loop.call_later(self._debounce, _schedule_flush)
@@ -140,13 +143,22 @@ class CommandCoalescer:
         await future
 
     async def flush_all(self) -> None:
-        """Flush every pending batch immediately, cancelling debounce timers."""
+        """Flush every pending batch immediately, cancelling debounce timers.
+
+        Also awaits any in-flight flush tasks so that all pending work
+        completes before this method returns.
+        """
         serials = list(self._batches.keys())
         for serial in serials:
             batch = self._batches.get(serial)
             if batch and batch.timer:
                 batch.timer.cancel()
             await self._flush(serial)
+
+        # Await any in-flight flush tasks that were scheduled before this call
+        if self._pending_tasks:
+            await asyncio.gather(*self._pending_tasks, return_exceptions=True)
+            self._pending_tasks.clear()
 
     # -- internals --------------------------------------------------------------
 
