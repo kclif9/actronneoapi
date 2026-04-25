@@ -22,7 +22,12 @@ AC_MODE_DRY: Final[str] = "DRY"
 AC_MODE_OFF: Final[str] = "OFF"
 
 # Fallback supported modes for controllers (e.g. Que) that don't report ModeSupport
-FALLBACK_SUPPORTED_MODES: Final[list[str]] = [AC_MODE_COOL, AC_MODE_HEAT, AC_MODE_FAN, AC_MODE_AUTO]
+FALLBACK_SUPPORTED_MODES: Final[tuple[str, ...]] = (
+    AC_MODE_COOL,
+    AC_MODE_HEAT,
+    AC_MODE_FAN,
+    AC_MODE_AUTO,
+)
 
 # HTTP timeout defaults (seconds)
 HTTP_CONNECT_TIMEOUT: Final[float] = 10.0
