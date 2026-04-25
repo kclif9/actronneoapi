@@ -15,6 +15,7 @@ from ..const import (
     AC_MODE_OFF,
     DEFAULT_MAX_SETPOINT,
     DEFAULT_MIN_SETPOINT,
+    FALLBACK_SUPPORTED_MODES,
     TEMP_AUTO_HEAT_MIN,
     TEMP_PHYSICAL_MAX,
     TEMP_PHYSICAL_MIN,
@@ -72,8 +73,8 @@ class ActronAirUserAirconSettings(BaseModel):
     turbo_mode_enabled: bool | dict[str, bool] = Field(
         default_factory=lambda: {"Enabled": False}, alias="TurboMode"
     )
-    mode_support: ActronAirModeSupport = Field(
-        default_factory=lambda: ActronAirModeSupport.model_validate({}),
+    mode_support: ActronAirModeSupport | None = Field(
+        None,
         alias="ModeSupport",
     )
     _parent_status: "ActronAirStatus | None" = None
@@ -94,11 +95,17 @@ class ActronAirUserAirconSettings(BaseModel):
         The returned modes depend on the hardware's ``ModeSupport`` flags.
         Possible values are ``COOL``, ``HEAT``, ``FAN``, ``AUTO``, and ``DRY``.
 
+        When the controller does not report ``ModeSupport`` (e.g. Que
+        controllers), :data:`~actron_neo_api.const.FALLBACK_SUPPORTED_MODES`
+        is returned instead (all modes except DRY).
+
         Returns:
             List of supported mode strings
                 (e.g., ``['COOL', 'HEAT', 'FAN', 'AUTO', 'DRY']``)
 
         """
+        if self.mode_support is None:
+            return list(FALLBACK_SUPPORTED_MODES)
         return [
             mode_const
             for key, mode_const in _MODE_SUPPORT_MAP.items()

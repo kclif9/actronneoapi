@@ -490,13 +490,13 @@ class TestOptimisticStateOff:
 class TestModeSupport:
     """Test ModeSupport parsing and supported_modes property."""
 
-    def test_default_mode_support(self) -> None:
-        """Default mode support includes cool, heat, fan, auto but not dry."""
+    def test_fallback_when_mode_support_missing(self) -> None:
+        """Fallback modes used when ModeSupport is not provided (e.g. Que controllers)."""
+        from actron_neo_api.const import FALLBACK_SUPPORTED_MODES
+
         settings = ActronAirUserAirconSettings.model_validate({})
-        assert "COOL" in settings.supported_modes
-        assert "HEAT" in settings.supported_modes
-        assert "FAN" in settings.supported_modes
-        assert "AUTO" in settings.supported_modes
+        assert settings.mode_support is None
+        assert settings.supported_modes == list(FALLBACK_SUPPORTED_MODES)
         assert "DRY" not in settings.supported_modes
 
     def test_mode_support_from_api_data(self) -> None:
