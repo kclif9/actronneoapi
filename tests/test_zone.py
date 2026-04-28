@@ -555,6 +555,56 @@ class TestZoneTempLimitsHeatMode:
         assert zone.min_temp == 22.0
 
 
+class TestZoneCurrentSetpoint:
+    """Test current_setpoint property returns mode-aware setpoint."""
+
+    @staticmethod
+    def _make_zone(mode: str, cool: float, heat: float) -> ActronAirZone:
+        """Create a zone with the given mode and setpoints."""
+        status = ActronAirStatus(
+            isOnline=True,
+            lastKnownState={
+                "UserAirconSettings": {
+                    "isOn": True,
+                    "Mode": mode,
+                    "EnabledZones": [True],
+                    "TemperatureSetpoint_Cool_oC": cool,
+                    "TemperatureSetpoint_Heat_oC": heat,
+                },
+                "RemoteZoneInfo": [
+                    {
+                        "ZoneNumber": 0,
+                        "LiveTemp_oC": 22.0,
+                        "CanOperate": True,
+                        "TemperatureSetpoint_Cool_oC": cool,
+                        "TemperatureSetpoint_Heat_oC": heat,
+                    }
+                ],
+            },
+        )
+        return status.remote_zone_info[0]
+
+    def test_cool_mode_returns_cool_setpoint(self) -> None:
+        """In COOL mode, current_setpoint returns the cooling setpoint."""
+        zone = self._make_zone("COOL", cool=24.0, heat=20.0)
+        assert zone.current_setpoint == 24.0
+
+    def test_heat_mode_returns_heat_setpoint(self) -> None:
+        """In HEAT mode, current_setpoint returns the heating setpoint."""
+        zone = self._make_zone("HEAT", cool=24.0, heat=20.0)
+        assert zone.current_setpoint == 20.0
+
+    def test_auto_mode_returns_cool_setpoint(self) -> None:
+        """In AUTO mode, current_setpoint returns the cooling setpoint."""
+        zone = self._make_zone("AUTO", cool=24.0, heat=20.0)
+        assert zone.current_setpoint == 24.0
+
+    def test_fan_mode_returns_cool_setpoint(self) -> None:
+        """In FAN mode, current_setpoint returns the cooling setpoint."""
+        zone = self._make_zone("FAN", cool=24.0, heat=20.0)
+        assert zone.current_setpoint == 24.0
+
+
 class TestZoneSensorAliasParsing:
     """Test that ZoneSensor fields parse from API aliases correctly."""
 
