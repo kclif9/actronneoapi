@@ -219,6 +219,22 @@ class ActronAirZone(BaseModel):
         return self.live_humidity_pc
 
     @property
+    def current_setpoint(self) -> float:
+        """Get the active temperature setpoint based on the current AC mode.
+
+        Returns the heating setpoint when in HEAT mode, otherwise the
+        cooling setpoint (COOL, AUTO, FAN, etc.).
+
+        Returns:
+            The active temperature setpoint in degrees Celsius
+
+        """
+        settings = self.parent_status.user_aircon_settings
+        if settings.mode.upper() == AC_MODE_HEAT:
+            return self.temperature_setpoint_heat_c
+        return self.temperature_setpoint_cool_c
+
+    @property
     def max_temp(self) -> float:
         """Return the maximum temperature that can be set.
 
