@@ -6,15 +6,20 @@ build-backend = "hatchling.build"
 name = "actron-neo-api"
 dynamic = ["version"]
 authors = [
-  { name="Kurt Chrisford", email="soft.year7030@fastmail.com" },
+  { name = "Kurt Chrisford", email = "soft.year7030@fastmail.com" },
 ]
 description = "Python API wrapper for the Actron Air API, supporting Neo and Que systems."
 readme = "README.md"
+license = { text = "MIT" }
 requires-python = ">=3.12"
 classifiers = [
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
+    "Typing :: Typed",
+    "Framework :: Pydantic :: 2",
 ]
 dependencies = [
     "aiohttp>=3.8.0",
@@ -23,6 +28,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+    "bandit[toml]>=1.8.0",
     "mypy>=1.11.0",
     "pytest>=8.0.0",
     "pytest-asyncio>=0.24.0",
@@ -34,19 +40,28 @@ dev = [
 [project.urls]
 Homepage = "https://github.com/kclif9/actronneoapi"
 Issues = "https://github.com/kclif9/actronneoapi/issues"
+Changelog = "https://github.com/kclif9/actronneoapi/blob/main/CHANGELOG.md"
 
+# -- Build -----------------------------------------------------------------
 [tool.hatch.version]
 source = "vcs"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/actron_neo_api"]
 
+# -- Ruff ------------------------------------------------------------------
 [tool.ruff]
 line-length = 100
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I"]
 
+# -- Pytest -----------------------------------------------------------------
 [tool.pytest.ini_options]
 junit_family = "xunit2"
 addopts = "-v --strict-markers"
+
+# -- Bandit -----------------------------------------------------------------
+[tool.bandit]
+exclude_dirs = ["tests", "example.py"]
+skips = ["B107"]
