@@ -24,7 +24,7 @@ def sample_status_data() -> Dict[str, Any]:
                 "CanOperate": True,
                 "Peripherals": [
                     {
-                        "ZoneAssignment": [0, 1],
+                        "ZoneAssignment": [1, 2],
                         "SensorInputs": {
                             "SHTC1": {
                                 "Temperature_oC": 22.5,
@@ -72,7 +72,6 @@ class TestStateManager:
     def test_init(self, state_manager: StateManager) -> None:
         """Test StateManager initialization."""
         assert state_manager.status == {}
-        assert state_manager.latest_event_id == {}
         assert state_manager._observers == []
         assert state_manager._api is None
 
@@ -113,6 +112,28 @@ class TestStateManager:
         state_manager.add_observer(observer2)
         assert len(state_manager._observers) == 2
         assert observer2 in state_manager._observers
+
+    def test_remove_observer(self, state_manager: StateManager) -> None:
+        """Test removing a registered observer."""
+
+        def observer(serial: str, data: Dict[str, Any]) -> None:
+            pass
+
+        state_manager.add_observer(observer)
+        assert observer in state_manager._observers
+
+        state_manager.remove_observer(observer)
+        assert observer not in state_manager._observers
+
+    def test_remove_observer_not_registered(self, state_manager: StateManager) -> None:
+        """Test removing an unregistered observer is a no-op."""
+
+        def observer(serial: str, data: Dict[str, Any]) -> None:
+            pass
+
+        # Should not raise
+        state_manager.remove_observer(observer)
+        assert state_manager._observers == []
 
     def test_get_status(
         self, state_manager: StateManager, sample_status_data: Dict[str, Any]
@@ -215,99 +236,3 @@ class TestStateManager:
 
         # Verify working observer was still called
         assert working_observer.called is True
-
-    def test_map_peripheral_humidity_to_zones(
-        self, state_manager: StateManager, sample_status_data: Dict[str, Any]
-    ) -> None:
-        """Test peripheral humidity mapping to zones."""
-        status = state_manager.process_status_update("TEST123", sample_status_data)
-
-        # Verify peripheral data was mapped to zones
-        assert len(status.remote_zone_info) == 2
-
-        # Both zones should have peripheral humidity data
-        zone0 = status.remote_zone_info[0]
-        zone1 = status.remote_zone_info[1]
-
-        assert zone0.actual_humidity_pc == 55.0
-        assert zone1.actual_humidity_pc == 55.0
-
-    def test_extract_peripheral_humidity_valid(self, state_manager: StateManager) -> None:
-        """Test extracting valid peripheral humidity."""
-        peripheral: Dict[str, Any] = {
-            "SensorInputs": {
-                "SHTC1": {
-                    "RelativeHumidity_pc": 65.5,
-                }
-            }
-        }
-
-        humidity = state_manager._extract_peripheral_humidity(peripheral)
-        assert humidity == 65.5
-
-    def test_extract_peripheral_humidity_no_sensor(self, state_manager: StateManager) -> None:
-        """Test extracting humidity from peripheral without sensor."""
-        peripheral: Dict[str, Any] = {"SensorInputs": {}}
-
-        humidity = state_manager._extract_peripheral_humidity(peripheral)
-        assert humidity is None
-
-    def test_extract_peripheral_humidity_invalid_range(self, state_manager: StateManager) -> None:
-        """Test extracting humidity with invalid range."""
-        peripheral: Dict[str, Any] = {
-            "SensorInputs": {
-                "SHTC1": {
-                    "RelativeHumidity_pc": 150.0,  # Invalid: > 100
-                }
-            }
-        }
-
-        humidity = state_manager._extract_peripheral_humidity(peripheral)
-        assert humidity is None
-
-    def test_extract_peripheral_humidity_negative(self, state_manager: StateManager) -> None:
-        """Test extracting negative humidity value."""
-        peripheral: Dict[str, Any] = {
-            "SensorInputs": {
-                "SHTC1": {
-                    "RelativeHumidity_pc": -10.0,  # Invalid: < 0
-                }
-            }
-        }
-
-        humidity = state_manager._extract_peripheral_humidity(peripheral)
-        assert humidity is None
-
-    def test_extract_peripheral_humidity_missing_data(self, state_manager: StateManager) -> None:
-        """Test extracting humidity when data is missing."""
-        peripheral: Dict[str, Any] = {}
-
-        humidity = state_manager._extract_peripheral_humidity(peripheral)
-        assert humidity is None
-
-    def test_map_peripheral_humidity_no_status(self, state_manager: StateManager) -> None:
-        """Test peripheral mapping with None status."""
-        # Should not raise, just return early
-        state_manager._map_peripheral_humidity_to_zones(None)
-
-    def test_map_peripheral_humidity_no_peripherals(self, state_manager: StateManager) -> None:
-        """Test peripheral mapping without peripherals."""
-        status_data = {
-            "isOnline": True,
-            "lastKnownState": {
-                "AirconSystem": {},  # No Peripherals key
-                "RemoteZoneInfo": [
-                    {
-                        "ZoneNumber": 0,
-                        "LiveTemp_oC": 22.0,
-                        "EnabledZone": True,
-                        "CanOperate": True,
-                    }
-                ],
-            },
-        }
-
-        status = state_manager.process_status_update("TEST123", status_data)
-
-        # Should not crash, zones just won't have peripheral humidity
-        assert len(status.remote_zone_info) == 1

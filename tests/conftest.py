@@ -200,7 +200,7 @@ def mock_aiohttp_session() -> Any:
         Callable that accepts a mock response and returns configured session mock
     """
 
-    def _create_session(mock_response: AsyncMock) -> AsyncMock:
+    def _create_session(mock_response: AsyncMock) -> MagicMock:
         """Create a mocked session with proper async context managers.
 
         Args:
@@ -214,15 +214,11 @@ def mock_aiohttp_session() -> Any:
         mock_method.__aenter__ = AsyncMock(return_value=mock_response)
         mock_method.__aexit__ = AsyncMock(return_value=None)
 
-        # Create session instance with methods
-        mock_session_instance = AsyncMock()
-        mock_session_instance.post = MagicMock(return_value=mock_method)
-        mock_session_instance.get = MagicMock(return_value=mock_method)
-
-        # Create session context manager
-        mock_session = AsyncMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session_instance)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
+        # Create session instance with methods and close
+        mock_session = MagicMock()
+        mock_session.post = MagicMock(return_value=mock_method)
+        mock_session.get = MagicMock(return_value=mock_method)
+        mock_session.close = AsyncMock()
 
         return mock_session
 

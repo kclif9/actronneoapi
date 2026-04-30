@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from ..const import AC_MODE_AUTO, AC_MODE_COOL, AC_MODE_DRY, AC_MODE_FAN, AC_MODE_HEAT, AC_MODE_OFF
 
 if TYPE_CHECKING:
     from .status import ActronAirStatus
@@ -20,10 +22,7 @@ class ActronAirSystemInfo(BaseModel):
     type: str | None = Field(None, description="System type (e.g., 'standard', 'NX-Gen')")
     links: dict[str, Any] = Field(default_factory=dict, alias="_links")
 
-    class Config:
-        """Pydantic configuration."""
-
-        populate_by_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
     @field_validator("serial")
     @classmethod
@@ -47,15 +46,15 @@ class ActronAirOutdoorUnit(BaseModel):
     compressor speed, power consumption, and operational status.
     """
 
-    model_number: str | None = str(Field(None, alias="ModelNumber"))
-    serial_number: str | None = Field(None, alias="SerialNumber")
-    software_version: str | None = str(Field(None, alias="SoftwareVersion"))
-    comp_speed: float | None = Field(None, alias="CompSpeed")
-    comp_power: int | None = Field(None, alias="CompPower")
-    comp_running_pwm: int | None = Field(None, alias="CompRunningPWM")
-    compressor_on: bool | None = Field(None, alias="CompressorOn")
-    amb_temp: float | None = Field(None, alias="AmbTemp")
-    family: str | None = Field(None, alias="Family")
+    model_number: str = Field("", alias="ModelNumber")
+    serial_number: str = Field("", alias="SerialNumber")
+    software_version: str = Field("", alias="SoftwareVersion")
+    comp_speed: float = Field(0.0, alias="CompSpeed")
+    comp_power: int = Field(0, alias="CompPower")
+    comp_running_pwm: int = Field(0, alias="CompRunningPWM")
+    compressor_on: bool = Field(False, alias="CompressorOn")
+    amb_temp: float = Field(0.0, alias="AmbTemp")
+    family: str = Field("", alias="Family")
 
 
 class ActronAirLiveAircon(BaseModel):
@@ -65,14 +64,19 @@ class ActronAirLiveAircon(BaseModel):
     compressor mode and capacity, fan speed, defrost status, and temperature targets.
     """
 
+    model_config = ConfigDict(populate_by_name=True)
+
     is_on: bool = Field(False, alias="SystemOn")
     compressor_mode: str = Field("", alias="CompressorMode")
     compressor_capacity: int = Field(0, alias="CompressorCapacity")
     fan_rpm: int = Field(0, alias="FanRPM")
     defrost: bool = Field(False, alias="Defrost")
-    compressor_chasing_temperature: float | None = Field(None, alias="CompressorChasingTemperature")
-    compressor_live_temperature: float | None = Field(None, alias="CompressorLiveTemperature")
-    outdoor_unit: ActronAirOutdoorUnit | None = Field(None, alias="OutdoorUnit")
+    compressor_chasing_temperature: float = Field(0.0, alias="CompressorChasingTemperature")
+    compressor_live_temperature: float = Field(0.0, alias="CompressorLiveTemperature")
+    outdoor_unit: ActronAirOutdoorUnit = Field(
+        default_factory=lambda: ActronAirOutdoorUnit.model_validate({}),
+        alias="OutdoorUnit",
+    )
 
 
 class ActronAirMasterInfo(BaseModel):
@@ -81,6 +85,8 @@ class ActronAirMasterInfo(BaseModel):
     Contains live sensor data from the main controller including indoor temperature,
     humidity, and outdoor temperature readings.
     """
+
+    model_config = ConfigDict(populate_by_name=True)
 
     live_temp_c: float = Field(0.0, alias="LiveTemp_oC")
     live_humidity_pc: float = Field(0.0, alias="LiveHumidity_pc")
@@ -94,6 +100,8 @@ class ActronAirAlerts(BaseModel):
     and defrost cycle status.
     """
 
+    model_config = ConfigDict(populate_by_name=True)
+
     clean_filter: bool = Field(False, alias="CleanFilter")
     defrosting: bool = Field(False, alias="Defrosting")
 
@@ -106,11 +114,16 @@ class ActronAirACSystem(BaseModel):
     system-level settings like operating mode.
     """
 
+    model_config = ConfigDict(populate_by_name=True)
+
     master_wc_model: str = Field("", alias="MasterWCModel")
     master_serial: str = Field("", alias="MasterSerial")
     master_wc_firmware_version: str = Field("", alias="MasterWCFirmwareVersion")
     system_name: str = Field("", alias="SystemName")
-    outdoor_unit: ActronAirOutdoorUnit | None = Field(None, alias="OutdoorUnit")
+    outdoor_unit: ActronAirOutdoorUnit = Field(
+        default_factory=lambda: ActronAirOutdoorUnit.model_validate({}),
+        alias="OutdoorUnit",
+    )
     _parent_status: "ActronAirStatus | None" = None
 
     def set_parent_status(self, parent: "ActronAirStatus") -> None:
@@ -122,21 +135,57 @@ class ActronAirACSystem(BaseModel):
         """
         self._parent_status = parent
 
+    def _set_system_mode_command(self, mode_upper: str) -> dict[str, Any]:
+        """Build command dict for setting the system mode.
+
+        Args:
+            mode_upper: Validated, upper-cased mode string
+
+        Returns:
+            Command dictionary ready for ``send_command``
+
+        """
+        is_on = mode_upper != AC_MODE_OFF
+        command: dict[str, Any] = {
+            "command": {"UserAirconSettings.isOn": is_on, "type": "set-settings"}
+        }
+        if is_on:
+            command["command"]["UserAirconSettings.Mode"] = mode_upper
+        return command
+
     async def set_system_mode(self, mode: str) -> None:
         """Set the system mode for this AC unit.
 
+        After successful command delivery the local settings are updated
+        optimistically: when turning on, both ``is_on`` and ``mode`` are
+        set; when turning off, only ``is_on`` is updated and the previous
+        mode is preserved.
+
+        The serial number is resolved from ``master_serial`` first, falling
+        back to the parent status ``serial_number`` (which may have been set
+        externally, e.g. during system discovery).
+
         Args:
-            mode: Mode to set ('AUTO', 'COOL', 'FAN', 'HEAT', 'OFF')
-                 Use 'OFF' to turn the system off.
+            mode: Mode to set ('AUTO', 'COOL', 'DRY', 'FAN', 'HEAT', 'OFF')
+                 Use 'OFF' to turn the system off. Note that not all
+                 hardware supports every mode — check ``ModeSupport``.
 
         Raises:
-            ValueError: If mode is invalid or no API reference available
+            ValueError: If mode is invalid, no API reference available,
+                or no serial number can be resolved
 
         """
         if not mode or not isinstance(mode, str):
             raise ValueError("Mode must be a non-empty string")
 
-        valid_modes = {"AUTO", "COOL", "FAN", "HEAT", "OFF"}
+        valid_modes = {
+            AC_MODE_COOL,
+            AC_MODE_HEAT,
+            AC_MODE_AUTO,
+            AC_MODE_FAN,
+            AC_MODE_DRY,
+            AC_MODE_OFF,
+        }
         mode_upper = mode.upper().strip()
         if mode_upper not in valid_modes:
             raise ValueError(
@@ -146,12 +195,20 @@ class ActronAirACSystem(BaseModel):
         if not self._parent_status or not self._parent_status.api:
             raise ValueError("No API reference available")
 
-        # Determine if system should be on or off based on mode
-        is_on = mode_upper != "OFF"
+        serial = self.master_serial or (
+            self._parent_status.serial_number if self._parent_status else None
+        )
+        if not serial:
+            raise ValueError("No serial number available")
 
-        command = {"command": {"UserAirconSettings.isOn": is_on, "type": "set-settings"}}
+        command = self._set_system_mode_command(mode_upper)
 
+        await self._parent_status.api.send_command(serial, command)
+
+        # Optimistic local state update
+        is_on = mode_upper != AC_MODE_OFF
         if is_on:
-            command["command"]["UserAirconSettings.Mode"] = mode_upper
-
-        await self._parent_status.api.send_command(self.master_serial, command)
+            self._parent_status.user_aircon_settings.is_on = True
+            self._parent_status.user_aircon_settings.mode = mode_upper
+        else:
+            self._parent_status.user_aircon_settings.is_on = False

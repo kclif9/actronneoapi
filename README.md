@@ -47,7 +47,6 @@ The library supports multiple Actron Air product lines:
 
 - **Neo**: Standard Actron Air systems (default platform)
 - **Que (NX-Gen)**: NX Gen systems using the Que platform
-- **Actron Connect (ACM-2)**: ACM-2 systems using the Actron Connect platform
 
 The API automatically detects the correct platform based on your system type. You can also explicitly specify the platform:
 

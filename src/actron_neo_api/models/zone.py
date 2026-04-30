@@ -7,6 +7,17 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field
 
+from ..const import (
+    AC_MODE_AUTO,
+    AC_MODE_COOL,
+    AC_MODE_FAN,
+    AC_MODE_HEAT,
+    AC_MODE_OFF,
+    TEMP_AUTO_HEAT_MIN,
+    TEMP_PHYSICAL_MAX,
+    TEMP_PHYSICAL_MIN,
+)
+
 _LOGGER = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
@@ -23,10 +34,10 @@ class ActronAirZoneSensor(BaseModel):
     connected: bool = Field(False, alias="Connected")
     kind: str = Field("", alias="NV_Kind")
     is_paired: bool = Field(False, alias="NV_isPaired")
-    signal_strength: str = str(Field("NA", alias="Signal_of3"))
-    temperature: float | None = Field(None, alias="Temperature_oC")
-    humidity: float | None = Field(None, alias="RelativeHumidity_pc")
-    battery_level: float | None = Field(None, alias="RemainingBatteryCapacity_pc")
+    signal_strength: str = Field("NA", alias="Signal_of3")
+    temperature: float = Field(0.0, alias="LiveTemp_oC")
+    humidity: float = Field(0.0, alias="RelativeHumidity_pc")
+    battery_level: float = Field(0.0, alias="RemainingBatteryCapacity_pc")
 
 
 class ActronAirPeripheral(BaseModel):
@@ -39,9 +50,9 @@ class ActronAirPeripheral(BaseModel):
 
     logical_address: int = Field(0, alias="LogicalAddress")
     device_type: str = Field("", alias="DeviceType")
-    zone_assignments: list[int] = Field([], alias="ZoneAssignment")
+    zone_assignments: list[int] = Field(default_factory=list, alias="ZoneAssignment")
     serial_number: str = Field("", alias="SerialNumber")
-    battery_level: float | None = Field(None, alias="RemainingBatteryCapacity_pc")
+    battery_level: float = Field(0.0, alias="RemainingBatteryCapacity_pc")
     temperature: float | None = None
     humidity: float | None = None
     _parent_status: "ActronAirStatus | None" = None
@@ -132,10 +143,29 @@ class ActronAirZone(BaseModel):
     exists: bool = Field(False, alias="NV_Exists")
     temperature_setpoint_cool_c: float = Field(0.0, alias="TemperatureSetpoint_Cool_oC")
     temperature_setpoint_heat_c: float = Field(0.0, alias="TemperatureSetpoint_Heat_oC")
-    sensors: dict[str, ActronAirZoneSensor] = Field({}, alias="Sensors")
-    actual_humidity_pc: float | None = None
-    zone_id: int | None = None
+    sensors: dict[str, ActronAirZoneSensor] = Field(default_factory=dict, alias="Sensors")
+    variable_air_volume: bool = Field(False, alias="NV_VAV")
+    individual_temperature_control: bool = Field(False, alias="NV_ITC")
+    individual_temperature_deadband: bool = Field(False, alias="NV_ITD")
+    integrated_humidity_tracking: bool = Field(False, alias="NV_IHD")
+    indoor_air_compensation: bool = Field(False, alias="NV_IAC")
+    zone_id: int
     _parent_status: "ActronAirStatus | None" = None
+
+    @property
+    def parent_status(self) -> "ActronAirStatus":
+        """Get the parent status object.
+
+        Zones are always created via status parsing and must have a parent.
+        The ``| None`` default exists only because Pydantic requires one.
+
+        Raises:
+            RuntimeError: If accessed before ``set_parent_status`` is called
+
+        """
+        if self._parent_status is None:
+            raise RuntimeError("Zone must be attached to a parent status")
+        return self._parent_status
 
     @property
     def is_active(self) -> bool:
@@ -145,14 +175,11 @@ class ActronAirZone(BaseModel):
             True if zone is enabled and can operate, False otherwise
 
         """
-        if not self._parent_status or not self._parent_status.user_aircon_settings:
-            return False
-
-        enabled_zones = self._parent_status.user_aircon_settings.enabled_zones
+        enabled_zones = self.parent_status.user_aircon_settings.enabled_zones
 
         if not self.can_operate:
             return False
-        if self.zone_id is None or self.zone_id >= len(enabled_zones):
+        if self.zone_id >= len(enabled_zones):
             return False
         return enabled_zones[self.zone_id]
 
@@ -165,126 +192,76 @@ class ActronAirZone(BaseModel):
             "OFF" is returned if the system is off or the zone is inactive
 
         """
-        if not self._parent_status or not self._parent_status.user_aircon_settings:
-            return "OFF"
-
-        settings = self._parent_status.user_aircon_settings
+        settings = self.parent_status.user_aircon_settings
 
         if not settings.is_on:
-            return "OFF"
+            return AC_MODE_OFF
 
         if not self.is_active:
-            return "OFF"
+            return AC_MODE_OFF
 
         return settings.mode
 
     @property
-    def humidity(self) -> float:
-        """Get the best available humidity reading for this zone.
+    def temperature(self) -> float:
+        """Get the current temperature reading for this zone.
 
-        Returns the actual sensor reading if available, otherwise the system-reported value.
+        Returns the zone controller's live temperature.
         """
-        if self.actual_humidity_pc is not None:
-            return self.actual_humidity_pc
+        return self.live_temp_c
+
+    @property
+    def humidity(self) -> float:
+        """Get the humidity reading for this zone.
+
+        Returns the zone controller's live humidity.
+        """
         return self.live_humidity_pc
 
     @property
-    def battery_level(self) -> float | None:
-        """Get the battery level of the peripheral sensor assigned to this zone.
+    def current_setpoint(self) -> float:
+        """Get the active temperature setpoint based on the current AC mode.
+
+        Returns the heating setpoint when in HEAT mode, otherwise the
+        cooling setpoint (COOL, AUTO, FAN, etc.).
 
         Returns:
-            Battery level as a percentage or None if no peripheral sensor is assigned
+            The active temperature setpoint in degrees Celsius
 
         """
-        if not self._parent_status or self.zone_id is None:
-            return None
-
-        peripheral = self._parent_status.get_peripheral_for_zone(self.zone_id)
-        return peripheral.battery_level if peripheral else None
-
-    @property
-    def peripheral_temperature(self) -> float | None:
-        """Get the temperature reading from the peripheral sensor assigned to this zone.
-
-        Returns:
-            Temperature in degrees Celsius or None if no peripheral sensor is assigned
-
-        """
-        if not self._parent_status or self.zone_id is None:
-            return None
-
-        peripheral = self._parent_status.get_peripheral_for_zone(self.zone_id)
-        return peripheral.temperature if peripheral else None
-
-    @property
-    def peripheral_humidity(self) -> float | None:
-        """Get the humidity reading from the peripheral sensor assigned to this zone.
-
-        Returns:
-            Relative humidity as a percentage or None if no peripheral sensor is assigned
-
-        """
-        if not self._parent_status or self.zone_id is None:
-            return None
-
-        peripheral = self._parent_status.get_peripheral_for_zone(self.zone_id)
-        return peripheral.humidity if peripheral else None
-
-    @property
-    def peripheral(self) -> "ActronAirPeripheral | None":
-        """Get the peripheral device assigned to this zone.
-
-        Returns:
-            The peripheral device or None if no peripheral is assigned
-
-        """
-        if not self._parent_status or self.zone_id is None:
-            return None
-
-        return self._parent_status.get_peripheral_for_zone(self.zone_id)
+        settings = self.parent_status.user_aircon_settings
+        if settings.mode.upper() == AC_MODE_HEAT:
+            return self.temperature_setpoint_heat_c
+        return self.temperature_setpoint_cool_c
 
     @property
     def max_temp(self) -> float:
-        """Return the maximum temperature that can be set."""
-        if not self._parent_status or not self._parent_status.last_known_state:
-            return 30.0  # Default fallback value
+        """Return the maximum temperature that can be set.
 
-        max_setpoint = (
-            self._parent_status.last_known_state.get("NV_Limits", {})
-            .get("UserSetpoint_oC", {})
-            .get("setCool_Max", 30.0)
-        )
-
-        user_settings = self._parent_status.last_known_state.get("UserAirconSettings", {})
-        target_setpoint = user_settings.get("TemperatureSetpoint_Cool_oC", 24.0)
-        temp_variance = user_settings.get("ZoneTemperatureSetpointVariance_oC", 3.0)
-
-        if max_setpoint < target_setpoint + temp_variance:
-            return max_setpoint
-        return target_setpoint + temp_variance
+        Mode-aware: uses heat limits/setpoint when in HEAT mode,
+        cool limits/setpoint otherwise (COOL, AUTO, FAN).
+        """
+        settings = self.parent_status.user_aircon_settings
+        limit = self.parent_status.max_temp
+        target = settings.current_setpoint
+        variance = settings.zone_temperature_setpoint_variance
+        return min(limit, target + variance)
 
     @property
     def min_temp(self) -> float:
-        """Return the minimum temperature that can be set."""
-        if not self._parent_status or not self._parent_status.last_known_state:
-            return 16.0  # Default fallback value
+        """Return the minimum temperature that can be set.
 
-        min_setpoint = (
-            self._parent_status.last_known_state.get("NV_Limits", {})
-            .get("UserSetpoint_oC", {})
-            .get("setCool_Min", 16.0)
-        )
-
-        user_settings = self._parent_status.last_known_state.get("UserAirconSettings", {})
-        target_setpoint = user_settings.get("TemperatureSetpoint_Cool_oC", 24.0)
-        temp_variance = user_settings.get("ZoneTemperatureSetpointVariance_oC", 3.0)
-
-        if min_setpoint > target_setpoint - temp_variance:
-            return min_setpoint
-        return target_setpoint - temp_variance
+        Mode-aware: uses heat limits/setpoint when in HEAT mode,
+        cool limits/setpoint otherwise (COOL, AUTO, FAN).
+        """
+        settings = self.parent_status.user_aircon_settings
+        limit = self.parent_status.min_temp
+        target = settings.current_setpoint
+        variance = settings.zone_temperature_setpoint_variance
+        return max(limit, target - variance)
 
     # Command generation methods
-    def set_temperature_command(self, temperature: float) -> dict[str, Any]:
+    def _set_temperature_command(self, temperature: float) -> dict[str, Any]:
         """Create a command to set temperature for this zone based on the current AC mode.
 
         Args:
@@ -294,43 +271,42 @@ class ActronAirZone(BaseModel):
             Command dictionary
 
         """
-        if self.zone_id is None:
-            raise ValueError("Zone index not set")
+        if not self.parent_status.user_aircon_settings.mode:
+            raise ValueError("No AC mode available to determine temperature setpoint")
 
-        if not self._parent_status or not self._parent_status.user_aircon_settings:
-            raise ValueError("No parent AC status available to determine mode")
+        mode = self.parent_status.user_aircon_settings.mode.upper()
 
-        mode = self._parent_status.user_aircon_settings.mode.upper()
+        if mode in (AC_MODE_FAN, AC_MODE_OFF):
+            raise ValueError(f"Cannot set temperature in {mode} mode")
+
         command: dict[str, Any] = {"type": "set-settings"}
 
-        if mode == "COOL":
+        if mode == AC_MODE_COOL:
             command[f"RemoteZoneInfo[{self.zone_id}].TemperatureSetpoint_Cool_oC"] = float(
                 temperature
             )
-        elif mode == "HEAT":
+        elif mode == AC_MODE_HEAT:
             command[f"RemoteZoneInfo[{self.zone_id}].TemperatureSetpoint_Heat_oC"] = float(
                 temperature
             )
-        elif mode == "AUTO":
+        elif mode == AC_MODE_AUTO:
             # AUTO: maintain the temperature differential between cooling and heating
             # Get the current differential from parent settings
-            cool_temp = self._parent_status.user_aircon_settings.temperature_setpoint_cool_c
-            heat_temp = self._parent_status.user_aircon_settings.temperature_setpoint_heat_c
+            cool_temp = self.parent_status.user_aircon_settings.temperature_setpoint_cool_c
+            heat_temp = self.parent_status.user_aircon_settings.temperature_setpoint_heat_c
             differential = cool_temp - heat_temp
 
             # Apply the same differential to the new temperature
             # For AUTO mode, we assume the provided temperature is for cooling
             cool_setpoint = float(temperature)
-            heat_setpoint = float(
-                max(10.0, temperature - differential)
-            )  # Ensure we don't go below a reasonable minimum
+            heat_setpoint = float(max(TEMP_AUTO_HEAT_MIN, temperature - differential))
 
             command[f"RemoteZoneInfo[{self.zone_id}].TemperatureSetpoint_Cool_oC"] = cool_setpoint
             command[f"RemoteZoneInfo[{self.zone_id}].TemperatureSetpoint_Heat_oC"] = heat_setpoint
 
         return {"command": command}
 
-    def set_enable_command(self, is_enabled: bool) -> dict[str, Any]:
+    def _set_enable_command(self, is_enabled: bool) -> dict[str, Any]:
         """Create a command to enable or disable this zone.
 
         Args:
@@ -340,14 +316,11 @@ class ActronAirZone(BaseModel):
             Command dictionary
 
         """
-        if self.zone_id is None:
-            raise ValueError("Zone index not set")
-
-        if not self._parent_status or not self._parent_status.user_aircon_settings:
-            raise ValueError("No parent AC status available to determine current zones")
+        if not self.parent_status.user_aircon_settings.enabled_zones:
+            raise ValueError("No enabled zones available to determine current zones")
 
         # Get current zones from parent
-        current_zones = self._parent_status.user_aircon_settings.enabled_zones.copy()
+        current_zones = self.parent_status.user_aircon_settings.enabled_zones.copy()
 
         # Update the specific zone
         if self.zone_id < len(current_zones):
@@ -359,68 +332,87 @@ class ActronAirZone(BaseModel):
             "command": {"type": "set-settings", "UserAirconSettings.EnabledZones": current_zones}
         }
 
-    def set_parent_status(self, parent: "ActronAirStatus", zone_index: int) -> None:
-        """Set reference to parent ActronStatus object and this zone's index.
+    def set_parent_status(self, parent: "ActronAirStatus") -> None:
+        """Set reference to parent ActronStatus object.
 
         Args:
             parent: Parent ActronAirStatus instance
-            zone_index: Zone index (must be non-negative)
 
-        Raises:
-            ValueError: If zone_index is negative
         """
-        if zone_index < 0:
-            raise ValueError(f"zone_index must be non-negative, got {zone_index}")
         self._parent_status = parent
-        self.zone_id = zone_index
 
     async def set_temperature(self, temperature: float) -> None:
         """Set temperature for this zone based on the current AC mode and send the command.
+
+        After successful command delivery the local temperature setpoint is
+        updated optimistically so that subsequent reads reflect the change
+        before the next status poll.
 
         Args:
             temperature: The temperature to set (in degrees Celsius)
 
         Raises:
-            ValueError: If zone_id is not set, temperature is invalid, or no API reference
+            ValueError: If temperature is invalid or no API reference
 
         """
-        if self.zone_id is None:
-            raise ValueError("Zone index not set")
-
         # Validate temperature is a reasonable value
         if not isinstance(temperature, (int, float)):
             raise ValueError(f"Temperature must be a number, got {type(temperature).__name__}")
-        if not -50 <= temperature <= 100:  # Reasonable physical limits
+        if not TEMP_PHYSICAL_MIN <= temperature <= TEMP_PHYSICAL_MAX:
             raise ValueError(
-                f"Temperature {temperature}°C is outside reasonable range (-50 to 100)"
+                f"Temperature {temperature}°C is outside reasonable range "
+                f"({TEMP_PHYSICAL_MIN} to {TEMP_PHYSICAL_MAX})"
             )
 
         # Ensure temperature is within valid range for this zone
         temperature = max(self.min_temp, min(self.max_temp, temperature))
 
-        command = self.set_temperature_command(temperature)
-        if (
-            self._parent_status
-            and self._parent_status.api
-            and hasattr(self._parent_status, "serial_number")
-        ):
-            await self._parent_status.api.send_command(self._parent_status.serial_number, command)
+        command = self._set_temperature_command(temperature)
+        if self.parent_status.api and self.parent_status.serial_number:
+            # Capture optimistic values before await to avoid races
+            settings = self.parent_status.user_aircon_settings
+            mode = settings.mode.upper()
+            optimistic_cool: float | None = None
+            optimistic_heat: float | None = None
+            if mode == AC_MODE_COOL:
+                optimistic_cool = temperature
+            elif mode == AC_MODE_HEAT:
+                optimistic_heat = temperature
+            elif mode == AC_MODE_AUTO:
+                cool = settings.temperature_setpoint_cool_c
+                heat = settings.temperature_setpoint_heat_c
+                differential = cool - heat
+                optimistic_cool = temperature
+                optimistic_heat = max(TEMP_AUTO_HEAT_MIN, temperature - differential)
+
+            await self.parent_status.api.send_command(self.parent_status.serial_number, command)
+
+            # Optimistic local state update using values captured before await
+            if optimistic_cool is not None:
+                self.temperature_setpoint_cool_c = optimistic_cool
+            if optimistic_heat is not None:
+                self.temperature_setpoint_heat_c = optimistic_heat
         else:
             raise ValueError("No API reference available to send command")
 
     async def enable(self, is_enabled: bool = True) -> None:
         """Enable or disable this zone and send the command.
 
+        After successful command delivery the local ``enabled_zones`` list is
+        updated optimistically so that subsequent reads reflect the change
+        before the next status poll.
+
         Args:
             is_enabled: True to enable, False to disable
 
         """
-        command = self.set_enable_command(is_enabled)
-        if (
-            self._parent_status
-            and self._parent_status.api
-            and hasattr(self._parent_status, "serial_number")
-        ):
-            await self._parent_status.api.send_command(self._parent_status.serial_number, command)
+        command = self._set_enable_command(is_enabled)
+        if self.parent_status.api and self.parent_status.serial_number:
+            await self.parent_status.api.send_command(self.parent_status.serial_number, command)
+
+            # Optimistic local state update — apply the exact EnabledZones sent
+            sent_zones = command.get("command", {}).get("UserAirconSettings.EnabledZones")
+            if isinstance(sent_zones, list):
+                self.parent_status.user_aircon_settings.enabled_zones = list(sent_zones)
         else:
             raise ValueError("No API reference available to send command")

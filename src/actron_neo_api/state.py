@@ -19,11 +19,10 @@ class StateManager:
     def __init__(self) -> None:
         """Initialize the state manager.
 
-        Creates empty dictionaries for system status tracking and event IDs,
+        Creates empty dictionaries for system status tracking
         and initializes observer list for state change notifications.
         """
         self.status: dict[str, ActronAirStatus] = {}
-        self.latest_event_id: dict[str, str] = {}
         self._observers: list[Callable[[str, dict[str, Any]], None]] = []
         self._api: "ActronAirAPI | None" = None
 
@@ -43,11 +42,26 @@ class StateManager:
     def add_observer(self, observer: Callable[[str, dict[str, Any]], None]) -> None:
         """Add an observer to be notified of state changes.
 
+        Duplicate observers are silently ignored.
+
         Args:
             observer: Callback function that takes (serial_number, status_data)
 
         """
-        self._observers.append(observer)
+        if observer not in self._observers:
+            self._observers.append(observer)
+
+    def remove_observer(self, observer: Callable[[str, dict[str, Any]], None]) -> None:
+        """Remove a previously registered observer.
+
+        Args:
+            observer: The callback to remove
+
+        """
+        try:
+            self._observers.remove(observer)
+        except ValueError:
+            pass
 
     def get_status(self, serial_number: str) -> ActronAirStatus | None:
         """Get the status for a specific system.
@@ -95,15 +109,12 @@ class StateManager:
         if self._api:
             status.set_api(self._api)
 
-        # Extract zone-specific humidity from peripherals
-        self._map_peripheral_humidity_to_zones(status)
-
         self.status[serial_number] = status
 
-        # Notify observers - don't let observer errors break the update
+        # Notify observers with a shallow copy — don't let observer errors break the update
         for observer in self._observers:
             try:
-                observer(serial_number, raw_data)
+                observer(serial_number, dict(raw_data) if isinstance(raw_data, dict) else raw_data)
             except Exception as e:
                 _LOGGER.warning(
                     "Observer callback failed for %s: %s",
@@ -113,75 +124,3 @@ class StateManager:
                 )
 
         return status
-
-    def _map_peripheral_humidity_to_zones(self, status: ActronAirStatus) -> None:
-        """Map humidity values from peripherals to their respective zones.
-
-        The Actron Air API reports the same central humidity value for all zones,
-        but each zone controller has its own humidity sensor. This method extracts
-        the actual zone-specific humidity values and associates them with the correct zones.
-        """
-        if not status or "AirconSystem" not in status.last_known_state:
-            return
-
-        # Create a mapping of peripheral zone assignments to zone indices
-        peripherals = status.last_known_state.get("AirconSystem", {}).get("Peripherals", [])
-        if not peripherals:
-            return
-
-        # Track zone assignments from peripherals
-        zone_humidity_map = {}
-
-        for peripheral in peripherals:
-            # Check if peripheral has humidity sensor data
-            humidity = self._extract_peripheral_humidity(peripheral)
-            if humidity is None:
-                continue
-
-            # Get zone assignments for this peripheral
-            zone_assignments = peripheral.get("ZoneAssignment", [])
-            for zone_index in zone_assignments:
-                if isinstance(zone_index, int) and 0 <= zone_index < len(status.remote_zone_info):
-                    zone_humidity_map[zone_index] = humidity
-
-        # Update zones with actual humidity values
-        for i, zone in enumerate(status.remote_zone_info):
-            if i in zone_humidity_map:
-                zone.actual_humidity_pc = zone_humidity_map[i]
-
-    def _extract_peripheral_humidity(self, peripheral: dict[str, Any]) -> float | None:
-        """Extract humidity reading from a peripheral device.
-
-        Args:
-            peripheral: Peripheral device data from API response
-
-        Returns:
-            Humidity value as float or None if not available
-
-        """
-        sensor_inputs = peripheral.get("SensorInputs")
-        if not sensor_inputs or not isinstance(sensor_inputs, dict):
-            return None
-
-        # Extract humidity from SHTC1 sensor if available
-        shtc1 = sensor_inputs.get("SHTC1")
-        if not shtc1 or not isinstance(shtc1, dict):
-            return None
-
-        humidity = shtc1.get("RelativeHumidity_pc")
-        if humidity is None:
-            return None
-
-        # Validate humidity value type and range
-        if not isinstance(humidity, (int, float)):
-            _LOGGER.warning(
-                "Invalid humidity type: expected number, got %s", type(humidity).__name__
-            )
-            return None
-
-        humidity_float = float(humidity)
-        if not (0 <= humidity_float <= 100):
-            _LOGGER.warning("Humidity value %s is outside valid range (0-100)", humidity_float)
-            return None
-
-        return humidity_float
