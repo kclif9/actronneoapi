@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from actron_neo_api.rt import (
     MQTTRTClient,
-    SignalRRTClient,
     RealtimeClient,
     RealtimeConnectionDetails,
     RealtimeConnectionEvent,
@@ -12,6 +11,7 @@ from actron_neo_api.rt import (
     RealtimeEventKind,
     RealtimeMessage,
     RealtimeTransportType,
+    SignalRRTClient,
 )
 
 
