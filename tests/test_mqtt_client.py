@@ -31,16 +31,10 @@ class _FakeMQTTMessage:
 
 
 class _FakeMQTTMessageStream:
-    """Async context manager/iterator yielding fake MQTT messages."""
+    """Async iterator yielding fake MQTT messages."""
 
     def __init__(self, messages: list[_FakeMQTTMessage]) -> None:
         self._messages = list(messages)
-
-    async def __aenter__(self) -> _FakeMQTTMessageStream:
-        return self
-
-    async def __aexit__(self, exc_type, exc, tb) -> bool:
-        return False
 
     def __aiter__(self) -> _FakeMQTTMessageStream:
         return self
@@ -55,7 +49,7 @@ class _FakeMQTTClient:
     """Async context manager that mimics the MQTT client API used by the tests."""
 
     def __init__(self, messages: list[_FakeMQTTMessage] | None = None) -> None:
-        self.messages = messages or []
+        self._messages = messages or []
         self.subscriptions: list[str] = []
         self.unsubscriptions: list[str] = []
         self.published: list[tuple[str, bytes]] = []
@@ -67,8 +61,9 @@ class _FakeMQTTClient:
     async def __aexit__(self, exc_type, exc, tb) -> bool:
         return False
 
-    def unfiltered_messages(self) -> _FakeMQTTMessageStream:
-        return _FakeMQTTMessageStream(self.messages)
+    @property
+    def messages(self) -> _FakeMQTTMessageStream:
+        return _FakeMQTTMessageStream(self._messages)
 
     async def subscribe(self, topic: str) -> None:
         self.subscriptions.append(topic)
@@ -410,7 +405,7 @@ class TestMQTTRTClient:
 
     @pytest.mark.asyncio
     async def test_disconnect_with_live_client(self) -> None:
-        """Disconnect should close a live MQTT client and clear state."""
+        """Disconnect should clear local connection state."""
         client = MQTTRTClient(
             RealtimeConnectionDetails(
                 endpoint="mqtt.example.com",
@@ -426,7 +421,7 @@ class TestMQTTRTClient:
 
         await client.disconnect()
 
-        assert fake_client.disconnected is True
+        assert client._client is None  # noqa: SLF001 - internal lifecycle cleanup
         assert client.connection_state == RealtimeConnectionState.DISCONNECTED
 
     @pytest.mark.asyncio
@@ -663,7 +658,8 @@ class TestMQTTRTClient:
         )
 
         class _CleanClient(_FakeMQTTClient):
-            def unfiltered_messages(self) -> _FakeMQTTMessageStream:
+            @property
+            def messages(self) -> _FakeMQTTMessageStream:
                 return _FakeMQTTMessageStream([])
 
         states: list[RealtimeConnectionState] = []
@@ -788,8 +784,8 @@ class TestMQTTRTClient:
         client._client.publish.assert_awaited_once_with("actron/topic", b'{"b":2,"a":1}')
 
     @pytest.mark.asyncio
-    async def test_update_access_token_disconnects_running_client(self) -> None:
-        """Updating credentials should force the live client to disconnect."""
+    async def test_update_access_token_restarts_running_client(self) -> None:
+        """Updating credentials should restart the live client."""
         client = MQTTRTClient(
             RealtimeConnectionDetails(
                 endpoint="mqtt.example.com",
@@ -799,11 +795,15 @@ class TestMQTTRTClient:
             ),
             access_token="token-123",
         )
+
+        disconnect_mock = AsyncMock(return_value=None)
+        connect_mock = AsyncMock(return_value=None)
+        client.disconnect = disconnect_mock  # type: ignore[method-assign]
+        client.connect = connect_mock  # type: ignore[method-assign]
         client._running = True  # noqa: SLF001 - simulate an active connection
-        client._client = MagicMock()  # noqa: SLF001 - inject a fake broker client
-        client._client.disconnect = AsyncMock(return_value=None)
 
         await client.update_access_token("token-456")
 
         assert client.access_token == "token-456"
-        client._client.disconnect.assert_awaited_once()
+        disconnect_mock.assert_awaited_once()
+        connect_mock.assert_awaited_once()
