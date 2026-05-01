@@ -1262,6 +1262,55 @@ class TestActronAirAPIRealtimeIntegration:
         assert api._rt_client is None
 
     @pytest.mark.asyncio
+    async def test_start_push_cleans_up_local_client_on_subscribe_failure(self) -> None:
+        """start_push should disconnect newly-created client when subscribe fails."""
+
+        class FakeMQTTClient:
+            instances: list["FakeMQTTClient"] = []
+
+            def __init__(self, details: RealtimeConnectionDetails, token: str) -> None:
+                self.disconnect = AsyncMock(return_value=None)
+                FakeMQTTClient.instances.append(self)
+
+            def register_callback(self, callback: Any) -> None:
+                self.callback = callback
+
+            async def connect(self) -> None:
+                return None
+
+            async def subscribe_system(self, serial: str) -> None:
+                raise RuntimeError("subscribe failed")
+
+            async def update_access_token(self, token: str) -> None:
+                return None
+
+        api = ActronAirAPI(platform="neo")
+        api.oauth2_auth.ensure_token_valid = AsyncMock(return_value=None)
+        api.oauth2_auth.access_token = "token"
+        api.systems = [ActronAirSystemInfo(serial="abc123")]
+
+        details = RealtimeConnectionDetails(
+            endpoint="mqtt.example.test",
+            port=8883,
+            protocol="ssl",
+            user_id="u",
+        )
+
+        from actron_neo_api import actron as actron_module
+
+        original_mqtt = actron_module.MQTTRTClient
+        try:
+            actron_module.MQTTRTClient = FakeMQTTClient  # type: ignore[assignment]
+            started = await api.start_push(connection_details=details)
+        finally:
+            actron_module.MQTTRTClient = original_mqtt  # type: ignore[assignment]
+
+        assert started is False
+        assert api._rt_client is None
+        assert len(FakeMQTTClient.instances) == 1
+        FakeMQTTClient.instances[0].disconnect.assert_awaited_once()
+
+    @pytest.mark.asyncio
     async def test_start_push_event_callback_creates_background_task(
         self, sample_status_full: dict[str, Any]
     ) -> None:
@@ -1346,6 +1395,21 @@ class TestActronAirAPIRealtimeIntegration:
 
         assert len(streamed) == 1
         assert streamed[0].serial_number == "abc123"
+
+    @pytest.mark.asyncio
+    async def test_stream_system_updates_unblocks_on_stop_push(self) -> None:
+        """stream_system_updates should exit when stop_push is called while waiting."""
+        api = ActronAirAPI()
+
+        async def _collect() -> list[ActronAirStatus]:
+            return [item async for item in api.stream_system_updates("abc123")]
+
+        collector = asyncio.create_task(_collect())
+        await asyncio.sleep(0)
+        await api.stop_push()
+        streamed = await collector
+
+        assert streamed == []
 
     @pytest.mark.asyncio
     async def test_discover_realtime_details_success_and_fallback(self) -> None:
@@ -1463,6 +1527,10 @@ class TestActronAirAPIRealtimeIntegration:
             if s.serial_number:
                 seen.append(s.serial_number)
 
+        def _bad_cb(_: ActronAirStatus) -> None:
+            raise RuntimeError("callback boom")
+
+        api.subscribe_system_updates("abc123", _bad_cb)
         api.subscribe_system_updates("abc123", _cb)
         status_ok = ActronAirStatus.model_validate(sample_status_full)
         event_ok = RealtimeMessage(

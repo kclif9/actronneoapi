@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import logging
 from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Any, Literal
@@ -326,7 +327,7 @@ class ActronAirAPI:
         # Realtime push integration (issue #77)
         self._rt_client: MQTTRTClient | SignalRRTClient | None = None
         self._push_running = False
-        self._push_status_queue: asyncio.Queue[tuple[str, ActronAirStatus]] = asyncio.Queue()
+        self._push_status_queue: asyncio.Queue[tuple[str, ActronAirStatus | None]] = asyncio.Queue()
         self._push_callbacks: dict[
             str, list[Callable[[ActronAirStatus], Awaitable[None] | None]]
         ] = {}
@@ -541,6 +542,7 @@ class ActronAirAPI:
             _LOGGER.warning("start_push called without any known system serials")
             return False
 
+        rt_client: MQTTRTClient | SignalRRTClient | None = None
         try:
             details = connection_details or await self._discover_realtime_connection_details(
                 serials[0]
@@ -576,9 +578,10 @@ class ActronAirAPI:
             return True
         except Exception:
             _LOGGER.exception("Failed to start realtime push; falling back to polling")
-            if self._rt_client is not None:
+            cleanup_client = self._rt_client or rt_client
+            if cleanup_client is not None:
                 try:
-                    await self._rt_client.disconnect()
+                    await cleanup_client.disconnect()
                 except Exception:
                     _LOGGER.debug("Failed to clean up realtime client", exc_info=True)
             self._rt_client = None
@@ -588,6 +591,8 @@ class ActronAirAPI:
     async def stop_push(self) -> None:
         """Stop realtime push updates and disconnect active transport."""
         self._push_running = False
+        # Wake blocked stream consumers so they can exit cleanly.
+        self._push_status_queue.put_nowait(("", None))
         if self._rt_client is None:
             return
         try:
@@ -625,8 +630,10 @@ class ActronAirAPI:
                 statuses are yielded.
         """
         serial_filter = serial_number.strip().lower() if serial_number else None
-        while self._push_running or not self._push_status_queue.empty():
+        while True:
             serial, status = await self._push_status_queue.get()
+            if status is None:
+                break
             if serial_filter and serial != serial_filter:
                 continue
             yield status
@@ -731,9 +738,17 @@ class ActronAirAPI:
         await self._push_status_queue.put((serial, status))
 
         for callback in list(self._push_callbacks.get(serial, [])):
-            result = callback(status)
-            if asyncio.iscoroutine(result):
-                await result
+            try:
+                result = callback(status)
+                if inspect.isawaitable(result):
+                    await result
+            except Exception as err:
+                _LOGGER.warning(
+                    "Realtime callback failed for %s: %s",
+                    serial,
+                    err,
+                    exc_info=True,
+                )
 
     @staticmethod
     def _extract_realtime_serial(
