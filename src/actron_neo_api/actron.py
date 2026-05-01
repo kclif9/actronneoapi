@@ -691,15 +691,25 @@ class ActronAirAPI:
                 except Exception:
                     _LOGGER.debug("Realtime details link %s lookup failed", rel, exc_info=True)
 
-        # Neo mobile clients request connection details directly from this endpoint.
+        # Neo environments can expose this endpoint on different API prefixes.
         if self.platform == PLATFORM_NEO:
-            try:
-                payload = await self._make_request("get", "messaging/connection/details")
-                details = self._parse_realtime_details_payload(payload)
-                if details is not None:
-                    return details
-            except Exception:
-                _LOGGER.debug("Realtime details endpoint lookup failed", exc_info=True)
+            direct_endpoints = (
+                "messaging/connection/details",
+                "api/v0/messaging/connection/details",
+                "api/v0/client/messaging/connection/details",
+            )
+            for endpoint in direct_endpoints:
+                try:
+                    payload = await self._make_request("get", endpoint)
+                    details = self._parse_realtime_details_payload(payload)
+                    if details is not None:
+                        return details
+                except Exception:
+                    _LOGGER.debug(
+                        "Realtime details endpoint lookup failed for %s",
+                        endpoint,
+                        exc_info=True,
+                    )
 
         # Que fallback endpoint from documented SignalR path.
         if self.platform == PLATFORM_QUE:
