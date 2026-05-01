@@ -17,7 +17,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
 
-from asyncio_mqtt import Client, MqttError
+from aiomqtt import Client, MqttError
 
 from ..models import ActronAirStatus
 from .base import (
@@ -315,7 +315,7 @@ class MQTTRTClient:
         await self._set_state(RealtimeConnectionState.DISCONNECTED)
 
     def _build_client(self) -> Client:
-        """Create a configured asyncio-mqtt client instance."""
+        """Create a configured aiomqtt client instance."""
         tls_context = self._ssl_context
         if tls_context is None and self._details.uses_tls:
             tls_context = ssl.create_default_context()

@@ -1,6 +1,7 @@
 """Tests for ActronAirAPI core client functionality."""
 
 import asyncio
+import logging
 import time
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
@@ -1175,7 +1176,10 @@ class TestActronAirAPIRealtimeIntegration:
         assert started is True
 
     @pytest.mark.asyncio
-    async def test_start_push_returns_false_when_details_unavailable(self) -> None:
+    async def test_start_push_returns_false_when_details_unavailable(
+        self,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
         """start_push should fallback when realtime details cannot be resolved."""
         api = ActronAirAPI(platform="neo")
         api.oauth2_auth.ensure_token_valid = AsyncMock(return_value=None)
@@ -1187,9 +1191,12 @@ class TestActronAirAPIRealtimeIntegration:
 
         api._discover_realtime_connection_details = _discover  # type: ignore[method-assign]
 
-        started = await api.start_push()
+        with caplog.at_level(logging.INFO, logger="actron_neo_api.actron"):
+            started = await api.start_push()
 
         assert started is False
+        assert "Realtime connection details unavailable; push not started" in caplog.text
+        assert "WARNING" not in caplog.text
 
     @pytest.mark.asyncio
     async def test_start_push_uses_explicit_serial_numbers(self) -> None:
@@ -1530,15 +1537,58 @@ class TestActronAirAPIRealtimeIntegration:
         assert parsed.protocol == "tcp"
         assert parsed.user_id == "u"
 
+        parsed_upper = api._parse_realtime_details_payload(
+            {
+                "Endpoint": "broker.upper.test",
+                "Port": 8883,
+                "Protocol": "ssl",
+                "UserId": "upper-user",
+            }
+        )
+        assert parsed_upper is not None
+        assert parsed_upper.endpoint == "broker.upper.test"
+        assert parsed_upper.port == 8883
+        assert parsed_upper.protocol == "ssl"
+        assert parsed_upper.user_id == "upper-user"
+
         assert api._parse_realtime_details_payload({"RTCDetails": {"port": "bad"}}) is None
         assert api._pick_str({"a": "", "b": " value "}, "a", "b") == "value"
         assert api._pick_str({"a": ""}, "a") is None
 
     @pytest.mark.asyncio
-    async def test_discover_realtime_details_returns_none_for_neo_without_links(self) -> None:
-        """Neo discovery should return None if no links/details are available."""
+    async def test_discover_realtime_details_uses_direct_endpoint_for_neo(self) -> None:
+        """Neo discovery should fall back to direct messaging endpoint when links are absent."""
         api = ActronAirAPI(platform="neo")
         api._get_system_link = lambda *_: None  # type: ignore[method-assign]
+
+        async def _req(method: str, endpoint: str) -> dict[str, Any]:
+            assert method == "get"
+            assert endpoint == "messaging/connection/details"
+            return {
+                "Endpoint": "broker.direct.test",
+                "Port": 8883,
+                "Protocol": "ssl",
+                "UserId": "u-direct",
+            }
+
+        api._make_request = _req  # type: ignore[method-assign]
+
+        details = await api._discover_realtime_connection_details("abc123")
+
+        assert details is not None
+        assert details.endpoint == "broker.direct.test"
+        assert details.user_id == "u-direct"
+
+    @pytest.mark.asyncio
+    async def test_discover_realtime_details_returns_none_for_neo_without_links(self) -> None:
+        """Neo discovery should return None if links and direct endpoint are unavailable."""
+        api = ActronAirAPI(platform="neo")
+        api._get_system_link = lambda *_: None  # type: ignore[method-assign]
+
+        async def _req(_: str, __: str) -> dict[str, Any]:
+            raise RuntimeError("boom")
+
+        api._make_request = _req  # type: ignore[method-assign]
 
         details = await api._discover_realtime_connection_details("abc123")
 

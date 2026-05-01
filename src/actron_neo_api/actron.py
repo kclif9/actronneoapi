@@ -551,7 +551,7 @@ class ActronAirAPI:
                 serials[0]
             )
             if details is None:
-                _LOGGER.warning("Realtime connection details unavailable; push not started")
+                _LOGGER.info("Realtime connection details unavailable; push not started")
                 return False
 
             token = self.oauth2_auth.access_token
@@ -667,7 +667,12 @@ class ActronAirAPI:
         self,
         serial_number: str,
     ) -> RealtimeConnectionDetails | None:
-        """Discover realtime connection details from API links or platform defaults."""
+        """Discover realtime connection details from API links or platform defaults.
+
+        Neo systems may expose realtime details via a dedicated auth endpoint
+        without publishing HAL links on each system object. If link discovery
+        fails, we probe that endpoint before falling back.
+        """
         rel_candidates = (
             "rtc-details",
             "rtc",
@@ -685,6 +690,16 @@ class ActronAirAPI:
                         return details
                 except Exception:
                     _LOGGER.debug("Realtime details link %s lookup failed", rel, exc_info=True)
+
+        # Neo mobile clients request connection details directly from this endpoint.
+        if self.platform == PLATFORM_NEO:
+            try:
+                payload = await self._make_request("get", "messaging/connection/details")
+                details = self._parse_realtime_details_payload(payload)
+                if details is not None:
+                    return details
+            except Exception:
+                _LOGGER.debug("Realtime details endpoint lookup failed", exc_info=True)
 
         # Que fallback endpoint from documented SignalR path.
         if self.platform == PLATFORM_QUE:
@@ -708,15 +723,22 @@ class ActronAirAPI:
         elif isinstance(payload.get("rtcDetails"), dict):
             candidate = payload["rtcDetails"]
 
-        endpoint = self._pick_str(candidate, "endPoint", "endpoint", "host", "server")
-        user_id = self._pick_str(candidate, "userId", "user_id", "username") or "unknown"
+        endpoint = self._pick_str(
+            candidate,
+            "endPoint",
+            "endpoint",
+            "Endpoint",
+            "host",
+            "server",
+        )
+        user_id = self._pick_str(candidate, "userId", "UserId", "user_id", "username") or "unknown"
 
         if not endpoint:
             return None
 
-        raw_port = candidate.get("port")
+        raw_port = candidate.get("port", candidate.get("Port"))
         port = int(raw_port) if isinstance(raw_port, int | str) and str(raw_port).isdigit() else 443
-        protocol = self._pick_str(candidate, "protocol", "scheme") or "ssl"
+        protocol = self._pick_str(candidate, "protocol", "Protocol", "scheme") or "ssl"
 
         return RealtimeConnectionDetails(
             endpoint=endpoint,
