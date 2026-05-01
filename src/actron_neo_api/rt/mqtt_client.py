@@ -85,6 +85,7 @@ class MQTTRTClient:
         reconnect_initial_delay: float = _MQTT_DEFAULT_RECONNECT_DELAY,
         reconnect_max_delay: float = _MQTT_MAX_RECONNECT_DELAY,
     ) -> None:
+        """Initialize the MQTT realtime client."""
         if not access_token.strip():
             raise ValueError("access_token cannot be empty")
         if keepalive <= 0:
@@ -157,7 +158,10 @@ class MQTTRTClient:
             status_change=f"{base}/{_MQTT_TOPIC_STATUS_CHANGE}",
         )
 
-    def register_callback(self, callback: Callable[[RealtimeEvent], Awaitable[None] | None]) -> None:
+    def register_callback(
+        self,
+        callback: Callable[[RealtimeEvent], Awaitable[None] | None],
+    ) -> None:
         """Register a callback that is invoked for every emitted realtime event."""
         self._callbacks.append(callback)
 
@@ -290,7 +294,10 @@ class MQTTRTClient:
 
                 if self._running:
                     self._connected_event.clear()
-                    await self._set_state(RealtimeConnectionState.RECONNECTING, reason="connection closed")
+                    await self._set_state(
+                        RealtimeConnectionState.RECONNECTING,
+                        reason="connection closed",
+                    )
             except asyncio.CancelledError:
                 raise
             except (MqttError, OSError, ssl.SSLError, ConnectionError) as exc:
