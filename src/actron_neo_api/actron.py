@@ -691,15 +691,21 @@ class ActronAirAPI:
                 except Exception:
                     _LOGGER.debug("Realtime details link %s lookup failed", rel, exc_info=True)
 
-        # Neo mobile clients request connection details directly from this endpoint.
+        # APK evidence (Retrofit base URL includes /api/v0/) resolves this to
+        # /api/v0/messaging/connection/details.
         if self.platform == PLATFORM_NEO:
+            endpoint = "api/v0/messaging/connection/details"
             try:
-                payload = await self._make_request("get", "messaging/connection/details")
+                payload = await self._make_request("get", endpoint)
                 details = self._parse_realtime_details_payload(payload)
                 if details is not None:
                     return details
             except Exception:
-                _LOGGER.debug("Realtime details endpoint lookup failed", exc_info=True)
+                _LOGGER.debug(
+                    "Realtime details endpoint lookup failed for %s",
+                    endpoint,
+                    exc_info=True,
+                )
 
         # Que fallback endpoint from documented SignalR path.
         if self.platform == PLATFORM_QUE:
