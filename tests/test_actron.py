@@ -1122,10 +1122,14 @@ class TestActronAirAPIRealtimeIntegration:
             domain_model=status,
         )
 
-        await api._handle_realtime_event(event)
-        api._push_running = False
+        async def _collect() -> list[ActronAirStatus]:
+            return [item async for item in api.stream_system_updates("abc123")]
 
-        streamed = [item async for item in api.stream_system_updates("abc123")]
+        collector = asyncio.create_task(_collect())
+        await asyncio.sleep(0)
+        await api._handle_realtime_event(event)
+        await api.stop_push()
+        streamed = await collector
 
         assert len(streamed) == 1
         assert streamed[0].serial_number == "abc123"
@@ -1382,16 +1386,39 @@ class TestActronAirAPIRealtimeIntegration:
     ) -> None:
         """stream_system_updates should filter by serial when requested."""
         api = ActronAirAPI()
+        api._push_running = True
         status1 = ActronAirStatus.model_validate(sample_status_full)
         status1.serial_number = "abc123"
         status2 = ActronAirStatus.model_validate(sample_status_full)
         status2.serial_number = "xyz789"
 
-        await api._push_status_queue.put(("xyz789", status2))
-        await api._push_status_queue.put(("abc123", status1))
-        api._push_running = False
+        async def _collect() -> list[ActronAirStatus]:
+            return [item async for item in api.stream_system_updates("abc123")]
 
-        streamed = [item async for item in api.stream_system_updates("abc123")]
+        collector = asyncio.create_task(_collect())
+        await asyncio.sleep(0)
+
+        await api._handle_realtime_event(
+            RealtimeMessage(
+                transport=RealtimeTransportType.MQTT,
+                kind=RealtimeEventKind.MESSAGE,
+                topic="actron-cloud/u/neo/xyz789/mwc/full-status",
+                payload={},
+                domain_model=status2,
+            )
+        )
+        await api._handle_realtime_event(
+            RealtimeMessage(
+                transport=RealtimeTransportType.MQTT,
+                kind=RealtimeEventKind.MESSAGE,
+                topic="actron-cloud/u/neo/abc123/mwc/full-status",
+                payload={},
+                domain_model=status1,
+            )
+        )
+
+        await api.stop_push()
+        streamed = await collector
 
         assert len(streamed) == 1
         assert streamed[0].serial_number == "abc123"

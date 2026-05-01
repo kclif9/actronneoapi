@@ -328,6 +328,9 @@ class ActronAirAPI:
         self._rt_client: MQTTRTClient | SignalRRTClient | None = None
         self._push_running = False
         self._push_status_queue: asyncio.Queue[tuple[str, ActronAirStatus | None]] = asyncio.Queue()
+        self._push_stream_queues: list[
+            tuple[str | None, asyncio.Queue[ActronAirStatus | None]]
+        ] = []
         self._push_callbacks: dict[
             str, list[Callable[[ActronAirStatus], Awaitable[None] | None]]
         ] = {}
@@ -556,9 +559,12 @@ class ActronAirAPI:
                 raise ActronAirAuthError("No OAuth access token available for realtime transport")
 
             if self.platform == PLATFORM_QUE:
-                rt_client: MQTTRTClient | SignalRRTClient = SignalRRTClient(details, token)
+                rt_client = SignalRRTClient(details, token)
             else:
                 rt_client = MQTTRTClient(details, token)
+
+            if rt_client is None:
+                raise ActronAirAPIError("Failed to create realtime transport client")
 
             def _on_event(event: RealtimeEvent) -> None:
                 task = asyncio.create_task(self._handle_realtime_event(event))
@@ -593,6 +599,8 @@ class ActronAirAPI:
         self._push_running = False
         # Wake blocked stream consumers so they can exit cleanly.
         self._push_status_queue.put_nowait(("", None))
+        for _, stream_queue in list(self._push_stream_queues):
+            stream_queue.put_nowait(None)
         if self._rt_client is None:
             return
         try:
@@ -630,13 +638,19 @@ class ActronAirAPI:
                 statuses are yielded.
         """
         serial_filter = serial_number.strip().lower() if serial_number else None
-        while True:
-            serial, status = await self._push_status_queue.get()
-            if status is None:
-                break
-            if serial_filter and serial != serial_filter:
-                continue
-            yield status
+        stream_queue: asyncio.Queue[ActronAirStatus | None] = asyncio.Queue()
+        self._push_stream_queues.append((serial_filter, stream_queue))
+
+        try:
+            while self._push_running or not stream_queue.empty():
+                status = await stream_queue.get()
+                if status is None:
+                    break
+                yield status
+        finally:
+            self._push_stream_queues = [
+                (flt, queue) for flt, queue in self._push_stream_queues if queue is not stream_queue
+            ]
 
     @staticmethod
     def _log_background_task_error(task: asyncio.Task[None]) -> None:
@@ -736,6 +750,9 @@ class ActronAirAPI:
         status.serial_number = serial
         self.state_manager.process_status_update(serial, status)
         await self._push_status_queue.put((serial, status))
+        for stream_filter, stream_queue in list(self._push_stream_queues):
+            if stream_filter is None or stream_filter == serial:
+                stream_queue.put_nowait(status)
 
         for callback in list(self._push_callbacks.get(serial, [])):
             try:
