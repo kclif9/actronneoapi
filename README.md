@@ -63,7 +63,7 @@ Realtime transport selection is automatic when push is enabled:
 
 - **Neo** systems use the MQTT realtime transport.
 - **Que (NX-Gen)** systems use the SignalR (SSE) realtime transport.
-- If realtime startup fails, the library falls back to normal polling behavior.
+- If realtime startup fails, `start_push()` returns `False` and your existing polling flow remains available.
 
 ---
 
@@ -107,7 +107,7 @@ Home Assistant integration impact:
 
 - Consumers continue to receive the same typed `ActronAirStatus` model.
 - Consumer code does not need to handle MQTT/SignalR directly.
-- Existing polling flows remain valid and can be used as fallback.
+- Existing polling flows remain valid and can continue to be used when push is unavailable.
 
 Detailed implementation/handoff notes are available in `docs/rt_push_implementation.md`.
 
