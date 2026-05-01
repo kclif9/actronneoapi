@@ -11,6 +11,7 @@ from actron_neo_api.rt import (
     RealtimeEventKind,
     RealtimeMessage,
     RealtimeTransportType,
+    SignalRRTClient,
 )
 
 
@@ -25,3 +26,4 @@ def test_realtime_package_exports() -> None:
     assert RealtimeClient.__name__ == "RealtimeClient"
     assert RealtimeConnectionDetails.__name__ == "RealtimeConnectionDetails"
     assert MQTTRTClient.__name__ == "MQTTRTClient"
+    assert SignalRRTClient.__name__ == "SignalRRTClient"
