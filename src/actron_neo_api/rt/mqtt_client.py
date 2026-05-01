@@ -17,7 +17,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
 
-from asyncio_mqtt import Client, MqttError  # type: ignore[import-not-found]
+from asyncio_mqtt import Client, MqttError
 
 from ..models import ActronAirStatus
 from .base import (
