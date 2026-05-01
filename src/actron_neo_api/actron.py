@@ -736,7 +736,9 @@ class ActronAirAPI:
         if not endpoint:
             return None
 
-        raw_port = candidate.get("port", candidate.get("Port"))
+        raw_port = candidate.get("port")
+        if raw_port in (None, ""):
+            raw_port = candidate.get("Port")
         port = int(raw_port) if isinstance(raw_port, int | str) and str(raw_port).isdigit() else 443
         protocol = self._pick_str(candidate, "protocol", "Protocol", "scheme") or "ssl"
 

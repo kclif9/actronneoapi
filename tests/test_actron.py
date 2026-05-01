@@ -1196,7 +1196,10 @@ class TestActronAirAPIRealtimeIntegration:
 
         assert started is False
         assert "Realtime connection details unavailable; push not started" in caplog.text
-        assert "WARNING" not in caplog.text
+        assert not any(
+            record.name == "actron_neo_api.actron" and record.levelno >= logging.WARNING
+            for record in caplog.records
+        )
 
     @pytest.mark.asyncio
     async def test_start_push_uses_explicit_serial_numbers(self) -> None:
@@ -1550,6 +1553,18 @@ class TestActronAirAPIRealtimeIntegration:
         assert parsed_upper.port == 8883
         assert parsed_upper.protocol == "ssl"
         assert parsed_upper.user_id == "upper-user"
+
+        parsed_port_fallback = api._parse_realtime_details_payload(
+            {
+                "endpoint": "broker.fallback.test",
+                "port": None,
+                "Port": 1883,
+                "protocol": "tcp",
+                "userId": "fallback-user",
+            }
+        )
+        assert parsed_port_fallback is not None
+        assert parsed_port_fallback.port == 1883
 
         assert api._parse_realtime_details_payload({"RTCDetails": {"port": "bad"}}) is None
         assert api._pick_str({"a": "", "b": " value "}, "a", "b") == "value"
