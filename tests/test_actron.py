@@ -1572,7 +1572,7 @@ class TestActronAirAPIRealtimeIntegration:
 
     @pytest.mark.asyncio
     async def test_discover_realtime_details_uses_direct_endpoint_for_neo(self) -> None:
-        """Neo discovery should try endpoint variants when links are absent."""
+        """Neo discovery should use the canonical API-v0 details endpoint."""
         api = ActronAirAPI(platform="neo")
         api._get_system_link = lambda *_: None  # type: ignore[method-assign]
         seen_endpoints: list[str] = []
@@ -1580,9 +1580,7 @@ class TestActronAirAPIRealtimeIntegration:
         async def _req(method: str, endpoint: str) -> dict[str, Any]:
             assert method == "get"
             seen_endpoints.append(endpoint)
-            if endpoint == "api/v0/messaging/connection/details":
-                raise RuntimeError("404")
-            assert endpoint == "messaging/connection/details"
+            assert endpoint == "api/v0/messaging/connection/details"
             return {
                 "Endpoint": "broker.direct.test",
                 "Port": 8883,
@@ -1597,10 +1595,7 @@ class TestActronAirAPIRealtimeIntegration:
         assert details is not None
         assert details.endpoint == "broker.direct.test"
         assert details.user_id == "u-direct"
-        assert seen_endpoints == [
-            "api/v0/messaging/connection/details",
-            "messaging/connection/details",
-        ]
+        assert seen_endpoints == ["api/v0/messaging/connection/details"]
 
     @pytest.mark.asyncio
     async def test_discover_realtime_details_returns_none_for_neo_without_links(self) -> None:
@@ -1618,10 +1613,7 @@ class TestActronAirAPIRealtimeIntegration:
         details = await api._discover_realtime_connection_details("abc123")
 
         assert details is None
-        assert seen_endpoints == [
-            "api/v0/messaging/connection/details",
-            "messaging/connection/details",
-        ]
+        assert seen_endpoints == ["api/v0/messaging/connection/details"]
 
     @pytest.mark.asyncio
     async def test_handle_realtime_event_branch_coverage(

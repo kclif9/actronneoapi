@@ -694,23 +694,18 @@ class ActronAirAPI:
         # APK evidence (Retrofit base URL includes /api/v0/) resolves this to
         # /api/v0/messaging/connection/details.
         if self.platform == PLATFORM_NEO:
-            direct_endpoints = (
-                "api/v0/messaging/connection/details",
-                # Legacy fallback for environments that expose it at root.
-                "messaging/connection/details",
-            )
-            for endpoint in direct_endpoints:
-                try:
-                    payload = await self._make_request("get", endpoint)
-                    details = self._parse_realtime_details_payload(payload)
-                    if details is not None:
-                        return details
-                except Exception:
-                    _LOGGER.debug(
-                        "Realtime details endpoint lookup failed for %s",
-                        endpoint,
-                        exc_info=True,
-                    )
+            endpoint = "api/v0/messaging/connection/details"
+            try:
+                payload = await self._make_request("get", endpoint)
+                details = self._parse_realtime_details_payload(payload)
+                if details is not None:
+                    return details
+            except Exception:
+                _LOGGER.debug(
+                    "Realtime details endpoint lookup failed for %s",
+                    endpoint,
+                    exc_info=True,
+                )
 
         # Que fallback endpoint from documented SignalR path.
         if self.platform == PLATFORM_QUE:
