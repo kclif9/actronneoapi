@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from actron_neo_api.rt import (
+    MQTTRTClient,
     RealtimeClient,
+    RealtimeConnectionDetails,
     RealtimeConnectionEvent,
     RealtimeConnectionState,
     RealtimeEventKind,
@@ -21,3 +23,5 @@ def test_realtime_package_exports() -> None:
     assert RealtimeConnectionEvent.__name__ == "RealtimeConnectionEvent"
     assert RealtimeMessage.__name__ == "RealtimeMessage"
     assert RealtimeClient.__name__ == "RealtimeClient"
+    assert RealtimeConnectionDetails.__name__ == "RealtimeConnectionDetails"
+    assert MQTTRTClient.__name__ == "MQTTRTClient"

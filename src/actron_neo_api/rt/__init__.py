@@ -6,6 +6,7 @@ shared API models and auth code.
 
 from .base import (
     RealtimeClient,
+    RealtimeConnectionDetails,
     RealtimeConnectionEvent,
     RealtimeConnectionState,
     RealtimeEvent,
@@ -13,13 +14,17 @@ from .base import (
     RealtimeMessage,
     RealtimeTransportType,
 )
+from .mqtt_client import MQTTRTClient, NeoMQTTTopicSet
 
 __all__ = [
     "RealtimeClient",
+    "RealtimeConnectionDetails",
     "RealtimeConnectionEvent",
     "RealtimeConnectionState",
     "RealtimeEvent",
     "RealtimeEventKind",
     "RealtimeMessage",
     "RealtimeTransportType",
+    "MQTTRTClient",
+    "NeoMQTTTopicSet",
 ]
