@@ -59,6 +59,58 @@ api = ActronAirAPI(refresh_token="your_token", platform="neo")      # Neo platfo
 api = ActronAirAPI(refresh_token="your_token", platform="que")      # NX-Gen platform
 ```
 
+Realtime transport selection is automatic when push is enabled:
+
+- **Neo** systems use the MQTT realtime transport.
+- **Que (NX-Gen)** systems use the SignalR (SSE) realtime transport.
+- If realtime startup fails, the library falls back to normal polling behavior.
+
+---
+
+## Realtime Push Updates
+
+Use realtime push when you want status updates delivered as events instead of polling loops.
+
+```python
+import asyncio
+from actron_neo_api import ActronAirAPI
+
+
+async def main() -> None:
+    api = ActronAirAPI(refresh_token="your_refresh_token")
+
+    systems = await api.get_ac_systems()
+    serial = systems[0].serial
+
+    started = await api.start_push([serial])
+    if not started:
+        # Realtime unavailable for this session; keep using polling.
+        await api.update_status(serial)
+        return
+
+    def on_update(status):
+        print(f"Push update for {status.serial_number}")
+
+    api.subscribe_system_updates(serial, on_update)
+
+    async for status in api.stream_system_updates(serial):
+        print(f"Mode: {status.user_aircon_settings.mode}")
+        break
+
+    await api.stop_push()
+
+
+asyncio.run(main())
+```
+
+Home Assistant integration impact:
+
+- Consumers continue to receive the same typed `ActronAirStatus` model.
+- Consumer code does not need to handle MQTT/SignalR directly.
+- Existing polling flows remain valid and can be used as fallback.
+
+Detailed implementation/handoff notes are available in `docs/rt_push_implementation.md`.
+
 ---
 
 ## Quick Start
