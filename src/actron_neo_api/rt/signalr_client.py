@@ -145,10 +145,19 @@ class SignalRRTClient(RealtimeClient):
         if not self._session:
             raise RuntimeError("no aiohttp session available")
         headers = {"Authorization": f"Bearer {self._access_token}", "Accept": "text/event-stream"}
-        url = self._connection_details.endpoint
+        # Perform SignalR negotiate to obtain the best SSE URL
+        try:
+            sse_url = await self._negotiate()
+        except Exception:
+            _LOGGER.debug("negotiate failed; falling back to endpoint", exc_info=True)
+            sse_url = self._connection_details.endpoint
+
+        url = sse_url
         async with self._session.get(url, headers=headers) as resp:
             if resp.status != 200:
                 raise RuntimeError(f"sse connect failed: {resp.status}")
+            # restore subscriptions immediately after a successful connection
+            await self._restore_subscriptions()
             # SSE: read stream and accumulate data: lines
             buffer = ""
             async for raw in resp.content:  # type: ignore[attr-defined]
@@ -170,6 +179,43 @@ class SignalRRTClient(RealtimeClient):
                             self._handle_payload(payload)
                         finally:
                             buffer = ""
+
+    async def _negotiate(self) -> str:
+        """Call the SignalR negotiate endpoint and return an SSE connect URL.
+
+        The negotiate response varies; prefer an explicit `url` when present,
+        otherwise build a serverSentEvents URL using a connectionId/token.
+        """
+        url = f"{self._connection_details.endpoint.rstrip('/')}/negotiate"
+        headers = {"Authorization": f"Bearer {self._access_token}"}
+        async with self._session.post(url, headers=headers, timeout=10) as resp:
+            if resp.status != 200:
+                raise RuntimeError(f"negotiate failed: {resp.status}")
+            data = await resp.json()
+
+        # If server returned a connect URL, use it directly.
+        if isinstance(data, dict) and "url" in data:
+            return data["url"]
+
+        # Otherwise try to construct a serverSentEvents URL.
+        connection_id = data.get("connectionId") if isinstance(data, dict) else None
+        token = data.get("connectionToken") if isinstance(data, dict) else None
+        base = self._connection_details.endpoint.rstrip('/')
+        if connection_id:
+            # SignalR-compatible query for serverSentEvents transport
+            return f"{base}/?id={connection_id}&transport=serverSentEvents"
+        if token:
+            return f"{base}/?transport=serverSentEvents&connectionToken={token}"
+        # Fallback to the base endpoint
+        return self._connection_details.endpoint
+
+    async def _restore_subscriptions(self) -> None:
+        """Resend subscribe commands for current subscriptions after reconnect."""
+        for serial in list(self._subscriptions):
+            try:
+                await self._send_subscribe(serial)
+            except Exception:
+                _LOGGER.debug("failed to resubscribe %s", serial, exc_info=True)
 
     def _handle_payload(self, payload: Dict) -> None:
         try:
