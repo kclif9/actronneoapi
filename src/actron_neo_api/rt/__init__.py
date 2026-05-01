@@ -15,6 +15,7 @@ from .base import (
     RealtimeTransportType,
 )
 from .mqtt_client import MQTTRTClient, NeoMQTTTopicSet
+from .signalr_client import SignalRRTClient
 
 __all__ = [
     "RealtimeClient",
@@ -27,4 +28,5 @@ __all__ = [
     "RealtimeTransportType",
     "MQTTRTClient",
     "NeoMQTTTopicSet",
+    "SignalRRTClient",
 ]
