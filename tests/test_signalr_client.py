@@ -207,8 +207,34 @@ async def test_connect_is_noop_when_already_connected() -> None:
 
 
 @pytest.mark.asyncio
+async def test_connect_restarts_when_previous_task_done(monkeypatch: pytest.MonkeyPatch) -> None:
+    session = _Session()
+
+    def _factory() -> _Session:
+        return session
+
+    monkeypatch.setattr(aiohttp, "ClientSession", _factory)
+
+    client = SignalRRTClient(_details(), access_token="secret")
+    client._supervisor_task = asyncio.create_task(asyncio.sleep(0))
+    await client._supervisor_task
+
+    async def _run_once() -> None:
+        client._running = False
+
+    client._run_supervisor = _run_once  # type: ignore[method-assign]
+
+    await client.connect()
+
+    assert client._supervisor_task is not None
+    await client._supervisor_task
+
+
+@pytest.mark.asyncio
 async def test_disconnect_cancels_task_and_closes_session() -> None:
-    client = SignalRRTClient(_details(), access_token="secret", session=_Session())
+    client = SignalRRTClient(_details(), access_token="secret")
+    client._session = _Session()
+    client._external_session = False
     client._running = True
     client._supervisor_task = asyncio.create_task(asyncio.sleep(10))
 
@@ -220,6 +246,17 @@ async def test_disconnect_cancels_task_and_closes_session() -> None:
 
 
 @pytest.mark.asyncio
+async def test_disconnect_does_not_close_external_session() -> None:
+    session = _Session()
+    client = SignalRRTClient(_details(), access_token="secret", session=session)
+
+    await client.disconnect()
+
+    assert session.closed is False
+    assert client._session is session
+
+
+@pytest.mark.asyncio
 async def test_disconnect_without_task_or_session() -> None:
     client = SignalRRTClient(_details(), access_token="secret")
 
@@ -227,6 +264,17 @@ async def test_disconnect_without_task_or_session() -> None:
 
     assert client._supervisor_task is None
     assert client._session is None
+
+
+@pytest.mark.asyncio
+async def test_disconnect_cancels_resubscribe_task() -> None:
+    client = SignalRRTClient(_details(), access_token="secret")
+    client._running = True
+    client._resubscribe_task = asyncio.create_task(asyncio.sleep(10))
+
+    await client.disconnect()
+
+    assert client._resubscribe_task is None
 
 
 @pytest.mark.asyncio
@@ -252,6 +300,17 @@ async def test_send_subscribe_and_unsubscribe_no_session_noop() -> None:
     await client._send_unsubscribe("SERIAL1")
 
     assert client._session is None
+
+
+@pytest.mark.asyncio
+async def test_subscribe_unsubscribe_empty_serial_rejected() -> None:
+    client = SignalRRTClient(_details(), access_token="secret")
+
+    with pytest.raises(ValueError, match="device_serial cannot be empty"):
+        await client.subscribe("  ")
+
+    with pytest.raises(ValueError, match="device_serial cannot be empty"):
+        await client.unsubscribe("")
 
 
 @pytest.mark.asyncio
@@ -281,6 +340,34 @@ async def test_run_supervisor_retries_after_failure(monkeypatch: pytest.MonkeyPa
     await client._run_supervisor()
 
     assert calls["connect"] == 2
+    assert slept == [0.25]
+
+
+@pytest.mark.asyncio
+async def test_run_supervisor_uses_backoff_when_stream_ends(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = SignalRRTClient(
+        _details(),
+        access_token="secret",
+        reconnect_initial_delay=0.25,
+        reconnect_max_delay=1.0,
+    )
+    client._running = True
+    slept: list[float] = []
+
+    async def _connect_and_listen() -> None:
+        return None
+
+    async def _sleep(delay: float) -> None:
+        slept.append(delay)
+        client._running = False
+
+    client._connect_and_listen = _connect_and_listen  # type: ignore[method-assign]
+    monkeypatch.setattr(asyncio, "sleep", _sleep)
+
+    await client._run_supervisor()
+
     assert slept == [0.25]
 
 
@@ -405,6 +492,60 @@ async def test_negotiate_raises_on_non_200() -> None:
 
 
 @pytest.mark.asyncio
+async def test_update_access_token_validates_and_normalizes() -> None:
+    client = SignalRRTClient(_details(), access_token="secret")
+
+    with pytest.raises(ValueError, match="access_token cannot be empty"):
+        await client.update_access_token("  ")
+
+    await client.update_access_token(" next-token ")
+    assert client._access_token == "next-token"
+
+
+@pytest.mark.asyncio
+async def test_iter_events_returns_when_not_running_and_empty() -> None:
+    client = SignalRRTClient(_details(), access_token="secret")
+    items = [item async for item in client.iter_events()]
+    assert items == []
+
+
+@pytest.mark.asyncio
+async def test_publish_not_supported() -> None:
+    client = SignalRRTClient(_details(), access_token="secret")
+
+    with pytest.raises(NotImplementedError, match="does not support publish"):
+        await client.publish("topic", {"x": 1})
+
+
+@pytest.mark.parametrize(
+    ("access_token", "initial_delay", "max_delay", "error_match"),
+    [
+        ("", 1.0, 30.0, "access_token cannot be empty"),
+        ("secret", 0.0, 30.0, "reconnect_initial_delay must be greater than zero"),
+        (
+            "secret",
+            2.0,
+            1.0,
+            "reconnect_max_delay must be greater than or equal to initial delay",
+        ),
+    ],
+)
+def test_constructor_validation(
+    access_token: str,
+    initial_delay: float,
+    max_delay: float,
+    error_match: str,
+) -> None:
+    with pytest.raises(ValueError, match=error_match):
+        SignalRRTClient(
+            _details(),
+            access_token=access_token,
+            reconnect_initial_delay=initial_delay,
+            reconnect_max_delay=max_delay,
+        )
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("payload", "expected"),
     [
@@ -456,6 +597,51 @@ async def test_restore_subscriptions_ignores_send_errors() -> None:
     client._send_subscribe = _send  # type: ignore[method-assign]
 
     await client._restore_subscriptions()
+
+
+@pytest.mark.asyncio
+async def test_run_subscription_refresh_breaks_after_stop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = SignalRRTClient(_details(), access_token="secret")
+    client._running = True
+    restored = {"count": 0}
+
+    async def _sleep(_: float) -> None:
+        client._running = False
+
+    async def _restore() -> None:
+        restored["count"] += 1
+
+    monkeypatch.setattr(asyncio, "sleep", _sleep)
+    client._restore_subscriptions = _restore  # type: ignore[method-assign]
+
+    await client._run_subscription_refresh()
+
+    assert restored["count"] == 0
+
+
+@pytest.mark.asyncio
+async def test_run_subscription_refresh_calls_restore(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = SignalRRTClient(_details(), access_token="secret")
+    client._running = True
+    restored = {"count": 0}
+
+    async def _sleep(_: float) -> None:
+        return None
+
+    async def _restore() -> None:
+        restored["count"] += 1
+        client._running = False
+
+    monkeypatch.setattr(asyncio, "sleep", _sleep)
+    client._restore_subscriptions = _restore  # type: ignore[method-assign]
+
+    await client._run_subscription_refresh()
+
+    assert restored["count"] == 1
 
 
 @pytest.mark.asyncio
