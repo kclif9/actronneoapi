@@ -9,7 +9,10 @@ import pytest
 from actron_neo_api.rt import RealtimeConnectionDetails, SignalRRTClient
 
 
-def test_register_callback_and_emit(tmp_path) -> None:
+import pytest
+
+@pytest.mark.asyncio
+async def test_register_callback_and_emit(tmp_path) -> None:
     details = RealtimeConnectionDetails(
         endpoint="https://example.test/signalr",
         port=443,
@@ -37,8 +40,7 @@ def test_register_callback_and_emit(tmp_path) -> None:
     )
 
     # schedule emit and consume from queue
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(client._emit_event(msg))
+    await client._emit_event(msg)
 
     # callback should have been called and queue populated
     assert len(seen) == 1
