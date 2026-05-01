@@ -17,7 +17,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
 
-from asyncio_mqtt import Client, MqttError
+from aiomqtt import Client, MqttError
 
 from ..models import ActronAirStatus
 from .base import (
@@ -185,19 +185,13 @@ class MQTTRTClient:
         self._running = False
         self._connected_event.clear()
 
-        if self._client is not None:
-            try:
-                await self._client.disconnect()
-            except Exception:  # pragma: no cover - best effort cleanup
-                _LOGGER.debug("MQTT disconnect failed", exc_info=True)
-            finally:
-                self._client = None
-
         if self._supervisor_task is not None:
             self._supervisor_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await self._supervisor_task
             self._supervisor_task = None
+
+        self._client = None
 
         await self._set_state(RealtimeConnectionState.DISCONNECTED)
 
@@ -261,8 +255,9 @@ class MQTTRTClient:
             raise ValueError("access_token cannot be empty")
 
         self._access_token = access_token
-        if self._running and self._client is not None:
-            await self._client.disconnect()
+        if self._running:
+            await self.disconnect()
+            await self.connect()
 
     async def iter_events(self) -> AsyncIterator[RealtimeEvent]:
         """Yield realtime events as they arrive."""
@@ -286,11 +281,10 @@ class MQTTRTClient:
                     self._connected_event.set()
                     retry_delay = self._reconnect_initial_delay
 
-                    async with client.unfiltered_messages() as messages:
-                        async for message in messages:
-                            if not self._running:
-                                break
-                            await self._handle_message(str(message.topic), bytes(message.payload))
+                    async for message in client.messages:
+                        if not self._running:
+                            break
+                        await self._handle_message(str(message.topic), bytes(message.payload))
 
                 if self._running:
                     self._connected_event.clear()
@@ -315,7 +309,7 @@ class MQTTRTClient:
         await self._set_state(RealtimeConnectionState.DISCONNECTED)
 
     def _build_client(self) -> Client:
-        """Create a configured asyncio-mqtt client instance."""
+        """Create a configured aiomqtt client instance."""
         tls_context = self._ssl_context
         if tls_context is None and self._details.uses_tls:
             tls_context = ssl.create_default_context()
