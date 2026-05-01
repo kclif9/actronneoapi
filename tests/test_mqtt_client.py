@@ -606,6 +606,18 @@ class TestMQTTRTClient:
 
         assert MQTTRTClient._get_client_identifier_arg_name() == "client_id"  # noqa: SLF001
 
+    def test_get_client_identifier_arg_name_signature_failure(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Signature inspection failures should fall back to the modern identifier kwarg."""
+
+        def raise_type_error(_obj: object) -> None:
+            raise TypeError("signature unavailable")
+
+        monkeypatch.setattr(mqtt_module.inspect, "signature", raise_type_error)
+
+        assert MQTTRTClient._get_client_identifier_arg_name() == "identifier"  # noqa: SLF001
+
     @pytest.mark.asyncio
     async def test_iter_events_yields_queued_events(self) -> None:
         """Queued events should be yielded in order."""
