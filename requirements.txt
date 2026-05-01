@@ -1,4 +1,5 @@
 aiohttp
+asyncio-mqtt
 mypy
 pydantic
 pytest

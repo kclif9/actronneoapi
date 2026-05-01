@@ -65,6 +65,38 @@ class RealtimeMessage(RealtimeEvent):
     topic: str
     payload: dict[str, Any]
     raw_payload: bytes | None = None
+    domain_model: Any | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class RealtimeConnectionDetails:
+    """Connection details required to open a realtime transport."""
+
+    endpoint: str
+    port: int
+    protocol: str
+    user_id: str
+
+    def __post_init__(self) -> None:
+        """Validate the connection settings."""
+        if not self.endpoint.strip():
+            raise ValueError("endpoint cannot be empty")
+        if self.port <= 0:
+            raise ValueError("port must be greater than zero")
+        if not self.protocol.strip():
+            raise ValueError("protocol cannot be empty")
+        if not self.user_id.strip():
+            raise ValueError("user_id cannot be empty")
+
+    @property
+    def uses_tls(self) -> bool:
+        """Return whether the transport should use TLS."""
+        return self.protocol.strip().lower() in {"ssl", "tls", "mqtts"}
+
+    @property
+    def scheme(self) -> str:
+        """Return the transport URI scheme."""
+        return "ssl" if self.uses_tls else "tcp"
 
 
 @runtime_checkable
