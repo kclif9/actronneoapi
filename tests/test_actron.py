@@ -1241,6 +1241,33 @@ class TestActronAirAPIRealtimeIntegration:
         assert api._rt_client.subscribed == ["abc123"]
 
     @pytest.mark.asyncio
+    async def test_start_push_handles_missing_transport_instance(self) -> None:
+        """start_push should fail gracefully when transport creation returns None."""
+        api = ActronAirAPI(platform="neo")
+        api.oauth2_auth.ensure_token_valid = AsyncMock(return_value=None)
+        api.oauth2_auth.access_token = "token"
+        api.systems = [ActronAirSystemInfo(serial="abc123")]
+
+        details = RealtimeConnectionDetails(
+            endpoint="mqtt.example.test",
+            port=8883,
+            protocol="ssl",
+            user_id="u",
+        )
+
+        from actron_neo_api import actron as actron_module
+
+        original_mqtt = actron_module.MQTTRTClient
+        try:
+            actron_module.MQTTRTClient = lambda *_args, **_kwargs: None  # type: ignore[assignment]
+            started = await api.start_push(connection_details=details)
+        finally:
+            actron_module.MQTTRTClient = original_mqtt  # type: ignore[assignment]
+
+        assert started is False
+        assert api._rt_client is None
+
+    @pytest.mark.asyncio
     async def test_start_push_handles_missing_token_and_cleanup_error(self) -> None:
         """start_push should handle auth failure and cleanup failures gracefully."""
 
