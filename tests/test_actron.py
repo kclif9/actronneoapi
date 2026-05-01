@@ -1580,9 +1580,9 @@ class TestActronAirAPIRealtimeIntegration:
         async def _req(method: str, endpoint: str) -> dict[str, Any]:
             assert method == "get"
             seen_endpoints.append(endpoint)
-            if endpoint == "messaging/connection/details":
+            if endpoint == "api/v0/messaging/connection/details":
                 raise RuntimeError("404")
-            assert endpoint == "api/v0/messaging/connection/details"
+            assert endpoint == "messaging/connection/details"
             return {
                 "Endpoint": "broker.direct.test",
                 "Port": 8883,
@@ -1598,8 +1598,8 @@ class TestActronAirAPIRealtimeIntegration:
         assert details.endpoint == "broker.direct.test"
         assert details.user_id == "u-direct"
         assert seen_endpoints == [
-            "messaging/connection/details",
             "api/v0/messaging/connection/details",
+            "messaging/connection/details",
         ]
 
     @pytest.mark.asyncio
@@ -1619,9 +1619,8 @@ class TestActronAirAPIRealtimeIntegration:
 
         assert details is None
         assert seen_endpoints == [
-            "messaging/connection/details",
             "api/v0/messaging/connection/details",
-            "api/v0/client/messaging/connection/details",
+            "messaging/connection/details",
         ]
 
     @pytest.mark.asyncio

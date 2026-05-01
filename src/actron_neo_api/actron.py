@@ -691,12 +691,13 @@ class ActronAirAPI:
                 except Exception:
                     _LOGGER.debug("Realtime details link %s lookup failed", rel, exc_info=True)
 
-        # Neo environments can expose this endpoint on different API prefixes.
+        # APK evidence (Retrofit base URL includes /api/v0/) resolves this to
+        # /api/v0/messaging/connection/details.
         if self.platform == PLATFORM_NEO:
             direct_endpoints = (
-                "messaging/connection/details",
                 "api/v0/messaging/connection/details",
-                "api/v0/client/messaging/connection/details",
+                # Legacy fallback for environments that expose it at root.
+                "messaging/connection/details",
             )
             for endpoint in direct_endpoints:
                 try:
