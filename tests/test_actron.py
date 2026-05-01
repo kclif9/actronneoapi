@@ -1,5 +1,6 @@
 """Tests for ActronAirAPI core client functionality."""
 
+import asyncio
 import time
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
@@ -8,8 +9,20 @@ import pytest
 
 from actron_neo_api import ActronAirAPI
 from actron_neo_api.exceptions import ActronAirAPIError, ActronAirAuthError
-from actron_neo_api.models import ActronAirDeviceCode, ActronAirToken, ActronAirUserInfo
+from actron_neo_api.models import (
+    ActronAirDeviceCode,
+    ActronAirStatus,
+    ActronAirToken,
+    ActronAirUserInfo,
+)
 from actron_neo_api.models.system import ActronAirSystemInfo
+from actron_neo_api.rt.base import (
+    RealtimeConnectionDetails,
+    RealtimeEvent,
+    RealtimeEventKind,
+    RealtimeMessage,
+    RealtimeTransportType,
+)
 
 
 class TestActronAirAPIInitialization:
@@ -940,3 +953,601 @@ class TestActronAirAPIInjectableSession:
         api._set_base_url("https://que.actronair.com.au", "que")
 
         assert api.oauth2_auth._session is external_session
+
+
+class TestActronAirAPIRealtimeIntegration:
+    """Test issue #77 realtime public API integration."""
+
+    @pytest.mark.asyncio
+    async def test_start_push_selects_mqtt_for_neo(self) -> None:
+        """Neo platform should use the MQTT transport."""
+
+        class FakeMQTTClient:
+            def __init__(self, details: RealtimeConnectionDetails, token: str) -> None:
+                self.details = details
+                self.token = token
+                self.callbacks: list[Any] = []
+                self.subscribed: list[str] = []
+
+            def register_callback(self, callback: Any) -> None:
+                self.callbacks.append(callback)
+
+            async def connect(self) -> None:
+                return None
+
+            async def subscribe_system(self, serial: str) -> None:
+                self.subscribed.append(serial)
+
+            async def disconnect(self) -> None:
+                return None
+
+            async def update_access_token(self, token: str) -> None:
+                self.token = token
+
+        api = ActronAirAPI(platform="neo")
+        api.oauth2_auth.ensure_token_valid = AsyncMock(return_value=None)
+        api.oauth2_auth.access_token = "token"
+        api.systems = [ActronAirSystemInfo(serial="ABC123")]
+
+        async def _discover(_: str) -> RealtimeConnectionDetails:
+            return RealtimeConnectionDetails(
+                endpoint="mqtt.example.test",
+                port=8883,
+                protocol="ssl",
+                user_id="u",
+            )
+
+        api._discover_realtime_connection_details = _discover  # type: ignore[method-assign]
+
+        from actron_neo_api import actron as actron_module
+
+        original_mqtt = actron_module.MQTTRTClient
+        try:
+            actron_module.MQTTRTClient = FakeMQTTClient  # type: ignore[assignment]
+            started = await api.start_push()
+        finally:
+            actron_module.MQTTRTClient = original_mqtt  # type: ignore[assignment]
+
+        assert started is True
+        assert isinstance(api._rt_client, FakeMQTTClient)
+        assert api._rt_client.subscribed == ["abc123"]
+
+    @pytest.mark.asyncio
+    async def test_start_push_selects_signalr_for_que(self) -> None:
+        """Que platform should use the SignalR transport."""
+
+        class FakeSignalRClient:
+            def __init__(self, details: RealtimeConnectionDetails, token: str) -> None:
+                self.details = details
+                self.token = token
+                self.subscribed: list[str] = []
+
+            def register_callback(self, callback: Any) -> None:
+                self.callback = callback
+
+            async def connect(self) -> None:
+                return None
+
+            async def subscribe(self, serial: str) -> None:
+                self.subscribed.append(serial)
+
+            async def disconnect(self) -> None:
+                return None
+
+            async def update_access_token(self, token: str) -> None:
+                self.token = token
+
+        api = ActronAirAPI(platform="que")
+        api.oauth2_auth.ensure_token_valid = AsyncMock(return_value=None)
+        api.oauth2_auth.access_token = "token"
+        api.systems = [ActronAirSystemInfo(serial="xyz789")]
+
+        async def _discover(_: str) -> RealtimeConnectionDetails:
+            return RealtimeConnectionDetails(
+                endpoint="https://que.example.test/api/v0/messaging/app",
+                port=443,
+                protocol="https",
+                user_id="u",
+            )
+
+        api._discover_realtime_connection_details = _discover  # type: ignore[method-assign]
+
+        from actron_neo_api import actron as actron_module
+
+        original_signalr = actron_module.SignalRRTClient
+        try:
+            actron_module.SignalRRTClient = FakeSignalRClient  # type: ignore[assignment]
+            started = await api.start_push()
+        finally:
+            actron_module.SignalRRTClient = original_signalr  # type: ignore[assignment]
+
+        assert started is True
+        assert isinstance(api._rt_client, FakeSignalRClient)
+        assert api._rt_client.subscribed == ["xyz789"]
+
+    @pytest.mark.asyncio
+    async def test_start_push_returns_false_without_systems(self) -> None:
+        """start_push should fail gracefully when no systems are available."""
+        api = ActronAirAPI()
+        api.oauth2_auth.ensure_token_valid = AsyncMock(return_value=None)
+        api.oauth2_auth.access_token = "token"
+        api.get_ac_systems = AsyncMock(return_value=[])
+
+        started = await api.start_push()
+
+        assert started is False
+
+    @pytest.mark.asyncio
+    async def test_stop_push_disconnects_transport(self) -> None:
+        """stop_push should disconnect and clear active transport."""
+
+        class FakeClient:
+            def __init__(self) -> None:
+                self.disconnect = AsyncMock(return_value=None)
+
+        api = ActronAirAPI()
+        client = FakeClient()
+        api._rt_client = client  # type: ignore[assignment]
+        api._push_running = True
+
+        await api.stop_push()
+
+        client.disconnect.assert_called_once()
+        assert api._rt_client is None
+        assert api._push_running is False
+
+    @pytest.mark.asyncio
+    async def test_subscribe_and_stream_system_updates(
+        self, sample_status_full: dict[str, Any]
+    ) -> None:
+        """Callbacks and stream should receive parsed ActronAirStatus updates."""
+        api = ActronAirAPI()
+        api._push_running = True
+        seen: list[str] = []
+
+        def _cb(status: ActronAirStatus) -> None:
+            if status.serial_number:
+                seen.append(status.serial_number)
+
+        api.subscribe_system_updates("ABC123", _cb)
+
+        status = ActronAirStatus.model_validate(sample_status_full)
+        status.serial_number = "abc123"
+        event = RealtimeMessage(
+            transport=RealtimeTransportType.MQTT,
+            kind=RealtimeEventKind.MESSAGE,
+            topic="actron-cloud/u/neo/abc123/mwc/full-status",
+            payload={},
+            raw_payload=None,
+            domain_model=status,
+        )
+
+        await api._handle_realtime_event(event)
+        api._push_running = False
+
+        streamed = [item async for item in api.stream_system_updates("abc123")]
+
+        assert len(streamed) == 1
+        assert streamed[0].serial_number == "abc123"
+        assert seen == ["abc123"]
+
+    @pytest.mark.asyncio
+    async def test_make_request_syncs_realtime_token(
+        self,
+        mock_session: AsyncMock,
+        mock_aiohttp_response: Any,
+        mock_oauth: AsyncMock,
+    ) -> None:
+        """_make_request should push refreshed/access token to realtime transport."""
+
+        class FakeClient:
+            def __init__(self) -> None:
+                self.update_access_token = AsyncMock(return_value=None)
+
+        api = ActronAirAPI(refresh_token="test_token")
+        api._initialized = True
+        api._session = mock_session
+        api.oauth2_auth = mock_oauth
+        api._rt_client = FakeClient()  # type: ignore[assignment]
+
+        mock_session.request.return_value.__aenter__.return_value = mock_aiohttp_response(
+            status=200, json_data={"ok": True}
+        )
+
+        result = await api._make_request("get", "test/endpoint")
+
+        assert result["ok"] is True
+        api._rt_client.update_access_token.assert_called_once_with("test_access_token")
+
+    @pytest.mark.asyncio
+    async def test_start_push_returns_true_when_already_running(self) -> None:
+        """start_push should no-op when push is already active."""
+        api = ActronAirAPI()
+        api._push_running = True
+        api._rt_client = object()  # type: ignore[assignment]
+
+        started = await api.start_push()
+
+        assert started is True
+
+    @pytest.mark.asyncio
+    async def test_start_push_returns_false_when_details_unavailable(self) -> None:
+        """start_push should fallback when realtime details cannot be resolved."""
+        api = ActronAirAPI(platform="neo")
+        api.oauth2_auth.ensure_token_valid = AsyncMock(return_value=None)
+        api.oauth2_auth.access_token = "token"
+        api.systems = [ActronAirSystemInfo(serial="abc123")]
+
+        async def _discover(_: str) -> None:
+            return None
+
+        api._discover_realtime_connection_details = _discover  # type: ignore[method-assign]
+
+        started = await api.start_push()
+
+        assert started is False
+
+    @pytest.mark.asyncio
+    async def test_start_push_uses_explicit_serial_numbers(self) -> None:
+        """start_push should honor provided serial_numbers and ignore blanks."""
+
+        class FakeMQTTClient:
+            def __init__(self, details: RealtimeConnectionDetails, token: str) -> None:
+                self.subscribed: list[str] = []
+
+            def register_callback(self, callback: Any) -> None:
+                self.callback = callback
+
+            async def connect(self) -> None:
+                return None
+
+            async def subscribe_system(self, serial: str) -> None:
+                self.subscribed.append(serial)
+
+            async def disconnect(self) -> None:
+                return None
+
+            async def update_access_token(self, token: str) -> None:
+                return None
+
+        api = ActronAirAPI(platform="neo")
+        api.oauth2_auth.ensure_token_valid = AsyncMock(return_value=None)
+        api.oauth2_auth.access_token = "token"
+
+        details = RealtimeConnectionDetails(
+            endpoint="mqtt.example.test",
+            port=8883,
+            protocol="ssl",
+            user_id="u",
+        )
+
+        from actron_neo_api import actron as actron_module
+
+        original_mqtt = actron_module.MQTTRTClient
+        try:
+            actron_module.MQTTRTClient = FakeMQTTClient  # type: ignore[assignment]
+            started = await api.start_push(
+                serial_numbers=["ABC123", "", "  "], connection_details=details
+            )
+        finally:
+            actron_module.MQTTRTClient = original_mqtt  # type: ignore[assignment]
+
+        assert started is True
+        assert isinstance(api._rt_client, FakeMQTTClient)
+        assert api._rt_client.subscribed == ["abc123"]
+
+    @pytest.mark.asyncio
+    async def test_start_push_handles_missing_token_and_cleanup_error(self) -> None:
+        """start_push should handle auth failure and cleanup failures gracefully."""
+
+        class _OldClient:
+            async def disconnect(self) -> None:
+                raise RuntimeError("cleanup failed")
+
+        api = ActronAirAPI(platform="neo")
+        api.oauth2_auth.ensure_token_valid = AsyncMock(return_value=None)
+        api.oauth2_auth.access_token = None
+        api.systems = [ActronAirSystemInfo(serial="abc123")]
+        api._rt_client = _OldClient()  # type: ignore[assignment]
+
+        details = RealtimeConnectionDetails(
+            endpoint="mqtt.example.test",
+            port=8883,
+            protocol="ssl",
+            user_id="u",
+        )
+        started = await api.start_push(connection_details=details)
+
+        assert started is False
+        assert api._rt_client is None
+
+    @pytest.mark.asyncio
+    async def test_start_push_event_callback_creates_background_task(
+        self, sample_status_full: dict[str, Any]
+    ) -> None:
+        """Registered transport callback should schedule event handling task."""
+
+        class FakeMQTTClient:
+            def __init__(self, details: RealtimeConnectionDetails, token: str) -> None:
+                self.callback: Any = None
+
+            def register_callback(self, callback: Any) -> None:
+                self.callback = callback
+
+            async def connect(self) -> None:
+                status = ActronAirStatus.model_validate(sample_status_full)
+                status.serial_number = "abc123"
+                event = RealtimeMessage(
+                    transport=RealtimeTransportType.MQTT,
+                    kind=RealtimeEventKind.MESSAGE,
+                    topic="actron-cloud/u/neo/abc123/mwc/full-status",
+                    payload={},
+                    domain_model=status,
+                )
+                if self.callback is not None:
+                    self.callback(event)
+
+            async def subscribe_system(self, serial: str) -> None:
+                return None
+
+            async def disconnect(self) -> None:
+                return None
+
+            async def update_access_token(self, token: str) -> None:
+                return None
+
+        api = ActronAirAPI(platform="neo")
+        api.oauth2_auth.ensure_token_valid = AsyncMock(return_value=None)
+        api.oauth2_auth.access_token = "token"
+        api.systems = [ActronAirSystemInfo(serial="abc123")]
+
+        details = RealtimeConnectionDetails(
+            endpoint="mqtt.example.test",
+            port=8883,
+            protocol="ssl",
+            user_id="u",
+        )
+
+        from actron_neo_api import actron as actron_module
+
+        original_mqtt = actron_module.MQTTRTClient
+        try:
+            actron_module.MQTTRTClient = FakeMQTTClient  # type: ignore[assignment]
+            started = await api.start_push(connection_details=details)
+            await asyncio.sleep(0)
+        finally:
+            actron_module.MQTTRTClient = original_mqtt  # type: ignore[assignment]
+
+        assert started is True
+        assert api.state_manager.get_status("abc123") is not None
+
+    def test_subscribe_system_updates_empty_serial_raises(self) -> None:
+        """subscribe_system_updates should validate serial."""
+        api = ActronAirAPI()
+        with pytest.raises(ValueError, match="serial_number cannot be empty"):
+            api.subscribe_system_updates("", lambda _: None)
+
+    @pytest.mark.asyncio
+    async def test_stream_system_updates_skips_non_matching_serial(
+        self, sample_status_full: dict[str, Any]
+    ) -> None:
+        """stream_system_updates should filter by serial when requested."""
+        api = ActronAirAPI()
+        status1 = ActronAirStatus.model_validate(sample_status_full)
+        status1.serial_number = "abc123"
+        status2 = ActronAirStatus.model_validate(sample_status_full)
+        status2.serial_number = "xyz789"
+
+        await api._push_status_queue.put(("xyz789", status2))
+        await api._push_status_queue.put(("abc123", status1))
+        api._push_running = False
+
+        streamed = [item async for item in api.stream_system_updates("abc123")]
+
+        assert len(streamed) == 1
+        assert streamed[0].serial_number == "abc123"
+
+    @pytest.mark.asyncio
+    async def test_discover_realtime_details_success_and_fallback(self) -> None:
+        """Discovery should parse link payloads and Que fallback endpoint."""
+        api = ActronAirAPI(platform="neo")
+
+        def _link(_: str, rel: str) -> str | None:
+            return "api/v0/rtc" if rel == "rtc" else None
+
+        async def _req(_: str, endpoint: str) -> dict[str, Any]:
+            assert endpoint == "api/v0/rtc"
+            return {
+                "RTCDetails": {
+                    "endPoint": "broker.test",
+                    "port": 8883,
+                    "protocol": "ssl",
+                    "userId": "u",
+                }
+            }
+
+        api._get_system_link = _link  # type: ignore[method-assign]
+        api._make_request = _req  # type: ignore[method-assign]
+
+        details = await api._discover_realtime_connection_details("abc123")
+        assert details is not None
+        assert details.endpoint == "broker.test"
+
+        api_q = ActronAirAPI(platform="que")
+        api_q._get_system_link = lambda *_: None  # type: ignore[method-assign]
+        fallback = await api_q._discover_realtime_connection_details("xyz789")
+        assert fallback is not None
+        assert fallback.endpoint.endswith("/api/v0/messaging/app")
+
+    @pytest.mark.asyncio
+    async def test_discover_realtime_details_handles_lookup_exceptions(self) -> None:
+        """Discovery should continue when a link request fails."""
+        api = ActronAirAPI(platform="que")
+        api._get_system_link = lambda *_: "api/v0/rtc"  # type: ignore[method-assign]
+
+        async def _boom(_: str, __: str) -> dict[str, Any]:
+            raise RuntimeError("boom")
+
+        api._make_request = _boom  # type: ignore[method-assign]
+
+        details = await api._discover_realtime_connection_details("xyz789")
+        assert details is not None
+
+    def test_parse_realtime_details_payload_variants(self) -> None:
+        """Realtime details payload parsing should support multiple key variants."""
+        api = ActronAirAPI()
+
+        parsed = api._parse_realtime_details_payload(
+            {
+                "rtcDetails": {
+                    "endpoint": "broker.test",
+                    "port": "1883",
+                    "scheme": "tcp",
+                    "username": "u",
+                }
+            }
+        )
+        assert parsed is not None
+        assert parsed.port == 1883
+        assert parsed.protocol == "tcp"
+        assert parsed.user_id == "u"
+
+        assert api._parse_realtime_details_payload({"RTCDetails": {"port": "bad"}}) is None
+        assert api._pick_str({"a": "", "b": " value "}, "a", "b") == "value"
+        assert api._pick_str({"a": ""}, "a") is None
+
+    @pytest.mark.asyncio
+    async def test_discover_realtime_details_returns_none_for_neo_without_links(self) -> None:
+        """Neo discovery should return None if no links/details are available."""
+        api = ActronAirAPI(platform="neo")
+        api._get_system_link = lambda *_: None  # type: ignore[method-assign]
+
+        details = await api._discover_realtime_connection_details("abc123")
+
+        assert details is None
+
+    @pytest.mark.asyncio
+    async def test_handle_realtime_event_branch_coverage(
+        self, sample_status_full: dict[str, Any]
+    ) -> None:
+        """Handle event should ignore unsupported shapes and await async callbacks."""
+        api = ActronAirAPI()
+
+        await api._handle_realtime_event(
+            RealtimeEvent(transport=RealtimeTransportType.MQTT, kind=RealtimeEventKind.CONNECTION)
+        )
+
+        msg_no_status = RealtimeMessage(
+            transport=RealtimeTransportType.MQTT,
+            kind=RealtimeEventKind.MESSAGE,
+            topic="x",
+            payload={},
+            domain_model={"not": "status"},
+        )
+        await api._handle_realtime_event(msg_no_status)
+
+        status = ActronAirStatus.model_validate(sample_status_full)
+        status.serial_number = None
+        msg_no_serial = RealtimeMessage(
+            transport=RealtimeTransportType.SIGNALR,
+            kind=RealtimeEventKind.MESSAGE,
+            topic="signalr",
+            payload={},
+            domain_model=status,
+        )
+        await api._handle_realtime_event(msg_no_serial)
+
+        seen: list[str] = []
+
+        async def _cb(s: ActronAirStatus) -> None:
+            if s.serial_number:
+                seen.append(s.serial_number)
+
+        api.subscribe_system_updates("abc123", _cb)
+        status_ok = ActronAirStatus.model_validate(sample_status_full)
+        event_ok = RealtimeMessage(
+            transport=RealtimeTransportType.MQTT,
+            kind=RealtimeEventKind.MESSAGE,
+            topic="actron-cloud/u/neo/abc123/mwc/full-status",
+            payload={"serial": "abc123"},
+            domain_model=status_ok,
+        )
+        await api._handle_realtime_event(event_ok)
+
+        assert seen == ["abc123"]
+
+    def test_extract_realtime_serial_from_topic_branch(
+        self, sample_status_full: dict[str, Any]
+    ) -> None:
+        """Serial extraction should parse MQTT topic structure when status has no serial."""
+        status = ActronAirStatus.model_validate(sample_status_full)
+        status.serial_number = None
+        msg = RealtimeMessage(
+            transport=RealtimeTransportType.MQTT,
+            kind=RealtimeEventKind.MESSAGE,
+            topic="actron-cloud/u/neo/abc123/mwc/full-status",
+            payload={},
+            domain_model=status,
+        )
+
+        assert ActronAirAPI._extract_realtime_serial(msg, status) == "abc123"
+
+    @pytest.mark.asyncio
+    async def test_log_background_task_error_branches(self) -> None:
+        """Background task logger should handle both cancelled and failed tasks."""
+        cancelled = asyncio.create_task(asyncio.sleep(0.1))
+        cancelled.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await cancelled
+        ActronAirAPI._log_background_task_error(cancelled)
+
+        async def _boom() -> None:
+            raise RuntimeError("boom")
+
+        failed = asyncio.create_task(_boom())
+        with pytest.raises(RuntimeError, match="boom"):
+            await failed
+        ActronAirAPI._log_background_task_error(failed)
+
+    @pytest.mark.asyncio
+    async def test_sync_realtime_access_token_branches(self) -> None:
+        """Token sync should handle no-token and transport update failures."""
+
+        class _Client:
+            async def update_access_token(self, _: str) -> None:
+                raise RuntimeError("boom")
+
+        api = ActronAirAPI()
+        await api._sync_realtime_access_token()  # no client branch
+
+        api._rt_client = _Client()  # type: ignore[assignment]
+        api.oauth2_auth.access_token = None
+        await api._sync_realtime_access_token()  # no token branch
+
+        api.oauth2_auth.access_token = "token"
+        await api._sync_realtime_access_token()  # exception branch
+
+    def test_extract_realtime_serial_from_payload_and_none(
+        self, sample_status_full: dict[str, Any]
+    ) -> None:
+        """Serial extraction should support payload keys and missing values."""
+        status = ActronAirStatus.model_validate(sample_status_full)
+        status.serial_number = None
+
+        msg_payload = RealtimeMessage(
+            transport=RealtimeTransportType.SIGNALR,
+            kind=RealtimeEventKind.MESSAGE,
+            topic="signalr",
+            payload={"serialNumber": "ABC123"},
+            domain_model=status,
+        )
+        assert ActronAirAPI._extract_realtime_serial(msg_payload, status) == "abc123"
+
+        msg_none = RealtimeMessage(
+            transport=RealtimeTransportType.SIGNALR,
+            kind=RealtimeEventKind.MESSAGE,
+            topic="signalr",
+            payload={},
+            domain_model=status,
+        )
+        assert ActronAirAPI._extract_realtime_serial(msg_none, status) is None

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Any, Literal
 
 import aiohttp
@@ -30,6 +30,13 @@ from .models import (
     ActronAirUserInfo,
 )
 from .oauth import ActronAirOAuth2DeviceCodeAuth
+from .rt import (
+    MQTTRTClient,
+    RealtimeConnectionDetails,
+    RealtimeEvent,
+    RealtimeMessage,
+    SignalRRTClient,
+)
 from .state import StateManager
 
 _LOGGER = logging.getLogger(__name__)
@@ -316,6 +323,14 @@ class ActronAirAPI:
             debounce_seconds=debounce_seconds,
         )
 
+        # Realtime push integration (issue #77)
+        self._rt_client: MQTTRTClient | SignalRRTClient | None = None
+        self._push_running = False
+        self._push_status_queue: asyncio.Queue[tuple[str, ActronAirStatus]] = asyncio.Queue()
+        self._push_callbacks: dict[
+            str, list[Callable[[ActronAirStatus], Awaitable[None] | None]]
+        ] = {}
+
     @property
     def platform(self) -> str:
         """Get the current platform being used.
@@ -484,11 +499,277 @@ class ActronAirAPI:
             closed — the caller retains ownership.
 
         """
+        await self.stop_push()
         await self._coalescer.flush_all()
         async with self._session_lock:
             if self._session and not self._session.closed and not self._external_session:
                 await self._session.close()
                 self._session = None
+
+    async def start_push(
+        self,
+        serial_numbers: list[str] | None = None,
+        *,
+        connection_details: RealtimeConnectionDetails | None = None,
+    ) -> bool:
+        """Start realtime push updates for one or more systems.
+
+        Args:
+            serial_numbers: Optional list of system serial numbers to subscribe.
+                If omitted, subscribes all known systems (fetching systems if needed).
+            connection_details: Optional pre-resolved realtime connection details.
+                If omitted, the client attempts to discover details from API links.
+
+        Returns:
+            True if realtime push started successfully, otherwise False.
+        """
+        if self._rt_client is not None and self._push_running:
+            return True
+
+        await self._ensure_initialized()
+        await self.oauth2_auth.ensure_token_valid()
+
+        serials: list[str]
+        if serial_numbers:
+            serials = [serial.strip().lower() for serial in serial_numbers if serial.strip()]
+        else:
+            if not self.systems:
+                await self.get_ac_systems()
+            serials = [system.serial.lower() for system in self.systems if system.serial]
+
+        if not serials:
+            _LOGGER.warning("start_push called without any known system serials")
+            return False
+
+        try:
+            details = connection_details or await self._discover_realtime_connection_details(
+                serials[0]
+            )
+            if details is None:
+                _LOGGER.warning("Realtime connection details unavailable; push not started")
+                return False
+
+            token = self.oauth2_auth.access_token
+            if not token:
+                raise ActronAirAuthError("No OAuth access token available for realtime transport")
+
+            if self.platform == PLATFORM_QUE:
+                rt_client: MQTTRTClient | SignalRRTClient = SignalRRTClient(details, token)
+            else:
+                rt_client = MQTTRTClient(details, token)
+
+            def _on_event(event: RealtimeEvent) -> None:
+                task = asyncio.create_task(self._handle_realtime_event(event))
+                task.add_done_callback(self._log_background_task_error)
+
+            rt_client.register_callback(_on_event)
+
+            await rt_client.connect()
+            for serial in serials:
+                if isinstance(rt_client, MQTTRTClient):
+                    await rt_client.subscribe_system(serial)
+                else:
+                    await rt_client.subscribe(serial)
+
+            self._rt_client = rt_client
+            self._push_running = True
+            return True
+        except Exception:
+            _LOGGER.exception("Failed to start realtime push; falling back to polling")
+            if self._rt_client is not None:
+                try:
+                    await self._rt_client.disconnect()
+                except Exception:
+                    _LOGGER.debug("Failed to clean up realtime client", exc_info=True)
+            self._rt_client = None
+            self._push_running = False
+            return False
+
+    async def stop_push(self) -> None:
+        """Stop realtime push updates and disconnect active transport."""
+        self._push_running = False
+        if self._rt_client is None:
+            return
+        try:
+            await self._rt_client.disconnect()
+        finally:
+            self._rt_client = None
+
+    def subscribe_system_updates(
+        self,
+        serial_number: str,
+        callback: Callable[[ActronAirStatus], Awaitable[None] | None],
+    ) -> None:
+        """Register a callback for status updates of a specific system.
+
+        Args:
+            serial_number: Target system serial number.
+            callback: Callback invoked with each parsed status update.
+
+        Raises:
+            ValueError: If serial_number is empty.
+        """
+        serial = serial_number.strip().lower()
+        if not serial:
+            raise ValueError("serial_number cannot be empty")
+        self._push_callbacks.setdefault(serial, []).append(callback)
+
+    async def stream_system_updates(
+        self,
+        serial_number: str | None = None,
+    ) -> AsyncIterator[ActronAirStatus]:
+        """Yield parsed push status updates as they arrive.
+
+        Args:
+            serial_number: Optional serial filter. If set, only matching
+                statuses are yielded.
+        """
+        serial_filter = serial_number.strip().lower() if serial_number else None
+        while self._push_running or not self._push_status_queue.empty():
+            serial, status = await self._push_status_queue.get()
+            if serial_filter and serial != serial_filter:
+                continue
+            yield status
+
+    @staticmethod
+    def _log_background_task_error(task: asyncio.Task[None]) -> None:
+        """Log unhandled exceptions from background tasks."""
+        if task.cancelled():
+            return
+        exc = task.exception()
+        if exc is not None:
+            _LOGGER.error(
+                "Realtime event task failed", exc_info=(type(exc), exc, exc.__traceback__)
+            )
+
+    async def _discover_realtime_connection_details(
+        self,
+        serial_number: str,
+    ) -> RealtimeConnectionDetails | None:
+        """Discover realtime connection details from API links or platform defaults."""
+        rel_candidates = (
+            "rtc-details",
+            "rtc",
+            "realtime",
+            "messaging",
+            "mqtt",
+        )
+        for rel in rel_candidates:
+            endpoint = self._get_system_link(serial_number, rel)
+            if endpoint:
+                try:
+                    payload = await self._make_request("get", endpoint)
+                    details = self._parse_realtime_details_payload(payload)
+                    if details is not None:
+                        return details
+                except Exception:
+                    _LOGGER.debug("Realtime details link %s lookup failed", rel, exc_info=True)
+
+        # Que fallback endpoint from documented SignalR path.
+        if self.platform == PLATFORM_QUE:
+            return RealtimeConnectionDetails(
+                endpoint=f"{self.base_url.rstrip('/')}/api/v0/messaging/app",
+                port=443,
+                protocol="https",
+                user_id="unknown",
+            )
+
+        return None
+
+    def _parse_realtime_details_payload(
+        self,
+        payload: dict[str, Any],
+    ) -> RealtimeConnectionDetails | None:
+        """Parse API payload into RealtimeConnectionDetails."""
+        candidate = payload
+        if isinstance(payload.get("RTCDetails"), dict):
+            candidate = payload["RTCDetails"]
+        elif isinstance(payload.get("rtcDetails"), dict):
+            candidate = payload["rtcDetails"]
+
+        endpoint = self._pick_str(candidate, "endPoint", "endpoint", "host", "server")
+        user_id = self._pick_str(candidate, "userId", "user_id", "username") or "unknown"
+
+        if not endpoint:
+            return None
+
+        raw_port = candidate.get("port")
+        port = int(raw_port) if isinstance(raw_port, int | str) and str(raw_port).isdigit() else 443
+        protocol = self._pick_str(candidate, "protocol", "scheme") or "ssl"
+
+        return RealtimeConnectionDetails(
+            endpoint=endpoint,
+            port=port,
+            protocol=protocol,
+            user_id=user_id,
+        )
+
+    @staticmethod
+    def _pick_str(source: dict[str, Any], *keys: str) -> str | None:
+        """Return the first non-empty string value from source for keys."""
+        for key in keys:
+            value = source.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        return None
+
+    async def _handle_realtime_event(self, event: RealtimeEvent) -> None:
+        """Process an incoming realtime event from active transport."""
+        if not isinstance(event, RealtimeMessage):
+            return
+
+        if not isinstance(event.domain_model, ActronAirStatus):
+            return
+
+        status = event.domain_model
+        serial = self._extract_realtime_serial(event, status)
+        if not serial:
+            return
+
+        status.serial_number = serial
+        self.state_manager.process_status_update(serial, status)
+        await self._push_status_queue.put((serial, status))
+
+        for callback in list(self._push_callbacks.get(serial, [])):
+            result = callback(status)
+            if asyncio.iscoroutine(result):
+                await result
+
+    @staticmethod
+    def _extract_realtime_serial(
+        event: RealtimeMessage,
+        status: ActronAirStatus,
+    ) -> str | None:
+        """Extract system serial from status model or transport-specific metadata."""
+        if status.serial_number:
+            return status.serial_number.lower()
+
+        topic_parts = event.topic.split("/")
+        if len(topic_parts) >= 4 and topic_parts[0] == "actron-cloud":
+            return topic_parts[3].lower()
+
+        candidates = (
+            event.payload.get("serial"),
+            event.payload.get("serialNumber"),
+            event.payload.get("SerialNumber"),
+        )
+        for value in candidates:
+            if isinstance(value, str) and value.strip():
+                return value.strip().lower()
+
+        return None
+
+    async def _sync_realtime_access_token(self) -> None:
+        """Push latest access token to active realtime transport."""
+        if self._rt_client is None:
+            return
+        token = self.oauth2_auth.access_token
+        if not token:
+            return
+        try:
+            await self._rt_client.update_access_token(token)
+        except Exception:
+            _LOGGER.debug("Failed to update realtime access token", exc_info=True)
 
     async def __aenter__(self) -> "ActronAirAPI":
         """Support for async context manager."""
@@ -557,6 +838,7 @@ class ActronAirAPI:
 
         # Ensure we have a valid token
         await self.oauth2_auth.ensure_token_valid()
+        await self._sync_realtime_access_token()
 
         auth_header = self.oauth2_auth.authorization_header
 
@@ -581,6 +863,7 @@ class ActronAirAPI:
                     if _retry and self.oauth2_auth.refresh_token:
                         try:
                             await self.oauth2_auth.refresh_access_token()
+                            await self._sync_realtime_access_token()
                             return await self._make_request(
                                 method, endpoint, params, json_data, data, headers, _retry=False
                             )
