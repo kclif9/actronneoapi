@@ -1341,6 +1341,44 @@ class TestActronAirAPIRealtimeIntegration:
         api.update_status.assert_awaited_once_with("abc123")
 
     @pytest.mark.asyncio
+    async def test_refresh_status_from_realtime_signal_deduplicates_concurrent_calls(
+        self, sample_status_full: dict[str, Any]
+    ) -> None:
+        """Concurrent metadata refreshes for one serial should share one API request."""
+        api = ActronAirAPI(platform="neo")
+
+        async def _update_status(serial_number: str | None = None) -> dict[str, Any]:
+            assert serial_number == "abc123"
+            api.state_manager.process_status_update("abc123", sample_status_full)
+            await asyncio.sleep(0)
+            return {}
+
+        api.update_status = AsyncMock(side_effect=_update_status)
+
+        first, second = await asyncio.gather(
+            api._refresh_status_from_realtime_signal("abc123"),
+            api._refresh_status_from_realtime_signal("abc123"),
+        )
+
+        assert first is not None
+        assert second is not None
+        api.update_status.assert_awaited_once_with("abc123")
+
+    def test_mqtt_status_change_contains_state_ignores_metadata_only_fields(self) -> None:
+        """Metadata-only MQTT status-change payloads should not be treated as state deltas."""
+        assert (
+            ActronAirAPI._mqtt_status_change_contains_state(
+                {
+                    "event": "statusChange",
+                    "wcFirmware": "1.2.3",
+                    "isOnline": True,
+                    "serialNumber": "ABC123",
+                }
+            )
+            is False
+        )
+
+    @pytest.mark.asyncio
     async def test_handle_realtime_event_drops_mqtt_status_change_when_merge_invalid(
         self,
         sample_status_full: dict[str, Any],

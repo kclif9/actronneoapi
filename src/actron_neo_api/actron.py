@@ -335,6 +335,8 @@ class ActronAirAPI:
         self._push_callbacks: dict[
             str, list[Callable[[ActronAirStatus], Awaitable[None] | None]]
         ] = {}
+        self._refresh_tasks_lock = asyncio.Lock()
+        self._refresh_status_tasks: dict[str, asyncio.Task[ActronAirStatus | None]] = {}
 
     @property
     def platform(self) -> str:
@@ -776,7 +778,9 @@ class ActronAirAPI:
             return
 
         status.serial_number = serial
-        self.state_manager.process_status_update(serial, status)
+        current_status = self.state_manager.get_status(serial)
+        if current_status is not status:
+            self.state_manager.process_status_update(serial, status)
         await self._push_status_queue.put((serial, status))
         for stream_filter, stream_queue in list(self._push_stream_queues):
             if stream_filter is None or stream_filter == serial:
@@ -831,7 +835,12 @@ class ActronAirAPI:
         if isinstance(delta_state, dict):
             self._deep_merge_dicts(merged_status_data["lastKnownState"], delta_state)
         else:
-            self._deep_merge_dicts(merged_status_data["lastKnownState"], payload)
+            state_updates = {
+                key: value
+                for key, value in payload.items()
+                if key not in self._mqtt_status_change_metadata_keys()
+            }
+            self._deep_merge_dicts(merged_status_data["lastKnownState"], state_updates)
 
         try:
             merged_status = ActronAirStatus.model_validate(merged_status_data)
@@ -844,6 +853,24 @@ class ActronAirAPI:
 
     async def _refresh_status_from_realtime_signal(self, serial: str) -> ActronAirStatus | None:
         """Fetch a fresh status snapshot after a realtime invalidation signal."""
+        task = await self._get_or_create_refresh_task(serial)
+        return await task
+
+    async def _get_or_create_refresh_task(
+        self, serial: str
+    ) -> asyncio.Task[ActronAirStatus | None]:
+        """Return an in-flight refresh task for serial, creating one if needed."""
+        async with self._refresh_tasks_lock:
+            existing = self._refresh_status_tasks.get(serial)
+            if existing is not None and not existing.done():
+                return existing
+
+            task = asyncio.create_task(self._run_refresh_status(serial))
+            self._refresh_status_tasks[serial] = task
+            return task
+
+    async def _run_refresh_status(self, serial: str) -> ActronAirStatus | None:
+        """Execute a realtime-triggered refresh and clean up task bookkeeping."""
         try:
             await self.update_status(serial)
         except Exception as exc:
@@ -853,6 +880,12 @@ class ActronAirAPI:
                 exc,
             )
             return None
+        finally:
+            async with self._refresh_tasks_lock:
+                current = self._refresh_status_tasks.get(serial)
+                if current is asyncio.current_task():
+                    self._refresh_status_tasks.pop(serial, None)
+
         return self.state_manager.get_status(serial)
 
     @staticmethod
@@ -867,10 +900,25 @@ class ActronAirAPI:
     @staticmethod
     def _mqtt_status_change_contains_state(payload: dict[str, Any]) -> bool:
         """Return whether a Neo status-change payload contains state-bearing fields."""
-        metadata_only_keys = {"event", "wcFirmware", "correlationId", "commandResponse"}
+        metadata_only_keys = ActronAirAPI._mqtt_status_change_metadata_keys()
         if isinstance(payload.get("lastKnownState"), dict):
             return True
         return any(key not in metadata_only_keys for key in payload)
+
+    @staticmethod
+    def _mqtt_status_change_metadata_keys() -> set[str]:
+        """Return top-level status-change keys that are metadata, not state."""
+        return {
+            "event",
+            "wcFirmware",
+            "correlationId",
+            "commandResponse",
+            "isOnline",
+            "serial",
+            "serialNumber",
+            "SerialNumber",
+            "lastKnownState",
+        }
 
     @staticmethod
     def _is_mqtt_status_change_topic(topic: str) -> bool:

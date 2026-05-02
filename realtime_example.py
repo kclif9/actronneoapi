@@ -185,7 +185,7 @@ def _is_ip_literal(value: str) -> bool:
 async def _probe_connection_details(details: RealtimeConnectionDetails, timeout: float) -> None:
     """Attempt a raw socket/TLS connection to the discovered realtime endpoint."""
     host, port, server_name = _resolve_probe_target(details)
-    ssl_context = ssl.create_default_context() if details.uses_tls else None
+    ssl_context = await asyncio.to_thread(ssl.create_default_context) if details.uses_tls else None
     if ssl_context is not None and _is_ip_literal(host):
         ssl_context.check_hostname = False
         server_name = None

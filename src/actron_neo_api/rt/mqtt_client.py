@@ -256,6 +256,9 @@ class MQTTRTClient:
         if not access_token.strip():
             raise ValueError("access_token cannot be empty")
 
+        if access_token == self._access_token:
+            return
+
         self._access_token = access_token
         if self._running:
             await self.disconnect()
@@ -268,13 +271,13 @@ class MQTTRTClient:
             yield event
 
     async def _run_supervisor(self) -> None:
-        await self._ensure_tls_context()
         retry_delay = self._reconnect_initial_delay
 
         while self._running:
             client: Client | None = None
             try:
                 await self._set_state(RealtimeConnectionState.CONNECTING)
+                await self._ensure_tls_context()
                 client = self._build_client()
                 self._client = client
 

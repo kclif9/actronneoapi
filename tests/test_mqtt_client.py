@@ -1035,3 +1035,60 @@ class TestMQTTRTClient:
         assert client.access_token == "token-456"
         disconnect_mock.assert_awaited_once()
         connect_mock.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_update_access_token_noop_for_unchanged_token(self) -> None:
+        """Updating with the same token should avoid needless reconnect churn."""
+        client = MQTTRTClient(
+            RealtimeConnectionDetails(
+                endpoint="mqtt.example.com",
+                port=8883,
+                protocol="ssl",
+                user_id="user-1",
+            ),
+            access_token="token-123",
+        )
+
+        disconnect_mock = AsyncMock(return_value=None)
+        connect_mock = AsyncMock(return_value=None)
+        client.disconnect = disconnect_mock  # type: ignore[method-assign]
+        client.connect = connect_mock  # type: ignore[method-assign]
+        client._running = True  # noqa: SLF001 - simulate an active connection
+
+        await client.update_access_token("token-123")
+
+        assert client.access_token == "token-123"
+        disconnect_mock.assert_not_awaited()
+        connect_mock.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_run_supervisor_handles_tls_context_failure(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """TLS context failures should enter reconnect flow instead of escaping."""
+        client = MQTTRTClient(
+            RealtimeConnectionDetails(
+                endpoint="mqtt.example.com",
+                port=8883,
+                protocol="ssl",
+                user_id="user-1",
+            ),
+            access_token="token-123",
+        )
+
+        async def _boom() -> None:
+            raise OSError("tls context failed")
+
+        monkeypatch.setattr(client, "_ensure_tls_context", _boom)
+        monkeypatch.setattr(
+            mqtt_module.asyncio,
+            "sleep",
+            AsyncMock(side_effect=lambda _: setattr(client, "_running", False)),
+        )
+
+        client._running = True  # noqa: SLF001 - exercise reconnect path directly
+        await client._run_supervisor()  # noqa: SLF001 - direct coverage target
+
+        assert client.last_error is not None
+        assert isinstance(client.last_error, OSError)
+        assert client.connection_state == RealtimeConnectionState.DISCONNECTED
