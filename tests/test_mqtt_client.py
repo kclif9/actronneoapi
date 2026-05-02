@@ -358,7 +358,7 @@ class TestMQTTRTClient:
     async def test_connect_prepares_tls_context_off_loop(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """TLS context should be prepared via to_thread before starting the supervisor."""
+        """TLS context should be prepared via to_thread inside the supervisor path."""
         client = MQTTRTClient(
             RealtimeConnectionDetails(
                 endpoint="mqtt.example.com",
@@ -371,13 +371,16 @@ class TestMQTTRTClient:
 
         created_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
         to_thread_calls: list[object] = []
+        release_supervisor = asyncio.Event()
 
         async def fake_to_thread(func: object, *args: object, **kwargs: object) -> ssl.SSLContext:
             to_thread_calls.append(func)
             return created_context
 
         async def fake_supervisor() -> None:
+            await client._ensure_tls_context()  # noqa: SLF001 - exercise real TLS prep path
             client._connected_event.set()  # noqa: SLF001 - simulate successful connect
+            await release_supervisor.wait()
 
         monkeypatch.setattr(mqtt_module.asyncio, "to_thread", fake_to_thread)
         client._run_supervisor = fake_supervisor  # type: ignore[method-assign]
@@ -387,6 +390,49 @@ class TestMQTTRTClient:
         assert to_thread_calls == [ssl.create_default_context]
         assert client._ssl_context is created_context  # noqa: SLF001 - verify cached context
 
+        release_supervisor.set()
+        await client.disconnect()
+
+    @pytest.mark.asyncio
+    async def test_connect_overlapping_calls_start_single_supervisor(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Overlapping connect calls should not start more than one supervisor."""
+        client = MQTTRTClient(
+            RealtimeConnectionDetails(
+                endpoint="mqtt.example.com",
+                port=8883,
+                protocol="ssl",
+                user_id="user-1",
+            ),
+            access_token="token-123",
+        )
+
+        created_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        release_supervisor = asyncio.Event()
+        supervisor_runs = 0
+
+        async def fake_to_thread(func: object, *args: object, **kwargs: object) -> ssl.SSLContext:
+            return created_context
+
+        async def fake_supervisor() -> None:
+            nonlocal supervisor_runs
+            supervisor_runs += 1
+            await client._ensure_tls_context()  # noqa: SLF001 - keep startup path realistic
+            client._connected_event.set()  # noqa: SLF001 - allow connect() to finish
+            await release_supervisor.wait()
+
+        monkeypatch.setattr(mqtt_module.asyncio, "to_thread", fake_to_thread)
+        client._run_supervisor = fake_supervisor  # type: ignore[method-assign]
+
+        first_connect = asyncio.create_task(client.connect())
+        await asyncio.sleep(0)
+        await client.connect()
+        await first_connect
+
+        assert supervisor_runs == 1
+
+        release_supervisor.set()
         await client.disconnect()
 
     @pytest.mark.asyncio

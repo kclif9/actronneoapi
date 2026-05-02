@@ -171,7 +171,6 @@ class MQTTRTClient:
         if self._supervisor_task is not None and not self._supervisor_task.done():
             return
 
-        await self._ensure_tls_context()
         self._running = True
         self._connected_event.clear()
         self._supervisor_task = asyncio.create_task(self._run_supervisor())
