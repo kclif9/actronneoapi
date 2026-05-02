@@ -355,6 +355,64 @@ class TestMQTTRTClient:
         assert client._supervisor_task is None  # noqa: SLF001 - internal lifecycle state
 
     @pytest.mark.asyncio
+    async def test_connect_prepares_tls_context_off_loop(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """TLS context should be prepared via to_thread before starting the supervisor."""
+        client = MQTTRTClient(
+            RealtimeConnectionDetails(
+                endpoint="mqtt.example.com",
+                port=8883,
+                protocol="ssl",
+                user_id="user-1",
+            ),
+            access_token="token-123",
+        )
+
+        created_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        to_thread_calls: list[object] = []
+
+        async def fake_to_thread(func: object, *args: object, **kwargs: object) -> ssl.SSLContext:
+            to_thread_calls.append(func)
+            return created_context
+
+        async def fake_supervisor() -> None:
+            client._connected_event.set()  # noqa: SLF001 - simulate successful connect
+
+        monkeypatch.setattr(mqtt_module.asyncio, "to_thread", fake_to_thread)
+        client._run_supervisor = fake_supervisor  # type: ignore[method-assign]
+
+        await client.connect()
+
+        assert to_thread_calls == [ssl.create_default_context]
+        assert client._ssl_context is created_context  # noqa: SLF001 - verify cached context
+
+        await client.disconnect()
+
+    @pytest.mark.asyncio
+    async def test_ensure_tls_context_noop_without_tls(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """TLS preparation should no-op for non-TLS transports."""
+        client = MQTTRTClient(
+            RealtimeConnectionDetails(
+                endpoint="mqtt.example.com",
+                port=1883,
+                protocol="tcp",
+                user_id="user-1",
+            ),
+            access_token="token-123",
+        )
+
+        async def fail_to_thread(*args: object, **kwargs: object) -> ssl.SSLContext:
+            raise AssertionError("to_thread should not be called for non-TLS connections")
+
+        monkeypatch.setattr(mqtt_module.asyncio, "to_thread", fail_to_thread)
+
+        await client._ensure_tls_context()  # noqa: SLF001 - direct branch coverage target
+        assert client._ssl_context is None  # noqa: SLF001 - no context needed for tcp
+
+    @pytest.mark.asyncio
     async def test_connect_returns_when_supervisor_running(self) -> None:
         """A second connect call should no-op while the supervisor is active."""
         client = MQTTRTClient(
@@ -550,6 +608,7 @@ class TestMQTTRTClient:
             ),
             access_token="token-123",
         )
+        client._ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)  # noqa: SLF001
         client._subscriptions = {"topic/b", "topic/a"}  # noqa: SLF001 - internal state setup
 
         fake_client = _FakeMQTTClient()

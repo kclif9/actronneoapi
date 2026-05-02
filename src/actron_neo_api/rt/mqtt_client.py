@@ -171,6 +171,7 @@ class MQTTRTClient:
         if self._supervisor_task is not None and not self._supervisor_task.done():
             return
 
+        await self._ensure_tls_context()
         self._running = True
         self._connected_event.clear()
         self._supervisor_task = asyncio.create_task(self._run_supervisor())
@@ -267,6 +268,7 @@ class MQTTRTClient:
             yield event
 
     async def _run_supervisor(self) -> None:
+        await self._ensure_tls_context()
         retry_delay = self._reconnect_initial_delay
 
         while self._running:
@@ -312,8 +314,6 @@ class MQTTRTClient:
     def _build_client(self) -> Client:
         """Create a configured aiomqtt client instance."""
         tls_context = self._ssl_context
-        if tls_context is None and self._details.uses_tls:
-            tls_context = ssl.create_default_context()
 
         client_kwargs: dict[str, Any] = {
             "hostname": self._details.endpoint,
@@ -329,6 +329,13 @@ class MQTTRTClient:
             client_kwargs["tls_context"] = tls_context
 
         return Client(**client_kwargs)
+
+    async def _ensure_tls_context(self) -> None:
+        """Create a default TLS context off-loop when one is required."""
+        if self._ssl_context is not None or not self._details.uses_tls:
+            return
+
+        self._ssl_context = await asyncio.to_thread(ssl.create_default_context)
 
     @staticmethod
     def _get_client_identifier_arg_name() -> str:
