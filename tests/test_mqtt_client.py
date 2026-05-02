@@ -559,7 +559,27 @@ class TestMQTTRTClient:
 
         captured: dict[str, object] = {}
 
-        def fake_client_factory(**kwargs: object) -> object:
+        def fake_client_factory(
+            hostname: str,
+            port: int,
+            *,
+            username: str,
+            password: str,
+            identifier: str,
+            keepalive: int,
+            clean_session: bool,
+            tls_context: ssl.SSLContext,
+        ) -> object:
+            kwargs = {
+                "hostname": hostname,
+                "port": port,
+                "username": username,
+                "password": password,
+                "identifier": identifier,
+                "keepalive": keepalive,
+                "clean_session": clean_session,
+                "tls_context": tls_context,
+            }
             captured.update(kwargs)
             return object()
 
@@ -570,7 +590,33 @@ class TestMQTTRTClient:
         assert captured["hostname"] == "mqtt.example.com"
         assert captured["port"] == 8883
         assert captured["password"] == "token-123"
+        assert captured["identifier"] == client._client_id  # noqa: SLF001 - kwarg regression check
         assert isinstance(captured["tls_context"], ssl.SSLContext)
+
+    def test_get_client_identifier_arg_name_legacy_client_id(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Older aiomqtt variants using client_id should still be supported."""
+
+        class _LegacyClient:
+            def __init__(self, *, client_id: str | None = None) -> None:
+                self.client_id = client_id
+
+        monkeypatch.setattr(mqtt_module, "Client", _LegacyClient)
+
+        assert MQTTRTClient._get_client_identifier_arg_name() == "client_id"  # noqa: SLF001
+
+    def test_get_client_identifier_arg_name_signature_failure(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Signature inspection failures should fall back to the modern identifier kwarg."""
+
+        def raise_type_error(_obj: object) -> None:
+            raise TypeError("signature unavailable")
+
+        monkeypatch.setattr(mqtt_module.inspect, "signature", raise_type_error)
+
+        assert MQTTRTClient._get_client_identifier_arg_name() == "identifier"  # noqa: SLF001
 
     @pytest.mark.asyncio
     async def test_iter_events_yields_queued_events(self) -> None:
