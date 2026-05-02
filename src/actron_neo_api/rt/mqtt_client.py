@@ -368,7 +368,12 @@ class MQTTRTClient:
 
     async def _handle_message(self, topic: str, raw_payload: bytes) -> None:
         """Decode a raw MQTT message and forward it to the event queue."""
-        payload = self._decode_payload(raw_payload)
+        try:
+            payload = self._decode_payload(raw_payload)
+        except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+            _LOGGER.warning("Failed to decode MQTT payload on %s: %s", topic, exc)
+            return
+
         domain_model: Any | None = None
 
         if topic.endswith(_MQTT_TOPIC_FULL_STATUS):

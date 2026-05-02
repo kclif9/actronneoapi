@@ -338,7 +338,12 @@ class TestActronAirOAuth2DeviceCodeAuth:
         mock_session.post = MagicMock(return_value=mock_post)
         mock_session.close = AsyncMock()
 
-        with patch("aiohttp.ClientSession", return_value=mock_session):
+        with (
+            patch("aiohttp.ClientSession", return_value=mock_session),
+            patch("actron_neo_api.oauth.asyncio.sleep", new=AsyncMock()),
+            patch("actron_neo_api.oauth.time") as mock_time_mod,
+        ):
+            mock_time_mod.monotonic.side_effect = [0, 0, 1, 7, 11]
             result = await auth.poll_for_token("test_device", interval=1, timeout=10)
             assert result is None  # Timeout
 
@@ -450,7 +455,12 @@ class TestActronAirOAuth2DeviceCodeAuth:
         mock_session.post = MagicMock(side_effect=side_effect)
         mock_session.close = AsyncMock()
 
-        with patch("aiohttp.ClientSession", return_value=mock_session):
+        with (
+            patch("aiohttp.ClientSession", return_value=mock_session),
+            patch("actron_neo_api.oauth.asyncio.sleep", new=AsyncMock()),
+            patch("actron_neo_api.oauth.time") as mock_time_mod,
+        ):
+            mock_time_mod.monotonic.side_effect = [0, 0, 1, 2, 11]
             result = await auth.poll_for_token("test_device", interval=1, timeout=10)
             assert result is None  # Should timeout
 

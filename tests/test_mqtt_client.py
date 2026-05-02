@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import logging
 import ssl
 from unittest.mock import AsyncMock, MagicMock
 
@@ -279,6 +280,30 @@ class TestMQTTRTClient:
         event = client._event_queue.get_nowait()  # noqa: SLF001 - testing emitted events
         assert isinstance(event, RealtimeMessage)
         assert event.domain_model is sentinel
+
+    @pytest.mark.asyncio
+    async def test_handle_message_skips_malformed_payload(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Malformed MQTT payloads should be logged and skipped without raising."""
+        client = MQTTRTClient(
+            RealtimeConnectionDetails(
+                endpoint="mqtt.example.com",
+                port=8883,
+                protocol="ssl",
+                user_id="user-1",
+            ),
+            access_token="token-123",
+        )
+
+        with caplog.at_level(logging.WARNING):
+            await client._handle_message(  # noqa: SLF001 - targeted malformed payload coverage
+                "actron-cloud/user-1/neo/abc123/mwc/status-change",
+                b'{"bad":"\\q"}',
+            )
+
+        assert client._event_queue.empty()  # noqa: SLF001 - malformed payload should be dropped
+        assert "Failed to decode MQTT payload" in caplog.text
 
     def test_decode_payload_validation(self) -> None:
         """Payload decoding should enforce JSON object payloads."""

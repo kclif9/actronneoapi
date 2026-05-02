@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import time
+from copy import deepcopy
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -1135,6 +1136,244 @@ class TestActronAirAPIRealtimeIntegration:
         assert len(streamed) == 1
         assert streamed[0].serial_number == "abc123"
         assert seen == ["abc123"]
+
+    @pytest.mark.asyncio
+    async def test_handle_realtime_event_merges_mqtt_status_change_delta(
+        self, sample_status_full: dict[str, Any]
+    ) -> None:
+        """MQTT status-change payloads should merge into the current baseline state."""
+        api = ActronAirAPI(platform="neo")
+        api._push_running = True
+        api.state_manager.process_status_update("abc123", sample_status_full)
+
+        event = RealtimeMessage(
+            transport=RealtimeTransportType.MQTT,
+            kind=RealtimeEventKind.MESSAGE,
+            topic="actron-cloud/u/neo/abc123/mwc/status-change",
+            payload={
+                "UserAirconSettings": {
+                    "QuietModeEnabled": True,
+                    "TurboMode": {"Enabled": True, "Supported": True},
+                }
+            },
+            raw_payload=None,
+            domain_model=None,
+        )
+
+        await api._handle_realtime_event(event)
+
+        status = api.state_manager.get_status("abc123")
+        assert status is not None
+        assert status.user_aircon_settings.quiet_mode_enabled is True
+        assert status.user_aircon_settings.turbo_enabled is True
+        assert status.user_aircon_settings.mode == "COOL"
+        assert status.user_aircon_settings.temperature_setpoint_cool_c == 24.0
+
+    @pytest.mark.asyncio
+    async def test_handle_realtime_event_hydrates_baseline_for_mqtt_status_change(
+        self, sample_status_full: dict[str, Any]
+    ) -> None:
+        """MQTT deltas should fetch a baseline status when none is cached yet."""
+        api = ActronAirAPI(platform="neo")
+        api._push_running = True
+
+        async def _update_status(serial_number: str | None = None) -> dict[str, Any]:
+            assert serial_number == "abc123"
+            status = api.state_manager.process_status_update("abc123", sample_status_full)
+            return {"abc123": status}
+
+        api.update_status = AsyncMock(side_effect=_update_status)
+
+        event = RealtimeMessage(
+            transport=RealtimeTransportType.MQTT,
+            kind=RealtimeEventKind.MESSAGE,
+            topic="actron-cloud/u/neo/abc123/mwc/status-change",
+            payload={"UserAirconSettings": {"QuietModeEnabled": True}},
+            raw_payload=None,
+            domain_model=None,
+        )
+
+        await api._handle_realtime_event(event)
+
+        api.update_status.assert_awaited_once_with("abc123")
+        status = api.state_manager.get_status("abc123")
+        assert status is not None
+        assert status.user_aircon_settings.quiet_mode_enabled is True
+
+    @pytest.mark.asyncio
+    async def test_handle_realtime_event_mqtt_status_change_with_nested_last_known_state(
+        self, sample_status_full: dict[str, Any]
+    ) -> None:
+        """Nested lastKnownState deltas should merge into the cached baseline."""
+        api = ActronAirAPI(platform="neo")
+        api._push_running = True
+        api.state_manager.process_status_update("abc123", sample_status_full)
+
+        event = RealtimeMessage(
+            transport=RealtimeTransportType.MQTT,
+            kind=RealtimeEventKind.MESSAGE,
+            topic="actron-cloud/u/neo/abc123/mwc/status-change",
+            payload={
+                "lastKnownState": {
+                    "UserAirconSettings": {
+                        "QuietModeEnabled": True,
+                    }
+                }
+            },
+            raw_payload=None,
+            domain_model=None,
+        )
+
+        await api._handle_realtime_event(event)
+
+        status = api.state_manager.get_status("abc123")
+        assert status is not None
+        assert status.user_aircon_settings.quiet_mode_enabled is True
+
+    @pytest.mark.asyncio
+    async def test_handle_realtime_event_refreshes_status_for_metadata_only_mqtt_signal(
+        self, sample_status_full: dict[str, Any]
+    ) -> None:
+        """Metadata-only MQTT status-change signals should force a fresh API refresh."""
+        api = ActronAirAPI(platform="neo")
+        api._push_running = True
+        api.state_manager.process_status_update("abc123", sample_status_full)
+
+        refreshed_payload = deepcopy(sample_status_full)
+        refreshed_settings = refreshed_payload["lastKnownState"]["UserAirconSettings"]
+        refreshed_settings["QuietModeEnabled"] = True
+        refreshed_settings["TurboMode"] = {"Enabled": True, "Supported": True}
+
+        async def _update_status(serial_number: str | None = None) -> dict[str, Any]:
+            assert serial_number == "abc123"
+            status = api.state_manager.process_status_update("abc123", refreshed_payload)
+            return {"abc123": status}
+
+        api.update_status = AsyncMock(side_effect=_update_status)
+
+        event = RealtimeMessage(
+            transport=RealtimeTransportType.MQTT,
+            kind=RealtimeEventKind.MESSAGE,
+            topic="actron-cloud/u/neo/abc123/mwc/status-change",
+            payload={"event": "statusChange", "wcFirmware": "1.2.3"},
+            raw_payload=None,
+            domain_model=None,
+        )
+
+        await api._handle_realtime_event(event)
+
+        api.update_status.assert_awaited_once_with("abc123")
+        status = api.state_manager.get_status("abc123")
+        assert status is not None
+        assert status.user_aircon_settings.quiet_mode_enabled is True
+        assert status.user_aircon_settings.turbo_enabled is True
+
+    @pytest.mark.asyncio
+    async def test_handle_realtime_event_drops_mqtt_status_change_when_baseline_fails(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """MQTT deltas should be dropped when the baseline status cannot be fetched."""
+        api = ActronAirAPI(platform="neo")
+        api._push_running = True
+        api.update_status = AsyncMock(side_effect=RuntimeError("boom"))
+
+        event = RealtimeMessage(
+            transport=RealtimeTransportType.MQTT,
+            kind=RealtimeEventKind.MESSAGE,
+            topic="actron-cloud/u/neo/abc123/mwc/status-change",
+            payload={"UserAirconSettings": {"QuietModeEnabled": True}},
+            raw_payload=None,
+            domain_model=None,
+        )
+
+        with caplog.at_level(logging.WARNING):
+            await api._handle_realtime_event(event)
+
+        assert api.state_manager.get_status("abc123") is None
+        assert "Failed to hydrate baseline status for realtime delta abc123" in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_handle_realtime_event_drops_mqtt_status_change_without_hydrated_baseline(
+        self,
+    ) -> None:
+        """MQTT deltas should be ignored if baseline hydration returns no cached status."""
+        api = ActronAirAPI(platform="neo")
+        api._push_running = True
+        api.update_status = AsyncMock(return_value={})
+
+        event = RealtimeMessage(
+            transport=RealtimeTransportType.MQTT,
+            kind=RealtimeEventKind.MESSAGE,
+            topic="actron-cloud/u/neo/abc123/mwc/status-change",
+            payload={"UserAirconSettings": {"QuietModeEnabled": True}},
+            raw_payload=None,
+            domain_model=None,
+        )
+
+        await api._handle_realtime_event(event)
+
+        api.update_status.assert_awaited_once_with("abc123")
+        assert api.state_manager.get_status("abc123") is None
+
+    @pytest.mark.asyncio
+    async def test_handle_realtime_event_metadata_only_mqtt_signal_without_refresh_result(
+        self,
+    ) -> None:
+        """Metadata-only MQTT signals should be ignored if refresh yields no status."""
+        api = ActronAirAPI(platform="neo")
+        api._push_running = True
+        api.state_manager.status["abc123"] = ActronAirStatus.model_validate(
+            {"isOnline": True, "lastKnownState": {}}
+        )
+        api.update_status = AsyncMock(return_value={})
+
+        event = RealtimeMessage(
+            transport=RealtimeTransportType.MQTT,
+            kind=RealtimeEventKind.MESSAGE,
+            topic="actron-cloud/u/neo/abc123/mwc/status-change",
+            payload={"event": "statusChange", "wcFirmware": "1.2.3"},
+            raw_payload=None,
+            domain_model=None,
+        )
+
+        await api._handle_realtime_event(event)
+
+        api.update_status.assert_awaited_once_with("abc123")
+
+    @pytest.mark.asyncio
+    async def test_handle_realtime_event_drops_mqtt_status_change_when_merge_invalid(
+        self,
+        sample_status_full: dict[str, Any],
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """Invalid merged MQTT deltas should be logged and skipped."""
+        api = ActronAirAPI(platform="neo")
+        api._push_running = True
+        api.state_manager.process_status_update("abc123", sample_status_full)
+
+        def _raise_validate(_: Any) -> ActronAirStatus:
+            raise ValueError("merge boom")
+
+        monkeypatch.setattr(
+            ActronAirStatus,
+            "model_validate",
+            classmethod(lambda cls, payload: _raise_validate(payload)),
+        )
+
+        event = RealtimeMessage(
+            transport=RealtimeTransportType.MQTT,
+            kind=RealtimeEventKind.MESSAGE,
+            topic="actron-cloud/u/neo/abc123/mwc/status-change",
+            payload={"UserAirconSettings": {"QuietModeEnabled": True}},
+            raw_payload=None,
+            domain_model=None,
+        )
+
+        with caplog.at_level(logging.WARNING):
+            await api._handle_realtime_event(event)
+
+        assert "Failed to merge MQTT status-change for abc123" in caplog.text
 
     @pytest.mark.asyncio
     async def test_make_request_syncs_realtime_token(

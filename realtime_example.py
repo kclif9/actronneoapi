@@ -1,8 +1,8 @@
 """Realtime push smoke test for ActronAirAPI.
 
-This script is intended for manual validation of realtime subscriptions before
-publishing a release. It starts the library's push transport, registers a
-callback, and optionally streams a small number of realtime status updates.
+This script is intended for manual validation of realtime subscriptions. It
+starts the library's push transport, registers a callback, and optionally
+streams a small number of realtime status updates.
 
 Usage:
     export ACTRON_REFRESH_TOKEN="your_refresh_token"
@@ -16,26 +16,35 @@ Optional environment variables:
     ACTRON_PUSH_WARMUP_SECONDS    Seconds to keep the subscription open after
                                   start_push() succeeds, even if no update is
                                   received. Default: 5.
+    ACTRON_PUSH_DEBUG_RAW         Print raw realtime event keys and tracked
+                                  quiet/turbo fields. Default: false.
     ACTRON_LOG_LEVEL              Logging level. Default: INFO.
 """
 
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import logging
 import os
 import ssl
 from collections.abc import Awaitable, Callable
+from pprint import pformat
 from typing import Any
 from urllib.parse import urlparse
 
-from actron_neo_api import (  # type: ignore[import-not-found]
+from actron_neo_api import (
     ActronAirAPI,
     ActronAirAPIError,
     ActronAirAuthError,
     ActronAirStatus,
 )
-from actron_neo_api.rt import RealtimeConnectionDetails  # type: ignore[import-not-found]
+from actron_neo_api.rt import (
+    MQTTRTClient,
+    RealtimeConnectionDetails,
+    RealtimeEvent,
+    RealtimeMessage,
+)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -64,6 +73,14 @@ def _read_float_env(name: str, default: float) -> float:
     return float(raw_value)
 
 
+def _read_bool_env(name: str, default: bool = False) -> bool:
+    """Read a boolean environment variable with a fallback."""
+    raw_value = os.environ.get(name, "").strip().lower()
+    if not raw_value:
+        return default
+    return raw_value in {"1", "true", "yes", "on"}
+
+
 def _configure_logging() -> None:
     """Configure process logging from the environment."""
     log_level_name = os.environ.get("ACTRON_LOG_LEVEL", "INFO").upper()
@@ -87,13 +104,58 @@ def _format_status_summary(status: ActronAirStatus) -> str:
         f"mode={settings.mode} "
         f"fan={settings.fan_mode} "
         f"cool={settings.temperature_setpoint_cool_c} "
-        f"heat={settings.temperature_setpoint_heat_c}"
+        f"heat={settings.temperature_setpoint_heat_c} "
+        f"quiet={'on' if settings.quiet_mode_enabled else 'off'} "
+        f"turbo={'on' if settings.turbo_enabled else 'off'}"
     )
 
 
 async def _print_callback(status: ActronAirStatus) -> None:
     """Print callback-delivered realtime updates."""
     print(f"callback update: {_format_status_summary(status)}")
+
+
+def _lookup_nested_value(payload: dict[str, Any], path: str) -> Any:
+    """Return a nested dictionary value or None when the path is absent."""
+    current: Any = payload
+    for part in path.split("."):
+        if not isinstance(current, dict) or part not in current:
+            return None
+        current = current[part]
+    return current
+
+
+def _tracked_payload_values(payload: dict[str, Any]) -> dict[str, Any]:
+    """Extract the raw realtime fields relevant to quiet/turbo debugging."""
+    tracked_paths = (
+        "UserAirconSettings.QuietModeEnabled",
+        "UserAirconSettings.TurboMode",
+        "lastKnownState.UserAirconSettings.QuietModeEnabled",
+        "lastKnownState.UserAirconSettings.TurboMode",
+        "QuietModeEnabled",
+        "TurboMode",
+    )
+    tracked: dict[str, Any] = {}
+    for path in tracked_paths:
+        value = _lookup_nested_value(payload, path)
+        if value is not None:
+            tracked[path] = value
+    return tracked
+
+
+def _summarize_payload(payload: dict[str, Any]) -> str:
+    """Build a concise raw payload summary for debugging."""
+    top_level_keys = sorted(payload.keys())
+    tracked = _tracked_payload_values(payload)
+    tracked_summary = pformat(tracked, compact=True) if tracked else "<absent>"
+    return f"top_level_keys={top_level_keys} tracked={tracked_summary}"
+
+
+async def _print_raw_event(event: RealtimeEvent) -> None:
+    """Print raw realtime events for debugging payload shape issues."""
+    if not isinstance(event, RealtimeMessage):
+        return
+    print(f"raw event: topic={event.topic} {_summarize_payload(event.payload)}")
 
 
 def _resolve_probe_target(details: RealtimeConnectionDetails) -> tuple[str, int, str | None]:
@@ -111,12 +173,24 @@ def _resolve_probe_target(details: RealtimeConnectionDetails) -> tuple[str, int,
     return host, port, server_name
 
 
+def _is_ip_literal(value: str) -> bool:
+    """Return whether a string is an IP literal."""
+    try:
+        ipaddress.ip_address(value)
+    except ValueError:
+        return False
+    return True
+
+
 async def _probe_connection_details(details: RealtimeConnectionDetails, timeout: float) -> None:
     """Attempt a raw socket/TLS connection to the discovered realtime endpoint."""
     host, port, server_name = _resolve_probe_target(details)
     ssl_context = ssl.create_default_context() if details.uses_tls else None
+    if ssl_context is not None and _is_ip_literal(host):
+        ssl_context.check_hostname = False
+        server_name = None
 
-    print("Probe target: " f"host={host} port={port} tls={'yes' if details.uses_tls else 'no'}")
+    print(f"Probe target: host={host} port={port} tls={'yes' if details.uses_tls else 'no'}")
 
     try:
         reader, writer = await asyncio.wait_for(
@@ -135,7 +209,13 @@ async def _probe_connection_details(details: RealtimeConnectionDetails, timeout:
         print(f"Network probe failed: {type(exc).__name__}: {exc}")
         return
 
-    print("Network probe succeeded: TCP/TLS connection established")
+    if ssl_context is not None and _is_ip_literal(host):
+        print(
+            "Network probe succeeded: TCP/TLS connection established "
+            "with hostname check disabled for IP endpoint"
+        )
+    else:
+        print("Network probe succeeded: TCP/TLS connection established")
     writer.close()
     await writer.wait_closed()
     del reader
@@ -151,6 +231,7 @@ async def main() -> None:
     event_limit = _read_int_env("ACTRON_PUSH_EVENT_LIMIT", 1)
     idle_timeout = _read_float_env("ACTRON_PUSH_IDLE_TIMEOUT", 30.0)
     warmup_seconds = _read_float_env("ACTRON_PUSH_WARMUP_SECONDS", 5.0)
+    debug_raw = _read_bool_env("ACTRON_PUSH_DEBUG_RAW")
 
     if event_limit <= 0:
         raise RuntimeError("ACTRON_PUSH_EVENT_LIMIT must be greater than zero")
@@ -205,6 +286,9 @@ async def main() -> None:
 
         callback: Callable[[ActronAirStatus], Awaitable[None] | None] = _print_callback
         api.subscribe_system_updates(serial, callback)
+        if debug_raw and isinstance(api._rt_client, MQTTRTClient):  # noqa: SLF001 - targeted smoke-test debug hook
+            api._rt_client.register_callback(_print_raw_event)
+            print("Raw realtime event debugging is enabled.")
 
         print("Realtime push started successfully.")
         print(f"Waiting for up to {event_limit} update(s) with {idle_timeout:.1f}s idle timeout...")
