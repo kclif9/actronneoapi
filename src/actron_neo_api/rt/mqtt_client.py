@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import inspect
+import ipaddress
 import json
 import logging
 import ssl
@@ -255,6 +256,9 @@ class MQTTRTClient:
         if not access_token.strip():
             raise ValueError("access_token cannot be empty")
 
+        if access_token == self._access_token:
+            return
+
         self._access_token = access_token
         if self._running:
             await self.disconnect()
@@ -273,6 +277,7 @@ class MQTTRTClient:
             client: Client | None = None
             try:
                 await self._set_state(RealtimeConnectionState.CONNECTING)
+                await self._ensure_tls_context()
                 client = self._build_client()
                 self._client = client
 
@@ -312,8 +317,6 @@ class MQTTRTClient:
     def _build_client(self) -> Client:
         """Create a configured aiomqtt client instance."""
         tls_context = self._ssl_context
-        if tls_context is None and self._details.uses_tls:
-            tls_context = ssl.create_default_context()
 
         client_kwargs: dict[str, Any] = {
             "hostname": self._details.endpoint,
@@ -329,6 +332,25 @@ class MQTTRTClient:
             client_kwargs["tls_context"] = tls_context
 
         return Client(**client_kwargs)
+
+    async def _ensure_tls_context(self) -> None:
+        """Create a default TLS context off-loop when one is required."""
+        if self._ssl_context is not None or not self._details.uses_tls:
+            return
+
+        tls_context = await asyncio.to_thread(ssl.create_default_context)
+        if self._is_ip_literal_endpoint():
+            tls_context.check_hostname = False
+
+        self._ssl_context = tls_context
+
+    def _is_ip_literal_endpoint(self) -> bool:
+        """Return whether the realtime endpoint is a literal IP address."""
+        try:
+            ipaddress.ip_address(self._details.endpoint)
+        except ValueError:
+            return False
+        return True
 
     @staticmethod
     def _get_client_identifier_arg_name() -> str:
@@ -349,7 +371,12 @@ class MQTTRTClient:
 
     async def _handle_message(self, topic: str, raw_payload: bytes) -> None:
         """Decode a raw MQTT message and forward it to the event queue."""
-        payload = self._decode_payload(raw_payload)
+        try:
+            payload = self._decode_payload(raw_payload)
+        except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+            _LOGGER.warning("Failed to decode MQTT payload on %s: %s", topic, exc)
+            return
+
         domain_model: Any | None = None
 
         if topic.endswith(_MQTT_TOPIC_FULL_STATUS):

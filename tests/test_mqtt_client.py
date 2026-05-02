@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import logging
 import ssl
 from unittest.mock import AsyncMock, MagicMock
 
@@ -280,6 +281,30 @@ class TestMQTTRTClient:
         assert isinstance(event, RealtimeMessage)
         assert event.domain_model is sentinel
 
+    @pytest.mark.asyncio
+    async def test_handle_message_skips_malformed_payload(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Malformed MQTT payloads should be logged and skipped without raising."""
+        client = MQTTRTClient(
+            RealtimeConnectionDetails(
+                endpoint="mqtt.example.com",
+                port=8883,
+                protocol="ssl",
+                user_id="user-1",
+            ),
+            access_token="token-123",
+        )
+
+        with caplog.at_level(logging.WARNING):
+            await client._handle_message(  # noqa: SLF001 - targeted malformed payload coverage
+                "actron-cloud/user-1/neo/abc123/mwc/status-change",
+                b'{"bad":"\\q"}',
+            )
+
+        assert client._event_queue.empty()  # noqa: SLF001 - malformed payload should be dropped
+        assert "Failed to decode MQTT payload" in caplog.text
+
     def test_decode_payload_validation(self) -> None:
         """Payload decoding should enforce JSON object payloads."""
         assert MQTTRTClient._decode_payload(b'{"enabled":true}') == {"enabled": True}
@@ -353,6 +378,162 @@ class TestMQTTRTClient:
         await client.disconnect()
         assert client.connection_state == RealtimeConnectionState.DISCONNECTED
         assert client._supervisor_task is None  # noqa: SLF001 - internal lifecycle state
+
+    @pytest.mark.asyncio
+    async def test_connect_prepares_tls_context_off_loop(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """TLS context should be prepared via to_thread inside the supervisor path."""
+        client = MQTTRTClient(
+            RealtimeConnectionDetails(
+                endpoint="mqtt.example.com",
+                port=8883,
+                protocol="ssl",
+                user_id="user-1",
+            ),
+            access_token="token-123",
+        )
+
+        created_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        to_thread_calls: list[object] = []
+        release_supervisor = asyncio.Event()
+
+        async def fake_to_thread(func: object, *args: object, **kwargs: object) -> ssl.SSLContext:
+            to_thread_calls.append(func)
+            return created_context
+
+        async def fake_supervisor() -> None:
+            await client._ensure_tls_context()  # noqa: SLF001 - exercise real TLS prep path
+            client._connected_event.set()  # noqa: SLF001 - simulate successful connect
+            await release_supervisor.wait()
+
+        monkeypatch.setattr(mqtt_module.asyncio, "to_thread", fake_to_thread)
+        client._run_supervisor = fake_supervisor  # type: ignore[method-assign]
+
+        await client.connect()
+
+        assert to_thread_calls == [ssl.create_default_context]
+        assert client._ssl_context is created_context  # noqa: SLF001 - verify cached context
+        assert client._ssl_context.check_hostname is True  # noqa: SLF001 - hostname preserved
+
+        release_supervisor.set()
+        await client.disconnect()
+
+    @pytest.mark.asyncio
+    async def test_ensure_tls_context_disables_hostname_check_for_ip_endpoint(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """IP literal TLS endpoints should keep cert validation but skip hostname matching."""
+        client = MQTTRTClient(
+            RealtimeConnectionDetails(
+                endpoint="4.237.217.248",
+                port=8883,
+                protocol="tls",
+                user_id="user-1",
+            ),
+            access_token="token-123",
+        )
+
+        created_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+
+        async def fake_to_thread(func: object, *args: object, **kwargs: object) -> ssl.SSLContext:
+            return created_context
+
+        monkeypatch.setattr(mqtt_module.asyncio, "to_thread", fake_to_thread)
+
+        await client._ensure_tls_context()  # noqa: SLF001 - direct TLS behavior coverage
+
+        assert client._ssl_context is created_context  # noqa: SLF001 - cached context reused
+        assert client._ssl_context.check_hostname is False  # noqa: SLF001 - IP endpoint special case
+
+    def test_is_ip_literal_endpoint(self) -> None:
+        """IP endpoint detection should distinguish literal addresses from hostnames."""
+        ip_client = MQTTRTClient(
+            RealtimeConnectionDetails(
+                endpoint="4.237.217.248",
+                port=8883,
+                protocol="tls",
+                user_id="user-1",
+            ),
+            access_token="token-123",
+        )
+        host_client = MQTTRTClient(
+            RealtimeConnectionDetails(
+                endpoint="mqtt.example.com",
+                port=8883,
+                protocol="tls",
+                user_id="user-1",
+            ),
+            access_token="token-123",
+        )
+
+        assert ip_client._is_ip_literal_endpoint() is True  # noqa: SLF001 - helper coverage
+        assert host_client._is_ip_literal_endpoint() is False  # noqa: SLF001 - helper coverage
+
+    @pytest.mark.asyncio
+    async def test_connect_overlapping_calls_start_single_supervisor(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Overlapping connect calls should not start more than one supervisor."""
+        client = MQTTRTClient(
+            RealtimeConnectionDetails(
+                endpoint="mqtt.example.com",
+                port=8883,
+                protocol="ssl",
+                user_id="user-1",
+            ),
+            access_token="token-123",
+        )
+
+        created_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        release_supervisor = asyncio.Event()
+        supervisor_runs = 0
+
+        async def fake_to_thread(func: object, *args: object, **kwargs: object) -> ssl.SSLContext:
+            return created_context
+
+        async def fake_supervisor() -> None:
+            nonlocal supervisor_runs
+            supervisor_runs += 1
+            await client._ensure_tls_context()  # noqa: SLF001 - keep startup path realistic
+            client._connected_event.set()  # noqa: SLF001 - allow connect() to finish
+            await release_supervisor.wait()
+
+        monkeypatch.setattr(mqtt_module.asyncio, "to_thread", fake_to_thread)
+        client._run_supervisor = fake_supervisor  # type: ignore[method-assign]
+
+        first_connect = asyncio.create_task(client.connect())
+        await asyncio.sleep(0)
+        await client.connect()
+        await first_connect
+
+        assert supervisor_runs == 1
+
+        release_supervisor.set()
+        await client.disconnect()
+
+    @pytest.mark.asyncio
+    async def test_ensure_tls_context_noop_without_tls(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """TLS preparation should no-op for non-TLS transports."""
+        client = MQTTRTClient(
+            RealtimeConnectionDetails(
+                endpoint="mqtt.example.com",
+                port=1883,
+                protocol="tcp",
+                user_id="user-1",
+            ),
+            access_token="token-123",
+        )
+
+        async def fail_to_thread(*args: object, **kwargs: object) -> ssl.SSLContext:
+            raise AssertionError("to_thread should not be called for non-TLS connections")
+
+        monkeypatch.setattr(mqtt_module.asyncio, "to_thread", fail_to_thread)
+
+        await client._ensure_tls_context()  # noqa: SLF001 - direct branch coverage target
+        assert client._ssl_context is None  # noqa: SLF001 - no context needed for tcp
 
     @pytest.mark.asyncio
     async def test_connect_returns_when_supervisor_running(self) -> None:
@@ -550,6 +731,7 @@ class TestMQTTRTClient:
             ),
             access_token="token-123",
         )
+        client._ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)  # noqa: SLF001
         client._subscriptions = {"topic/b", "topic/a"}  # noqa: SLF001 - internal state setup
 
         fake_client = _FakeMQTTClient()
@@ -853,3 +1035,60 @@ class TestMQTTRTClient:
         assert client.access_token == "token-456"
         disconnect_mock.assert_awaited_once()
         connect_mock.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_update_access_token_noop_for_unchanged_token(self) -> None:
+        """Updating with the same token should avoid needless reconnect churn."""
+        client = MQTTRTClient(
+            RealtimeConnectionDetails(
+                endpoint="mqtt.example.com",
+                port=8883,
+                protocol="ssl",
+                user_id="user-1",
+            ),
+            access_token="token-123",
+        )
+
+        disconnect_mock = AsyncMock(return_value=None)
+        connect_mock = AsyncMock(return_value=None)
+        client.disconnect = disconnect_mock  # type: ignore[method-assign]
+        client.connect = connect_mock  # type: ignore[method-assign]
+        client._running = True  # noqa: SLF001 - simulate an active connection
+
+        await client.update_access_token("token-123")
+
+        assert client.access_token == "token-123"
+        disconnect_mock.assert_not_awaited()
+        connect_mock.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_run_supervisor_handles_tls_context_failure(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """TLS context failures should enter reconnect flow instead of escaping."""
+        client = MQTTRTClient(
+            RealtimeConnectionDetails(
+                endpoint="mqtt.example.com",
+                port=8883,
+                protocol="ssl",
+                user_id="user-1",
+            ),
+            access_token="token-123",
+        )
+
+        async def _boom() -> None:
+            raise OSError("tls context failed")
+
+        monkeypatch.setattr(client, "_ensure_tls_context", _boom)
+        monkeypatch.setattr(
+            mqtt_module.asyncio,
+            "sleep",
+            AsyncMock(side_effect=lambda _: setattr(client, "_running", False)),
+        )
+
+        client._running = True  # noqa: SLF001 - exercise reconnect path directly
+        await client._run_supervisor()  # noqa: SLF001 - direct coverage target
+
+        assert client.last_error is not None
+        assert isinstance(client.last_error, OSError)
+        assert client.connection_state == RealtimeConnectionState.DISCONNECTED

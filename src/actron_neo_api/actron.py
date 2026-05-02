@@ -6,6 +6,7 @@ import asyncio
 import inspect
 import logging
 from collections.abc import AsyncIterator, Awaitable, Callable
+from copy import deepcopy
 from typing import Any, Literal
 
 import aiohttp
@@ -334,6 +335,8 @@ class ActronAirAPI:
         self._push_callbacks: dict[
             str, list[Callable[[ActronAirStatus], Awaitable[None] | None]]
         ] = {}
+        self._refresh_tasks_lock = asyncio.Lock()
+        self._refresh_status_tasks: dict[str, asyncio.Task[ActronAirStatus | None]] = {}
 
     @property
     def platform(self) -> str:
@@ -769,16 +772,15 @@ class ActronAirAPI:
         if not isinstance(event, RealtimeMessage):
             return
 
-        if not isinstance(event.domain_model, ActronAirStatus):
-            return
-
-        status = event.domain_model
+        status = await self._coerce_realtime_status(event)
         serial = self._extract_realtime_serial(event, status)
-        if not serial:
+        if status is None or not serial:
             return
 
         status.serial_number = serial
-        self.state_manager.process_status_update(serial, status)
+        current_status = self.state_manager.get_status(serial)
+        if current_status is not status:
+            self.state_manager.process_status_update(serial, status)
         await self._push_status_queue.put((serial, status))
         for stream_filter, stream_queue in list(self._push_stream_queues):
             if stream_filter is None or stream_filter == serial:
@@ -797,13 +799,139 @@ class ActronAirAPI:
                     exc_info=True,
                 )
 
+    async def _coerce_realtime_status(self, event: RealtimeMessage) -> ActronAirStatus | None:
+        """Convert a realtime message into a status model when possible."""
+        status = event.domain_model if isinstance(event.domain_model, ActronAirStatus) else None
+        serial = self._extract_realtime_serial(event, status)
+        if not serial:
+            return None
+
+        if self._is_mqtt_status_change_topic(event.topic):
+            return await self._merge_mqtt_status_change(serial, event.payload)
+
+        return status
+
+    async def _merge_mqtt_status_change(
+        self,
+        serial: str,
+        payload: dict[str, Any],
+    ) -> ActronAirStatus | None:
+        """Merge an MQTT status-change delta into the current system state."""
+        if not self._mqtt_status_change_contains_state(payload):
+            return await self._refresh_status_from_realtime_signal(serial)
+
+        existing_status = self.state_manager.get_status(serial)
+        if existing_status is None:
+            existing_status = await self._refresh_status_from_realtime_signal(serial)
+            if existing_status is None:
+                return None
+
+        merged_status_data: dict[str, Any] = {
+            "isOnline": payload.get("isOnline", existing_status.is_online),
+            "lastKnownState": deepcopy(existing_status.last_known_state),
+        }
+
+        delta_state = payload.get("lastKnownState")
+        if isinstance(delta_state, dict):
+            self._deep_merge_dicts(merged_status_data["lastKnownState"], delta_state)
+        else:
+            state_updates = {
+                key: value
+                for key, value in payload.items()
+                if key not in self._mqtt_status_change_metadata_keys()
+            }
+            self._deep_merge_dicts(merged_status_data["lastKnownState"], state_updates)
+
+        try:
+            merged_status = ActronAirStatus.model_validate(merged_status_data)
+        except Exception as exc:
+            _LOGGER.warning("Failed to merge MQTT status-change for %s: %s", serial, exc)
+            return None
+
+        merged_status.serial_number = serial
+        return merged_status
+
+    async def _refresh_status_from_realtime_signal(self, serial: str) -> ActronAirStatus | None:
+        """Fetch a fresh status snapshot after a realtime invalidation signal."""
+        task = await self._get_or_create_refresh_task(serial)
+        return await task
+
+    async def _get_or_create_refresh_task(
+        self, serial: str
+    ) -> asyncio.Task[ActronAirStatus | None]:
+        """Return an in-flight refresh task for serial, creating one if needed."""
+        async with self._refresh_tasks_lock:
+            existing = self._refresh_status_tasks.get(serial)
+            if existing is not None and not existing.done():
+                return existing
+
+            task = asyncio.create_task(self._run_refresh_status(serial))
+            self._refresh_status_tasks[serial] = task
+            return task
+
+    async def _run_refresh_status(self, serial: str) -> ActronAirStatus | None:
+        """Execute a realtime-triggered refresh and clean up task bookkeeping."""
+        try:
+            await self.update_status(serial)
+        except Exception as exc:
+            _LOGGER.warning(
+                "Failed to hydrate baseline status for realtime delta %s: %s",
+                serial,
+                exc,
+            )
+            return None
+        finally:
+            async with self._refresh_tasks_lock:
+                current = self._refresh_status_tasks.get(serial)
+                if current is asyncio.current_task():
+                    self._refresh_status_tasks.pop(serial, None)
+
+        return self.state_manager.get_status(serial)
+
+    @staticmethod
+    def _deep_merge_dicts(base: dict[str, Any], updates: dict[str, Any]) -> None:
+        """Recursively merge updates into base in place."""
+        for key, value in updates.items():
+            if isinstance(value, dict) and isinstance(base.get(key), dict):
+                ActronAirAPI._deep_merge_dicts(base[key], value)
+                continue
+            base[key] = deepcopy(value)
+
+    @staticmethod
+    def _mqtt_status_change_contains_state(payload: dict[str, Any]) -> bool:
+        """Return whether a Neo status-change payload contains state-bearing fields."""
+        metadata_only_keys = ActronAirAPI._mqtt_status_change_metadata_keys()
+        if isinstance(payload.get("lastKnownState"), dict):
+            return True
+        return any(key not in metadata_only_keys for key in payload)
+
+    @staticmethod
+    def _mqtt_status_change_metadata_keys() -> set[str]:
+        """Return top-level status-change keys that are metadata, not state."""
+        return {
+            "event",
+            "wcFirmware",
+            "correlationId",
+            "commandResponse",
+            "isOnline",
+            "serial",
+            "serialNumber",
+            "SerialNumber",
+            "lastKnownState",
+        }
+
+    @staticmethod
+    def _is_mqtt_status_change_topic(topic: str) -> bool:
+        """Return whether a realtime topic is the Neo status-change channel."""
+        return topic.endswith("/mwc/status-change")
+
     @staticmethod
     def _extract_realtime_serial(
         event: RealtimeMessage,
-        status: ActronAirStatus,
+        status: ActronAirStatus | None,
     ) -> str | None:
         """Extract system serial from status model or transport-specific metadata."""
-        if status.serial_number:
+        if status is not None and status.serial_number:
             return status.serial_number.lower()
 
         topic_parts = event.topic.split("/")
