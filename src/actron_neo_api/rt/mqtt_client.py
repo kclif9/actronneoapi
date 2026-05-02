@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import inspect
+import ipaddress
 import json
 import logging
 import ssl
@@ -334,7 +335,19 @@ class MQTTRTClient:
         if self._ssl_context is not None or not self._details.uses_tls:
             return
 
-        self._ssl_context = await asyncio.to_thread(ssl.create_default_context)
+        tls_context = await asyncio.to_thread(ssl.create_default_context)
+        if self._is_ip_literal_endpoint():
+            tls_context.check_hostname = False
+
+        self._ssl_context = tls_context
+
+    def _is_ip_literal_endpoint(self) -> bool:
+        """Return whether the realtime endpoint is a literal IP address."""
+        try:
+            ipaddress.ip_address(self._details.endpoint)
+        except ValueError:
+            return False
+        return True
 
     @staticmethod
     def _get_client_identifier_arg_name() -> str:

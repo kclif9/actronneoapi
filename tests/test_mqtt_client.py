@@ -389,9 +389,61 @@ class TestMQTTRTClient:
 
         assert to_thread_calls == [ssl.create_default_context]
         assert client._ssl_context is created_context  # noqa: SLF001 - verify cached context
+        assert client._ssl_context.check_hostname is True  # noqa: SLF001 - hostname preserved
 
         release_supervisor.set()
         await client.disconnect()
+
+    @pytest.mark.asyncio
+    async def test_ensure_tls_context_disables_hostname_check_for_ip_endpoint(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """IP literal TLS endpoints should keep cert validation but skip hostname matching."""
+        client = MQTTRTClient(
+            RealtimeConnectionDetails(
+                endpoint="4.237.217.248",
+                port=8883,
+                protocol="tls",
+                user_id="user-1",
+            ),
+            access_token="token-123",
+        )
+
+        created_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+
+        async def fake_to_thread(func: object, *args: object, **kwargs: object) -> ssl.SSLContext:
+            return created_context
+
+        monkeypatch.setattr(mqtt_module.asyncio, "to_thread", fake_to_thread)
+
+        await client._ensure_tls_context()  # noqa: SLF001 - direct TLS behavior coverage
+
+        assert client._ssl_context is created_context  # noqa: SLF001 - cached context reused
+        assert client._ssl_context.check_hostname is False  # noqa: SLF001 - IP endpoint special case
+
+    def test_is_ip_literal_endpoint(self) -> None:
+        """IP endpoint detection should distinguish literal addresses from hostnames."""
+        ip_client = MQTTRTClient(
+            RealtimeConnectionDetails(
+                endpoint="4.237.217.248",
+                port=8883,
+                protocol="tls",
+                user_id="user-1",
+            ),
+            access_token="token-123",
+        )
+        host_client = MQTTRTClient(
+            RealtimeConnectionDetails(
+                endpoint="mqtt.example.com",
+                port=8883,
+                protocol="tls",
+                user_id="user-1",
+            ),
+            access_token="token-123",
+        )
+
+        assert ip_client._is_ip_literal_endpoint() is True  # noqa: SLF001 - helper coverage
+        assert host_client._is_ip_literal_endpoint() is False  # noqa: SLF001 - helper coverage
 
     @pytest.mark.asyncio
     async def test_connect_overlapping_calls_start_single_supervisor(
