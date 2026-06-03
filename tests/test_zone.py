@@ -615,6 +615,20 @@ class TestZoneSensorAliasParsing:
         )
         assert sensor.signal_strength == "3"
 
+    def test_signal_strength_coerces_integer_value(self) -> None:
+        """signal_strength accepts integer payloads and normalizes to string."""
+        sensor = ActronAirZoneSensor.model_validate(
+            {"Signal_of3": 3, "Connected": True, "NV_Kind": "Wireless"}
+        )
+        assert sensor.signal_strength == "3"
+
+    def test_signal_strength_handles_none_value(self) -> None:
+        """signal_strength normalizes explicit None payloads to default string."""
+        sensor = ActronAirZoneSensor.model_validate(
+            {"Signal_of3": None, "Connected": True, "NV_Kind": "Wireless"}
+        )
+        assert sensor.signal_strength == "NA"
+
     def test_signal_strength_default_when_missing(self) -> None:
         """signal_strength defaults to 'NA' when not in data."""
         sensor = ActronAirZoneSensor.model_validate({})
