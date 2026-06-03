@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from ..const import (
     AC_MODE_AUTO,
@@ -38,6 +38,14 @@ class ActronAirZoneSensor(BaseModel):
     temperature: float = Field(0.0, alias="LiveTemp_oC")
     humidity: float = Field(0.0, alias="RelativeHumidity_pc")
     battery_level: float = Field(0.0, alias="RemainingBatteryCapacity_pc")
+
+    @field_validator("signal_strength", mode="before")
+    @classmethod
+    def normalize_signal_strength(cls, value: Any) -> str:
+        """Normalize Signal_of3 values that may arrive as numbers."""
+        if value is None:
+            return "NA"
+        return str(value)
 
 
 class ActronAirPeripheral(BaseModel):

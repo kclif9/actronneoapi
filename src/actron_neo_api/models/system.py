@@ -56,6 +56,14 @@ class ActronAirOutdoorUnit(BaseModel):
     amb_temp: float = Field(0.0, alias="AmbTemp")
     family: str = Field("", alias="Family")
 
+    @field_validator("software_version", mode="before")
+    @classmethod
+    def normalize_software_version(cls, value: Any) -> str:
+        """Normalize software version values that may arrive as numbers."""
+        if value is None:
+            return ""
+        return str(value)
+
 
 class ActronAirLiveAircon(BaseModel):
     """Live operational data for the air conditioning system.
