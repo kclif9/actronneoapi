@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import logging
+import re
 from collections.abc import AsyncIterator, Awaitable, Callable
 from copy import deepcopy
 from typing import Any, Literal
@@ -831,16 +832,31 @@ class ActronAirAPI:
             "lastKnownState": deepcopy(existing_status.last_known_state),
         }
 
-        delta_state = payload.get("lastKnownState")
-        if isinstance(delta_state, dict):
-            self._deep_merge_dicts(merged_status_data["lastKnownState"], delta_state)
+        event = payload.get("event")
+        if (
+            isinstance(event, dict)
+            and event.get("type") == "status-change-broadcast"
+            and len(event) > 1
+        ):
+            for key, value in event.items():
+                if key == "type":
+                    continue
+                path = self._parse_flat_key_path(key)
+                if path:
+                    self._apply_flat_path_to_dict(
+                        merged_status_data["lastKnownState"], path, value
+                    )
         else:
-            state_updates = {
-                key: value
-                for key, value in payload.items()
-                if key not in self._mqtt_status_change_metadata_keys()
-            }
-            self._deep_merge_dicts(merged_status_data["lastKnownState"], state_updates)
+            delta_state = payload.get("lastKnownState")
+            if isinstance(delta_state, dict):
+                self._deep_merge_dicts(merged_status_data["lastKnownState"], delta_state)
+            else:
+                state_updates = {
+                    key: value
+                    for key, value in payload.items()
+                    if key not in self._mqtt_status_change_metadata_keys()
+                }
+                self._deep_merge_dicts(merged_status_data["lastKnownState"], state_updates)
 
         try:
             merged_status = ActronAirStatus.model_validate(merged_status_data)
@@ -897,11 +913,67 @@ class ActronAirAPI:
                 continue
             base[key] = deepcopy(value)
 
+    _FLAT_KEY_SEGMENT_RE = re.compile(r"(\w+)|\[(\d+)\]")
+
+    @staticmethod
+    def _parse_flat_key_path(key: str) -> list[str | int]:
+        """Parse a flat dot-notation key into a path list.
+
+        Examples:
+            'UserAirconSettings.EnabledZones[0]' → ['UserAirconSettings', 'EnabledZones', 0]
+            'RemoteZoneInfo[1].ZonePosition'     → ['RemoteZoneInfo', 1, 'ZonePosition']
+        """
+        path: list[str | int] = []
+        for match in ActronAirAPI._FLAT_KEY_SEGMENT_RE.finditer(key):
+            word, index = match.groups()
+            path.append(word if word else int(index))
+        return path
+
+    @staticmethod
+    def _apply_flat_path_to_dict(
+        d: dict[str, Any],
+        path: list[str | int],
+        value: Any,
+    ) -> None:
+        """Set a value in a nested dict/list structure by a parsed path.
+
+        Intermediate dicts and lists are created as needed so that a
+        broadcast delta can be applied to a partial ``lastKnownState``.
+        """
+        current: Any = d
+        for i, segment in enumerate(path[:-1]):
+            next_segment = path[i + 1]
+            if isinstance(segment, int):
+                while len(current) <= segment:
+                    current.append(None)
+                if not isinstance(current[segment], (dict, list)):
+                    current[segment] = [] if isinstance(next_segment, int) else {}
+                current = current[segment]
+            else:
+                if not isinstance(current.get(segment), (dict, list)):
+                    current[segment] = [] if isinstance(next_segment, int) else {}
+                current = current[segment]
+
+        final = path[-1]
+        if isinstance(final, int):
+            while len(current) <= final:
+                current.append(None)
+            current[final] = value
+        else:
+            current[final] = value
+
     @staticmethod
     def _mqtt_status_change_contains_state(payload: dict[str, Any]) -> bool:
         """Return whether a Neo status-change payload contains state-bearing fields."""
         metadata_only_keys = ActronAirAPI._mqtt_status_change_metadata_keys()
         if isinstance(payload.get("lastKnownState"), dict):
+            return True
+        event = payload.get("event")
+        if (
+            isinstance(event, dict)
+            and event.get("type") == "status-change-broadcast"
+            and len(event) > 1
+        ):
             return True
         return any(key not in metadata_only_keys for key in payload)
 
