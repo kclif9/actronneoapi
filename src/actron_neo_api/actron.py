@@ -862,8 +862,10 @@ class ActronAirAPI:
         if self._is_mqtt_status_change_topic(event.topic):
             return await self._merge_mqtt_status_change(serial, event.payload)
 
-        if status is None and event.topic.endswith("/mwc/full-status"):
-            status = self._parse_full_status_broadcast(serial, event.payload)
+        if event.topic.endswith("/mwc/full-status"):
+            parsed = self._parse_full_status_broadcast(serial, event.payload)
+            if parsed is not None:
+                return parsed
 
         return status
 
