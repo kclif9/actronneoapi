@@ -810,6 +810,47 @@ class ActronAirAPI:
         if self._is_mqtt_status_change_topic(event.topic):
             return await self._merge_mqtt_status_change(serial, event.payload)
 
+        if status is None and event.topic.endswith("/mwc/full-status"):
+            status = self._parse_full_status_broadcast(serial, event.payload)
+
+        return status
+
+    @staticmethod
+    def _parse_full_status_broadcast(
+        serial: str, payload: dict[str, Any]
+    ) -> ActronAirStatus | None:
+        """Parse a full-status-broadcast MQTT payload into an ActronAirStatus.
+
+        The Neo broker wraps the full lastKnownState inside ``payload["event"]``
+        alongside a serial-keyed diagnostic block and a ``"type"`` marker.
+        Keys that do not belong to lastKnownState are filtered out.
+        """
+        event = payload.get("event")
+        if not isinstance(event, dict):
+            return None
+        if event.get("type") != "full-status-broadcast":
+            return None
+
+        # Keys that are NOT part of lastKnownState
+        _SKIP = {"type"}
+
+        last_known_state = {
+            k: v
+            for k, v in event.items()
+            if k not in _SKIP and not (isinstance(k, str) and k.startswith("<"))
+        }
+        if not last_known_state:
+            return None
+
+        try:
+            status = ActronAirStatus.model_validate(
+                {"isOnline": True, "lastKnownState": last_known_state}
+            )
+        except Exception as exc:
+            _LOGGER.warning("Failed to parse full-status-broadcast for %s: %s", serial, exc)
+            return None
+
+        status.serial_number = serial
         return status
 
     async def _merge_mqtt_status_change(
