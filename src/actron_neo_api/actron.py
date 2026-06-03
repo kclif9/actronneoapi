@@ -860,11 +860,13 @@ class ActronAirAPI:
             return None
 
         if self._is_mqtt_status_change_topic(event.topic):
+            _LOGGER.debug("[MQTT] status-change-broadcast for %s", serial)
             return await self._merge_mqtt_status_change(serial, event.payload)
 
         if event.topic.endswith("/mwc/full-status"):
             parsed = self._parse_full_status_broadcast(serial, event.payload)
             if parsed is not None:
+                _LOGGER.debug("[MQTT] full-status-broadcast for %s", serial)
                 return parsed
 
         return status
@@ -1412,6 +1414,7 @@ class ActronAirAPI:
         # Get current status using the status/latest endpoint
         status = await self.get_ac_status(serial_number)
         if status is not None:
+            _LOGGER.debug("[HTTP] status update for %s", serial_number)
             # Process and store the status via the state manager so observers are notified
             self.state_manager.process_status_update(serial_number, status)
 
