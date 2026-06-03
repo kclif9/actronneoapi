@@ -585,6 +585,13 @@ class ActronAirAPI:
 
             self._rt_client = rt_client
             self._push_running = True
+
+            # Request an immediate full-status push from the device so
+            # state_manager has accurate data before callers read it.
+            # The Neo broker does not retain messages, so we use the same
+            # "getAll" command the iOS app sends on connect.
+            await self._request_initial_full_status(serials)
+
             return True
         except Exception:
             _LOGGER.exception("Failed to start realtime push; falling back to polling")
@@ -597,6 +604,51 @@ class ActronAirAPI:
             self._rt_client = None
             self._push_running = False
             return False
+
+    async def _request_initial_full_status(
+        self, serials: list[str], timeout: float = 5.0
+    ) -> None:
+        """Send a getAll command and wait for the resulting full-status-broadcast.
+
+        The Neo broker does not retain messages, so we use the same "getAll"
+        command the iOS app sends on connect to receive an immediate full-status
+        push. This ensures state_manager has accurate device state before
+        start_push returns to its caller.
+
+        Failures are non-fatal — push continues even if getAll is unavailable.
+        """
+        if not serials:
+            return
+
+        pending: set[str] = {s.lower() for s in serials}
+        all_received = asyncio.Event()
+
+        def _on_full_status(status: ActronAirStatus) -> None:
+            sn = (status.serial_number or "").lower()
+            pending.discard(sn)
+            if not pending:
+                all_received.set()
+
+        for serial in list(pending):
+            self._push_callbacks.setdefault(serial, []).append(_on_full_status)
+
+        try:
+            # Fire getAll for the first serial — the broker fans it out to all
+            await self.send_command(serials[0], {"command": {"type": "getAll"}})
+            await asyncio.wait_for(all_received.wait(), timeout=timeout)
+        except asyncio.TimeoutError:
+            _LOGGER.debug(
+                "Timed out waiting for full-status-broadcast after getAll for: %s", pending
+            )
+        except Exception as exc:
+            _LOGGER.debug("getAll command failed, initial state may be stale: %s", exc)
+        finally:
+            for serial in serials:
+                callbacks = self._push_callbacks.get(serial.lower(), [])
+                try:
+                    callbacks.remove(_on_full_status)
+                except ValueError:
+                    pass
 
     async def stop_push(self) -> None:
         """Stop realtime push updates and disconnect active transport."""
