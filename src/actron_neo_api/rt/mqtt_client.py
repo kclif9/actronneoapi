@@ -64,6 +64,8 @@ class MQTTRTClient:
 
     Args:
         connection_details: Realtime connection information from the backend.
+        user_email: Account email, sent as the MQTT username so connections
+            are identifiable on the broker.
         access_token: OAuth access token used as the MQTT password.
         client_id: Optional MQTT client identifier.
         ssl_context: Optional custom TLS context.
@@ -79,6 +81,7 @@ class MQTTRTClient:
     def __init__(
         self,
         connection_details: RealtimeConnectionDetails,
+        user_email: str,
         access_token: str,
         client_id: str | None = None,
         ssl_context: ssl.SSLContext | None = None,
@@ -101,7 +104,8 @@ class MQTTRTClient:
 
         self._details = connection_details
         self._access_token = access_token
-        self._client_id = client_id or uuid.uuid4().hex
+        self._user_email = user_email
+        self._client_id = client_id or "HA_" + uuid.uuid4().hex
         self._ssl_context = ssl_context
         self._keepalive = keepalive
         self._connect_timeout = connect_timeout
@@ -321,7 +325,7 @@ class MQTTRTClient:
         client_kwargs: dict[str, Any] = {
             "hostname": self._details.endpoint,
             "port": self._details.port,
-            "username": "",
+            "username": self._user_email,
             "password": self._access_token,
             "keepalive": self._keepalive,
             "clean_session": False,
