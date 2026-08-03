@@ -144,7 +144,7 @@ class TestMQTTRTClient:
             protocol="ssl",
             user_id="user-1",
         )
-        client = MQTTRTClient(details, access_token="token-123")
+        client = MQTTRTClient(details, user_email="test@example.com", access_token="token-123")
 
         assert client.connection_details is details
         assert client.access_token == "token-123"
@@ -193,6 +193,7 @@ class TestMQTTRTClient:
                     protocol="ssl",
                     user_id="user-1",
                 ),
+                user_email="test@example.com",
                 access_token=access_token,
                 keepalive=keepalive,
                 connect_timeout=connect_timeout,
@@ -235,6 +236,7 @@ class TestMQTTRTClient:
                 protocol="ssl",
                 user_id="user-1",
             ),
+            user_email="test@example.com",
             access_token="token-123",
         )
 
@@ -263,6 +265,7 @@ class TestMQTTRTClient:
                 protocol="ssl",
                 user_id="user-1",
             ),
+            user_email="test@example.com",
             access_token="token-123",
         )
         sentinel = object()
@@ -293,6 +296,7 @@ class TestMQTTRTClient:
                 protocol="ssl",
                 user_id="user-1",
             ),
+            user_email="test@example.com",
             access_token="token-123",
         )
 
@@ -325,6 +329,7 @@ class TestMQTTRTClient:
                 protocol="ssl",
                 user_id="user-1",
             ),
+            user_email="test@example.com",
             access_token="token-123",
         )
         seen: list[tuple[str, str]] = []
@@ -364,6 +369,7 @@ class TestMQTTRTClient:
                 protocol="ssl",
                 user_id="user-1",
             ),
+            user_email="test@example.com",
             access_token="token-123",
         )
 
@@ -391,6 +397,7 @@ class TestMQTTRTClient:
                 protocol="ssl",
                 user_id="user-1",
             ),
+            user_email="test@example.com",
             access_token="token-123",
         )
 
@@ -431,6 +438,7 @@ class TestMQTTRTClient:
                 protocol="tls",
                 user_id="user-1",
             ),
+            user_email="test@example.com",
             access_token="token-123",
         )
 
@@ -455,6 +463,7 @@ class TestMQTTRTClient:
                 protocol="tls",
                 user_id="user-1",
             ),
+            user_email="test@example.com",
             access_token="token-123",
         )
         host_client = MQTTRTClient(
@@ -464,6 +473,7 @@ class TestMQTTRTClient:
                 protocol="tls",
                 user_id="user-1",
             ),
+            user_email="test@example.com",
             access_token="token-123",
         )
 
@@ -482,6 +492,7 @@ class TestMQTTRTClient:
                 protocol="ssl",
                 user_id="user-1",
             ),
+            user_email="test@example.com",
             access_token="token-123",
         )
 
@@ -524,6 +535,7 @@ class TestMQTTRTClient:
                 protocol="tcp",
                 user_id="user-1",
             ),
+            user_email="test@example.com",
             access_token="token-123",
         )
 
@@ -545,6 +557,7 @@ class TestMQTTRTClient:
                 protocol="ssl",
                 user_id="user-1",
             ),
+            user_email="test@example.com",
             access_token="token-123",
         )
         client._supervisor_task = asyncio.create_task(asyncio.sleep(0.1))  # noqa: SLF001
@@ -566,6 +579,7 @@ class TestMQTTRTClient:
                 protocol="ssl",
                 user_id="user-1",
             ),
+            user_email="test@example.com",
             access_token="token-123",
         )
 
@@ -594,6 +608,7 @@ class TestMQTTRTClient:
                 protocol="ssl",
                 user_id="user-1",
             ),
+            user_email="test@example.com",
             access_token="token-123",
         )
         fake_client = _FakeMQTTClient()
@@ -615,6 +630,7 @@ class TestMQTTRTClient:
                 protocol="ssl",
                 user_id="user-1",
             ),
+            user_email="test@example.com",
             access_token="token-123",
         )
         fake_client = _FakeMQTTClient()
@@ -642,6 +658,7 @@ class TestMQTTRTClient:
                 protocol="ssl",
                 user_id="user-1",
             ),
+            user_email="test@example.com",
             access_token="token-123",
         )
 
@@ -667,6 +684,7 @@ class TestMQTTRTClient:
                 protocol="ssl",
                 user_id="user-1",
             ),
+            user_email="test@example.com",
             access_token="token-123",
         )
         fake_client = _FakeMQTTClient()
@@ -694,6 +712,7 @@ class TestMQTTRTClient:
                 protocol="ssl",
                 user_id="user-1",
             ),
+            user_email="test@example.com",
             access_token="token-123",
         )
 
@@ -711,6 +730,7 @@ class TestMQTTRTClient:
                 protocol="ssl",
                 user_id="user-1",
             ),
+            user_email="test@example.com",
             access_token="token-123",
         )
 
@@ -729,6 +749,7 @@ class TestMQTTRTClient:
                 protocol="ssl",
                 user_id="user-1",
             ),
+            user_email="test@example.com",
             access_token="token-123",
         )
         client._ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)  # noqa: SLF001
@@ -810,6 +831,7 @@ class TestMQTTRTClient:
                 protocol="ssl",
                 user_id="user-1",
             ),
+            user_email="test@example.com",
             access_token="token-123",
         )
         event = RealtimeConnectionEvent(
@@ -841,6 +863,7 @@ class TestMQTTRTClient:
                 protocol="ssl",
                 user_id="user-1",
             ),
+            user_email="test@example.com",
             access_token="token-123",
         )
 
@@ -882,6 +905,7 @@ class TestMQTTRTClient:
                 protocol="ssl",
                 user_id="user-1",
             ),
+            user_email="test@example.com",
             access_token="token-123",
         )
 
@@ -919,6 +943,7 @@ class TestMQTTRTClient:
                 protocol="ssl",
                 user_id="user-1",
             ),
+            user_email="test@example.com",
             access_token="token-123",
         )
 
@@ -946,6 +971,7 @@ class TestMQTTRTClient:
                 protocol="ssl",
                 user_id="user-1",
             ),
+            user_email="test@example.com",
             access_token="token-123",
         )
         monkeypatch.setattr(
@@ -970,6 +996,7 @@ class TestMQTTRTClient:
                 protocol="ssl",
                 user_id="user-1",
             ),
+            user_email="test@example.com",
             access_token="token-123",
         )
 
@@ -1001,6 +1028,7 @@ class TestMQTTRTClient:
                 protocol="ssl",
                 user_id="user-1",
             ),
+            user_email="test@example.com",
             access_token="token-123",
         )
         client._client = MagicMock()  # noqa: SLF001 - inject a fake broker client
@@ -1021,6 +1049,7 @@ class TestMQTTRTClient:
                 protocol="ssl",
                 user_id="user-1",
             ),
+            user_email="test@example.com",
             access_token="token-123",
         )
 
@@ -1046,6 +1075,7 @@ class TestMQTTRTClient:
                 protocol="ssl",
                 user_id="user-1",
             ),
+            user_email="test@example.com",
             access_token="token-123",
         )
 
@@ -1073,6 +1103,7 @@ class TestMQTTRTClient:
                 protocol="ssl",
                 user_id="user-1",
             ),
+            user_email="test@example.com",
             access_token="token-123",
         )
 
