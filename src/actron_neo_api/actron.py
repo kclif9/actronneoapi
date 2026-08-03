@@ -558,8 +558,6 @@ class ActronAirAPI:
                 return False
 
             token = self.oauth2_auth.access_token
-            user_info = await self.oauth2_auth.get_user_info()
-            user_email = user_info.email if user_info else "unknown"
 
             if not token:
                 raise ActronAirAuthError("No OAuth access token available for realtime transport")
@@ -567,7 +565,9 @@ class ActronAirAPI:
             if self.platform == PLATFORM_QUE:
                 rt_client = SignalRRTClient(details, token)
             else:
-                rt_client = MQTTRTClient(details, user_email, token)
+                user_info = await self.oauth2_auth.get_user_info()
+                user_email = user_info.email.strip() if user_info else ""
+                rt_client = MQTTRTClient(details, user_email or "unknown", token)
 
             if rt_client is None:
                 raise ActronAirAPIError("Failed to create realtime transport client")
