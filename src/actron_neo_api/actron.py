@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import logging
+import re
 from collections.abc import AsyncIterator, Awaitable, Callable
 from copy import deepcopy
 from typing import Any, Literal
@@ -595,6 +596,13 @@ class ActronAirAPI:
 
             self._rt_client = rt_client
             self._push_running = True
+
+            # Request an immediate full-status push from the device so
+            # state_manager has accurate data before callers read it.
+            # The Neo broker does not retain messages, so we use the same
+            # "getAll" command the iOS app sends on connect.
+            await self._request_initial_full_status(serials)
+
             return True
         except ActronAirAuthError:
             # Credentials are no longer usable; polling would fail the same way.
@@ -642,6 +650,51 @@ class ActronAirAPI:
                 _LOGGER.debug("Failed to clean up realtime client", exc_info=True)
         self._rt_client = None
         self._push_running = False
+
+    async def _request_initial_full_status(
+        self, serials: list[str], timeout: float = 5.0
+    ) -> None:
+        """Send a getAll command and wait for the resulting full-status-broadcast.
+
+        The Neo broker does not retain messages, so we use the same "getAll"
+        command the iOS app sends on connect to receive an immediate full-status
+        push. This ensures state_manager has accurate device state before
+        start_push returns to its caller.
+
+        Failures are non-fatal — push continues even if getAll is unavailable.
+        """
+        if not serials:
+            return
+
+        pending: set[str] = {s.lower() for s in serials}
+        all_received = asyncio.Event()
+
+        def _on_full_status(status: ActronAirStatus) -> None:
+            sn = (status.serial_number or "").lower()
+            pending.discard(sn)
+            if not pending:
+                all_received.set()
+
+        for serial in list(pending):
+            self._push_callbacks.setdefault(serial, []).append(_on_full_status)
+
+        try:
+            # Fire getAll for the first serial — the broker fans it out to all
+            await self.send_command(serials[0], {"command": {"type": "getAll"}})
+            await asyncio.wait_for(all_received.wait(), timeout=timeout)
+        except asyncio.TimeoutError:
+            _LOGGER.debug(
+                "Timed out waiting for full-status-broadcast after getAll for: %s", pending
+            )
+        except Exception as exc:
+            _LOGGER.debug("getAll command failed, initial state may be stale: %s", exc)
+        finally:
+            for serial in serials:
+                callbacks = self._push_callbacks.get(serial.lower(), [])
+                try:
+                    callbacks.remove(_on_full_status)
+                except ValueError:
+                    pass
 
     async def stop_push(self) -> None:
         """Stop realtime push updates and disconnect active transport."""
@@ -918,8 +971,53 @@ class ActronAirAPI:
             return None
 
         if self._is_mqtt_status_change_topic(event.topic):
+            _LOGGER.debug("[MQTT] status-change-broadcast for %s", serial)
             return await self._merge_mqtt_status_change(serial, event.payload)
 
+        if event.topic.endswith("/mwc/full-status"):
+            parsed = self._parse_full_status_broadcast(serial, event.payload)
+            if parsed is not None:
+                _LOGGER.debug("[MQTT] full-status-broadcast for %s", serial)
+                return parsed
+
+        return status
+
+    @staticmethod
+    def _parse_full_status_broadcast(
+        serial: str, payload: dict[str, Any]
+    ) -> ActronAirStatus | None:
+        """Parse a full-status-broadcast MQTT payload into an ActronAirStatus.
+
+        The Neo broker wraps the full lastKnownState inside ``payload["event"]``
+        alongside a serial-keyed diagnostic block and a ``"type"`` marker.
+        Keys that do not belong to lastKnownState are filtered out.
+        """
+        event = payload.get("event")
+        if not isinstance(event, dict):
+            return None
+        if event.get("type") != "full-status-broadcast":
+            return None
+
+        # Keys that are NOT part of lastKnownState
+        _SKIP = {"type"}
+
+        last_known_state = {
+            k: v
+            for k, v in event.items()
+            if k not in _SKIP and not (isinstance(k, str) and k.startswith("<"))
+        }
+        if not last_known_state:
+            return None
+
+        try:
+            status = ActronAirStatus.model_validate(
+                {"isOnline": True, "lastKnownState": last_known_state}
+            )
+        except Exception as exc:
+            _LOGGER.warning("Failed to parse full-status-broadcast for %s: %s", serial, exc)
+            return None
+
+        status.serial_number = serial
         return status
 
     async def _merge_mqtt_status_change(
@@ -942,16 +1040,31 @@ class ActronAirAPI:
             "lastKnownState": deepcopy(existing_status.last_known_state),
         }
 
-        delta_state = payload.get("lastKnownState")
-        if isinstance(delta_state, dict):
-            self._deep_merge_dicts(merged_status_data["lastKnownState"], delta_state)
+        event = payload.get("event")
+        if (
+            isinstance(event, dict)
+            and event.get("type") == "status-change-broadcast"
+            and len(event) > 1
+        ):
+            for key, value in event.items():
+                if key == "type":
+                    continue
+                path = self._parse_flat_key_path(key)
+                if path:
+                    self._apply_flat_path_to_dict(
+                        merged_status_data["lastKnownState"], path, value
+                    )
         else:
-            state_updates = {
-                key: value
-                for key, value in payload.items()
-                if key not in self._mqtt_status_change_metadata_keys()
-            }
-            self._deep_merge_dicts(merged_status_data["lastKnownState"], state_updates)
+            delta_state = payload.get("lastKnownState")
+            if isinstance(delta_state, dict):
+                self._deep_merge_dicts(merged_status_data["lastKnownState"], delta_state)
+            else:
+                state_updates = {
+                    key: value
+                    for key, value in payload.items()
+                    if key not in self._mqtt_status_change_metadata_keys()
+                }
+                self._deep_merge_dicts(merged_status_data["lastKnownState"], state_updates)
 
         try:
             merged_status = ActronAirStatus.model_validate(merged_status_data)
@@ -1008,11 +1121,67 @@ class ActronAirAPI:
                 continue
             base[key] = deepcopy(value)
 
+    _FLAT_KEY_SEGMENT_RE = re.compile(r"(\w+)|\[(\d+)\]")
+
+    @staticmethod
+    def _parse_flat_key_path(key: str) -> list[str | int]:
+        """Parse a flat dot-notation key into a path list.
+
+        Examples:
+            'UserAirconSettings.EnabledZones[0]' → ['UserAirconSettings', 'EnabledZones', 0]
+            'RemoteZoneInfo[1].ZonePosition'     → ['RemoteZoneInfo', 1, 'ZonePosition']
+        """
+        path: list[str | int] = []
+        for match in ActronAirAPI._FLAT_KEY_SEGMENT_RE.finditer(key):
+            word, index = match.groups()
+            path.append(word if word else int(index))
+        return path
+
+    @staticmethod
+    def _apply_flat_path_to_dict(
+        d: dict[str, Any],
+        path: list[str | int],
+        value: Any,
+    ) -> None:
+        """Set a value in a nested dict/list structure by a parsed path.
+
+        Intermediate dicts and lists are created as needed so that a
+        broadcast delta can be applied to a partial ``lastKnownState``.
+        """
+        current: Any = d
+        for i, segment in enumerate(path[:-1]):
+            next_segment = path[i + 1]
+            if isinstance(segment, int):
+                while len(current) <= segment:
+                    current.append(None)
+                if not isinstance(current[segment], (dict, list)):
+                    current[segment] = [] if isinstance(next_segment, int) else {}
+                current = current[segment]
+            else:
+                if not isinstance(current.get(segment), (dict, list)):
+                    current[segment] = [] if isinstance(next_segment, int) else {}
+                current = current[segment]
+
+        final = path[-1]
+        if isinstance(final, int):
+            while len(current) <= final:
+                current.append(None)
+            current[final] = value
+        else:
+            current[final] = value
+
     @staticmethod
     def _mqtt_status_change_contains_state(payload: dict[str, Any]) -> bool:
         """Return whether a Neo status-change payload contains state-bearing fields."""
         metadata_only_keys = ActronAirAPI._mqtt_status_change_metadata_keys()
         if isinstance(payload.get("lastKnownState"), dict):
+            return True
+        event = payload.get("event")
+        if (
+            isinstance(event, dict)
+            and event.get("type") == "status-change-broadcast"
+            and len(event) > 1
+        ):
             return True
         return any(key not in metadata_only_keys for key in payload)
 
@@ -1356,6 +1525,7 @@ class ActronAirAPI:
         # Get current status using the status/latest endpoint
         status = await self.get_ac_status(serial_number)
         if status is not None:
+            _LOGGER.debug("[HTTP] status update for %s", serial_number)
             # Process and store the status via the state manager so observers are notified
             self.state_manager.process_status_update(serial_number, status)
 

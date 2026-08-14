@@ -349,6 +349,7 @@ class MQTTRTClient:
         tls_context = await asyncio.to_thread(ssl.create_default_context)
         if self._is_ip_literal_endpoint():
             tls_context.check_hostname = False
+            tls_context.verify_mode = ssl.CERT_NONE
 
         self._ssl_context = tls_context
 
