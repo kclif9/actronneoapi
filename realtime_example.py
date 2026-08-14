@@ -286,6 +286,9 @@ async def main() -> None:
 
         callback: Callable[[ActronAirStatus], Awaitable[None] | None] = _print_callback
         api.subscribe_system_updates(serial, callback)
+        api.subscribe_connection_state(
+            lambda event: print(f"connection state: {event.state.value}")
+        )
         if debug_raw and isinstance(api._rt_client, MQTTRTClient):  # noqa: SLF001 - targeted smoke-test debug hook
             api._rt_client.register_callback(_print_raw_event)
             print("Raw realtime event debugging is enabled.")

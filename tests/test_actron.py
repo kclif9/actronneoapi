@@ -8,6 +8,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from aiomqtt import MqttError
 
 from actron_neo_api import ActronAirAPI
 from actron_neo_api.exceptions import ActronAirAPIError, ActronAirAuthError
@@ -20,6 +21,8 @@ from actron_neo_api.models import (
 from actron_neo_api.models.system import ActronAirSystemInfo
 from actron_neo_api.rt.base import (
     RealtimeConnectionDetails,
+    RealtimeConnectionEvent,
+    RealtimeConnectionState,
     RealtimeEvent,
     RealtimeEventKind,
     RealtimeMessage,
@@ -1486,13 +1489,14 @@ class TestActronAirAPIRealtimeIntegration:
 
         api._discover_realtime_connection_details = _discover  # type: ignore[method-assign]
 
-        with caplog.at_level(logging.INFO, logger="actron_neo_api.actron"):
+        with caplog.at_level(logging.DEBUG, logger="actron_neo_api.actron"):
             started = await api.start_push()
 
         assert started is False
         assert "Realtime connection details unavailable; push not started" in caplog.text
+        # Unavailable realtime is an expected fallback, not an operator-facing problem.
         assert not any(
-            record.name == "actron_neo_api.actron" and record.levelno >= logging.WARNING
+            record.name == "actron_neo_api.actron" and record.levelno > logging.DEBUG
             for record in caplog.records
         )
 
@@ -1578,8 +1582,8 @@ class TestActronAirAPIRealtimeIntegration:
         assert api._rt_client is None
 
     @pytest.mark.asyncio
-    async def test_start_push_handles_missing_token_and_cleanup_error(self) -> None:
-        """start_push should handle auth failure and cleanup failures gracefully."""
+    async def test_start_push_raises_auth_error_and_survives_cleanup_error(self) -> None:
+        """start_push should re-raise auth failures after tolerating cleanup errors."""
 
         class _OldClient:
             async def disconnect(self) -> None:
@@ -1597,10 +1601,11 @@ class TestActronAirAPIRealtimeIntegration:
             protocol="ssl",
             user_id="u",
         )
-        started = await api.start_push(connection_details=details)
+        with pytest.raises(ActronAirAuthError):
+            await api.start_push(connection_details=details)
 
-        assert started is False
         assert api._rt_client is None
+        assert api._push_running is False
 
     @pytest.mark.asyncio
     async def test_start_push_cleans_up_local_client_on_subscribe_failure(self) -> None:
@@ -1655,6 +1660,57 @@ class TestActronAirAPIRealtimeIntegration:
         assert api._rt_client is None
         assert len(FakeMQTTClient.instances) == 1
         FakeMQTTClient.instances[0].disconnect.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_start_push_transport_failure_logs_debug_without_traceback(
+        self,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """A broker failure is an expected fallback: debug level, no traceback."""
+
+        class FakeMQTTClient:
+            def __init__(self, details: RealtimeConnectionDetails, token: str) -> None:
+                self.disconnect = AsyncMock(return_value=None)
+
+            def register_callback(self, callback: Any) -> None:
+                self.callback = callback
+
+            async def connect(self) -> None:
+                raise MqttError("broker unreachable")
+
+            async def update_access_token(self, token: str) -> None:
+                return None
+
+        api = ActronAirAPI(platform="neo")
+        api.oauth2_auth.ensure_token_valid = AsyncMock(return_value=None)
+        api.oauth2_auth.access_token = "token"
+        api.systems = [ActronAirSystemInfo(serial="abc123")]
+
+        details = RealtimeConnectionDetails(
+            endpoint="mqtt.example.test",
+            port=8883,
+            protocol="ssl",
+            user_id="u",
+        )
+
+        from actron_neo_api import actron as actron_module
+
+        original_mqtt = actron_module.MQTTRTClient
+        try:
+            actron_module.MQTTRTClient = FakeMQTTClient  # type: ignore[assignment]
+            with caplog.at_level(logging.DEBUG, logger="actron_neo_api.actron"):
+                started = await api.start_push(connection_details=details)
+        finally:
+            actron_module.MQTTRTClient = original_mqtt  # type: ignore[assignment]
+
+        assert started is False
+        assert api._rt_client is None
+        assert api._push_running is False
+        records = [record for record in caplog.records if record.name == "actron_neo_api.actron"]
+        assert records
+        assert all(record.levelno == logging.DEBUG for record in records)
+        assert all(record.exc_info is None for record in records)
+        assert "Realtime push unavailable (broker unreachable)" in caplog.text
 
     @pytest.mark.asyncio
     async def test_start_push_event_callback_creates_background_task(
@@ -1726,6 +1782,117 @@ class TestActronAirAPIRealtimeIntegration:
         api = ActronAirAPI()
         with pytest.raises(ValueError, match="serial_number cannot be empty"):
             api.subscribe_system_updates("", lambda _: None)
+
+    @pytest.mark.asyncio
+    async def test_subscribe_system_updates_unsubscribe_stops_callback(
+        self, sample_status_full: dict[str, Any]
+    ) -> None:
+        """The returned callable should remove only its own registration."""
+        api = ActronAirAPI()
+        api._push_running = True
+        first: list[str] = []
+        second: list[str] = []
+
+        unsubscribe = api.subscribe_system_updates("ABC123", lambda status: first.append("a"))
+        api.subscribe_system_updates("ABC123", lambda status: second.append("b"))
+
+        status = ActronAirStatus.model_validate(sample_status_full)
+        status.serial_number = "abc123"
+        event = RealtimeMessage(
+            transport=RealtimeTransportType.MQTT,
+            kind=RealtimeEventKind.MESSAGE,
+            topic="actron-cloud/u/neo/abc123/mwc/full-status",
+            payload={},
+            domain_model=status,
+        )
+
+        await api._handle_realtime_event(event)
+        unsubscribe()
+        await api._handle_realtime_event(event)
+
+        assert first == ["a"]
+        assert second == ["b", "b"]
+
+    def test_subscribe_system_updates_unsubscribe_is_idempotent(self) -> None:
+        """Calling the remove-callback twice should not raise."""
+        api = ActronAirAPI()
+
+        def _cb(_status: ActronAirStatus) -> None:
+            return None
+
+        unsubscribe = api.subscribe_system_updates("ABC123", _cb)
+        unsubscribe()
+        unsubscribe()
+
+        assert "abc123" not in api._push_callbacks
+
+        # Repeat with a sibling subscription keeping the serial's list alive.
+        other_unsubscribe = api.subscribe_system_updates("ABC123", _cb)
+        unsubscribe = api.subscribe_system_updates("ABC123", lambda _status: None)
+        unsubscribe()
+        unsubscribe()
+
+        assert len(api._push_callbacks["abc123"]) == 1
+        other_unsubscribe()
+        assert "abc123" not in api._push_callbacks
+
+    @pytest.mark.asyncio
+    async def test_subscribe_connection_state_receives_events(self) -> None:
+        """Connection events should reach sync and async subscribers."""
+        api = ActronAirAPI()
+        sync_seen: list[RealtimeConnectionState] = []
+        async_seen: list[RealtimeConnectionState] = []
+
+        async def _async_cb(event: RealtimeConnectionEvent) -> None:
+            async_seen.append(event.state)
+
+        api.subscribe_connection_state(lambda event: sync_seen.append(event.state))
+        api.subscribe_connection_state(_async_cb)
+
+        event = RealtimeConnectionEvent(
+            transport=RealtimeTransportType.MQTT,
+            kind=RealtimeEventKind.CONNECTION,
+            state=RealtimeConnectionState.CONNECTED,
+            previous_state=RealtimeConnectionState.CONNECTING,
+        )
+        await api._handle_realtime_event(event)
+
+        assert sync_seen == [RealtimeConnectionState.CONNECTED]
+        assert async_seen == [RealtimeConnectionState.CONNECTED]
+
+    @pytest.mark.asyncio
+    async def test_subscribe_connection_state_unsubscribe_and_error_handling(
+        self,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """A failing callback should be logged, and unsubscribe should detach it."""
+        api = ActronAirAPI()
+
+        def _boom(_event: RealtimeConnectionEvent) -> None:
+            raise RuntimeError("callback exploded")
+
+        unsubscribe = api.subscribe_connection_state(_boom)
+
+        event = RealtimeConnectionEvent(
+            transport=RealtimeTransportType.MQTT,
+            kind=RealtimeEventKind.CONNECTION,
+            state=RealtimeConnectionState.ERROR,
+            reason="broker gone",
+        )
+
+        with caplog.at_level(logging.WARNING, logger="actron_neo_api.actron"):
+            await api._handle_realtime_event(event)
+
+        assert "Realtime connection callback failed for error" in caplog.text
+
+        caplog.clear()
+        unsubscribe()
+        unsubscribe()
+        with caplog.at_level(logging.WARNING, logger="actron_neo_api.actron"):
+            await api._handle_realtime_event(event)
+
+        assert caplog.text == ""
+        assert api._push_connection_callbacks == []
 
     @pytest.mark.asyncio
     async def test_stream_system_updates_skips_non_matching_serial(
