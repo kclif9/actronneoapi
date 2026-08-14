@@ -10,6 +10,7 @@ from copy import deepcopy
 from typing import Any, Literal
 
 import aiohttp
+from aiomqtt import MqttError
 
 from .const import (
     BASE_URL_DEFAULT,
@@ -35,6 +36,7 @@ from .oauth import ActronAirOAuth2DeviceCodeAuth
 from .rt import (
     MQTTRTClient,
     RealtimeConnectionDetails,
+    RealtimeConnectionEvent,
     RealtimeEvent,
     RealtimeMessage,
     SignalRRTClient,
@@ -335,6 +337,9 @@ class ActronAirAPI:
         self._push_callbacks: dict[
             str, list[Callable[[ActronAirStatus], Awaitable[None] | None]]
         ] = {}
+        self._push_connection_callbacks: list[
+            Callable[[RealtimeConnectionEvent], Awaitable[None] | None]
+        ] = []
         self._refresh_tasks_lock = asyncio.Lock()
         self._refresh_status_tasks: dict[str, asyncio.Task[ActronAirStatus | None]] = {}
 
@@ -528,7 +533,12 @@ class ActronAirAPI:
                 If omitted, the client attempts to discover details from API links.
 
         Returns:
-            True if realtime push started successfully, otherwise False.
+            True if realtime push started successfully, False if realtime is
+            unavailable and the caller should fall back to polling.
+
+        Raises:
+            ActronAirAuthError: If the credentials are no longer valid. Callers
+                should re-authenticate rather than fall back to polling.
         """
         if self._rt_client is not None and self._push_running:
             return True
@@ -554,7 +564,7 @@ class ActronAirAPI:
                 serials[0]
             )
             if details is None:
-                _LOGGER.info("Realtime connection details unavailable; push not started")
+                _LOGGER.debug("Realtime connection details unavailable; push not started")
                 return False
 
             token = self.oauth2_auth.access_token
@@ -585,17 +595,37 @@ class ActronAirAPI:
             self._rt_client = rt_client
             self._push_running = True
             return True
-        except Exception:
-            _LOGGER.exception("Failed to start realtime push; falling back to polling")
-            cleanup_client = self._rt_client or rt_client
-            if cleanup_client is not None:
-                try:
-                    await cleanup_client.disconnect()
-                except Exception:
-                    _LOGGER.debug("Failed to clean up realtime client", exc_info=True)
-            self._rt_client = None
-            self._push_running = False
+        except ActronAirAuthError:
+            # Credentials are no longer usable; polling would fail the same way.
+            await self._cleanup_failed_push(rt_client)
+            raise
+        except (
+            ActronAirAPIError,
+            MqttError,
+            aiohttp.ClientError,
+            OSError,  # covers TimeoutError, ConnectionError and ssl.SSLError
+        ) as err:
+            _LOGGER.debug("Realtime push unavailable (%s); falling back to polling", err)
+            await self._cleanup_failed_push(rt_client)
             return False
+        except Exception:
+            _LOGGER.exception("Unexpected error starting realtime push; falling back to polling")
+            await self._cleanup_failed_push(rt_client)
+            return False
+
+    async def _cleanup_failed_push(
+        self,
+        rt_client: MQTTRTClient | SignalRRTClient | None,
+    ) -> None:
+        """Disconnect a partially started transport and reset push state."""
+        cleanup_client = self._rt_client or rt_client
+        if cleanup_client is not None:
+            try:
+                await cleanup_client.disconnect()
+            except Exception:
+                _LOGGER.debug("Failed to clean up realtime client", exc_info=True)
+        self._rt_client = None
+        self._push_running = False
 
     async def stop_push(self) -> None:
         """Stop realtime push updates and disconnect active transport."""
@@ -615,12 +645,16 @@ class ActronAirAPI:
         self,
         serial_number: str,
         callback: Callable[[ActronAirStatus], Awaitable[None] | None],
-    ) -> None:
+    ) -> Callable[[], None]:
         """Register a callback for status updates of a specific system.
 
         Args:
             serial_number: Target system serial number.
             callback: Callback invoked with each parsed status update.
+
+        Returns:
+            A callable that removes this subscription. Calling it more than
+            once is safe.
 
         Raises:
             ValueError: If serial_number is empty.
@@ -629,6 +663,48 @@ class ActronAirAPI:
         if not serial:
             raise ValueError("serial_number cannot be empty")
         self._push_callbacks.setdefault(serial, []).append(callback)
+
+        def _remove_subscription() -> None:
+            """Remove this callback registration."""
+            callbacks = self._push_callbacks.get(serial)
+            if callbacks is None:
+                return
+            try:
+                callbacks.remove(callback)
+            except ValueError:
+                return
+            if not callbacks:
+                self._push_callbacks.pop(serial, None)
+
+        return _remove_subscription
+
+    def subscribe_connection_state(
+        self,
+        callback: Callable[[RealtimeConnectionEvent], Awaitable[None] | None],
+    ) -> Callable[[], None]:
+        """Register a callback for realtime transport connection changes.
+
+        Connection state belongs to the transport rather than to a single
+        system, so a callback registered here receives every transition for
+        as long as push is running.
+
+        Args:
+            callback: Callback invoked with each connection state transition.
+
+        Returns:
+            A callable that removes this subscription. Calling it more than
+            once is safe.
+        """
+        self._push_connection_callbacks.append(callback)
+
+        def _remove_subscription() -> None:
+            """Remove this callback registration."""
+            try:
+                self._push_connection_callbacks.remove(callback)
+            except ValueError:
+                return
+
+        return _remove_subscription
 
     async def stream_system_updates(
         self,
@@ -769,6 +845,10 @@ class ActronAirAPI:
 
     async def _handle_realtime_event(self, event: RealtimeEvent) -> None:
         """Process an incoming realtime event from active transport."""
+        if isinstance(event, RealtimeConnectionEvent):
+            await self._dispatch_connection_event(event)
+            return
+
         if not isinstance(event, RealtimeMessage):
             return
 
@@ -795,6 +875,21 @@ class ActronAirAPI:
                 _LOGGER.warning(
                     "Realtime callback failed for %s: %s",
                     serial,
+                    err,
+                    exc_info=True,
+                )
+
+    async def _dispatch_connection_event(self, event: RealtimeConnectionEvent) -> None:
+        """Notify connection-state subscribers of a transport transition."""
+        for callback in list(self._push_connection_callbacks):
+            try:
+                result = callback(event)
+                if inspect.isawaitable(result):
+                    await result
+            except Exception as err:
+                _LOGGER.warning(
+                    "Realtime connection callback failed for %s: %s",
+                    event.state.value,
                     err,
                     exc_info=True,
                 )

@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import inspect
 import ipaddress
 import json
 import logging
@@ -325,9 +324,8 @@ class MQTTRTClient:
             "password": self._access_token,
             "keepalive": self._keepalive,
             "clean_session": False,
+            "identifier": self._client_id,
         }
-        client_identifier_arg = self._get_client_identifier_arg_name()
-        client_kwargs[client_identifier_arg] = self._client_id
         if tls_context is not None:
             client_kwargs["tls_context"] = tls_context
 
@@ -351,18 +349,6 @@ class MQTTRTClient:
         except ValueError:
             return False
         return True
-
-    @staticmethod
-    def _get_client_identifier_arg_name() -> str:
-        """Return the supported aiomqtt identifier keyword for the current version."""
-        try:
-            client_signature = inspect.signature(Client)
-        except (TypeError, ValueError):
-            return "identifier"
-
-        if "identifier" in client_signature.parameters:
-            return "identifier"
-        return "client_id"
 
     async def _restore_subscriptions(self, client: Client) -> None:
         """Resubscribe to all known topics after a reconnect."""

@@ -64,6 +64,7 @@ Realtime transport selection is automatic when push is enabled:
 - **Neo** systems use the MQTT realtime transport.
 - **Que (NX-Gen)** systems use the SignalR (SSE) realtime transport.
 - If realtime startup fails, `start_push()` returns `False` and your existing polling flow remains available.
+- If the credentials are rejected, `start_push()` raises `ActronAirAuthError` instead, so callers can trigger re-authentication rather than silently falling back to polling.
 
 ---
 
@@ -91,12 +92,19 @@ async def main() -> None:
     def on_update(status):
         print(f"Push update for {status.serial_number}")
 
-    api.subscribe_system_updates(serial, on_update)
+    def on_connection(event):
+        print(f"Realtime transport is now {event.state.value}")
+
+    # Both subscribe calls return a callable that removes the subscription.
+    unsubscribe = api.subscribe_system_updates(serial, on_update)
+    unsubscribe_connection = api.subscribe_connection_state(on_connection)
 
     async for status in api.stream_system_updates(serial):
         print(f"Mode: {status.user_aircon_settings.mode}")
         break
 
+    unsubscribe()
+    unsubscribe_connection()
     await api.stop_push()
 
 
