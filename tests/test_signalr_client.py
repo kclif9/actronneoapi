@@ -549,19 +549,35 @@ def test_constructor_validation(
 @pytest.mark.parametrize(
     ("payload", "expected"),
     [
-        ({"url": "https://example.test/signalr/sse"}, "https://example.test/signalr/sse"),
-        (
-            {"connectionId": "cid-1"},
-            "https://example.test/signalr/?id=cid-1&transport=serverSentEvents",
+        pytest.param(
+            {"ConnectionToken": "tok-1", "ProtocolVersion": "1.2"},
+            "https://example.test/signalr/connect?transport=serverSentEvents"
+            "&connectionToken=tok-1&clientProtocol=1.2",
+            id="pascal_case",
         ),
-        (
-            {"connectionToken": "tok-1"},
-            "https://example.test/signalr/?transport=serverSentEvents&connectionToken=tok-1",
+        pytest.param(
+            {"connectionToken": "tok-2", "protocolVersion": "1.5"},
+            "https://example.test/signalr/connect?transport=serverSentEvents"
+            "&connectionToken=tok-2&clientProtocol=1.5",
+            id="camel_case",
         ),
-        ({"other": "value"}, "https://example.test/signalr"),
+        pytest.param(
+            {"ConnectionToken": "tok-3"},
+            "https://example.test/signalr/connect?transport=serverSentEvents"
+            "&connectionToken=tok-3&clientProtocol=1.2",
+            id="default_protocol_version",
+        ),
+        pytest.param(
+            {"ConnectionToken": "a/b+c=="},
+            "https://example.test/signalr/connect?transport=serverSentEvents"
+            "&connectionToken=a%2Fb%2Bc%3D%3D&clientProtocol=1.2",
+            id="url_encodes_special_characters",
+        ),
+        pytest.param({"other": "value"}, "https://example.test/signalr", id="no_token"),
+        pytest.param(["unexpected"], "https://example.test/signalr", id="non_dict_response"),
     ],
 )
-async def test_negotiate_url_variants(payload: dict[str, str], expected: str) -> None:
+async def test_negotiate_url_variants(payload: Any, expected: str) -> None:
     session = _Session(post_responses=[_Response(status=200, json_data=payload)])
     client = SignalRRTClient(_details(), access_token="secret", session=session)
 

@@ -964,12 +964,37 @@ class TestActronAirAPIRealtimeIntegration:
     """Test issue #77 realtime public API integration."""
 
     @pytest.mark.asyncio
-    async def test_start_push_selects_mqtt_for_neo(self) -> None:
-        """Neo platform should use the MQTT transport."""
+    @pytest.mark.parametrize(
+        ("user_info", "expected_username"),
+        [
+            pytest.param(
+                ActronAirUserInfo(email="user@example.test"), "user@example.test", id="normal"
+            ),
+            pytest.param(
+                ActronAirUserInfo(email="  user@example.test  "),
+                "user@example.test",
+                id="whitespace",
+            ),
+            pytest.param(ActronAirUserInfo(email=""), "", id="empty"),
+            pytest.param(ActronAirUserInfo(email="   "), "", id="blank"),
+            pytest.param(None, "", id="no_user_info"),
+        ],
+    )
+    async def test_start_push_selects_mqtt_for_neo(
+        self, user_info: ActronAirUserInfo | None, expected_username: str
+    ) -> None:
+        """Neo platform should use the MQTT transport with a normalized username.
+
+        An unusable email is passed through as an empty string; MQTTRTClient
+        owns the fallback to "unknown".
+        """
 
         class FakeMQTTClient:
-            def __init__(self, details: RealtimeConnectionDetails, token: str) -> None:
+            def __init__(
+                self, details: RealtimeConnectionDetails, user_email: str, token: str
+            ) -> None:
                 self.details = details
+                self.user_email = user_email
                 self.token = token
                 self.callbacks: list[Any] = []
                 self.subscribed: list[str] = []
@@ -992,6 +1017,7 @@ class TestActronAirAPIRealtimeIntegration:
         api = ActronAirAPI(platform="neo")
         api.oauth2_auth.ensure_token_valid = AsyncMock(return_value=None)
         api.oauth2_auth.access_token = "token"
+        api.oauth2_auth.get_user_info = AsyncMock(return_value=user_info)
         api.systems = [ActronAirSystemInfo(serial="ABC123")]
 
         async def _discover(_: str) -> RealtimeConnectionDetails:
@@ -1016,6 +1042,66 @@ class TestActronAirAPIRealtimeIntegration:
         assert started is True
         assert isinstance(api._rt_client, FakeMQTTClient)
         assert api._rt_client.subscribed == ["abc123"]
+        assert api._rt_client.user_email == expected_username
+
+    @pytest.mark.asyncio
+    async def test_start_push_survives_user_info_failure(
+        self,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """A user-info lookup failure must not stop push or trigger reauth.
+
+        The email is only a broker-side label, so its lookup is best-effort even
+        though get_user_info() reports every failure as an auth error.
+        """
+
+        class FakeMQTTClient:
+            def __init__(
+                self, details: RealtimeConnectionDetails, user_email: str, token: str
+            ) -> None:
+                self.user_email = user_email
+
+            def register_callback(self, callback: Any) -> None:
+                self.callback = callback
+
+            async def connect(self) -> None:
+                return None
+
+            async def subscribe_system(self, serial: str) -> None:
+                return None
+
+            async def disconnect(self) -> None:
+                return None
+
+        api = ActronAirAPI(platform="neo")
+        api.oauth2_auth.ensure_token_valid = AsyncMock(return_value=None)
+        api.oauth2_auth.access_token = "token"
+        api.oauth2_auth.get_user_info = AsyncMock(
+            side_effect=ActronAirAuthError("user info unavailable")
+        )
+        api.systems = [ActronAirSystemInfo(serial="abc123")]
+
+        details = RealtimeConnectionDetails(
+            endpoint="mqtt.example.test",
+            port=8883,
+            protocol="ssl",
+            user_id="u",
+        )
+
+        from actron_neo_api import actron as actron_module
+
+        original_mqtt = actron_module.MQTTRTClient
+        try:
+            actron_module.MQTTRTClient = FakeMQTTClient  # type: ignore[assignment]
+            with caplog.at_level(logging.DEBUG, logger="actron_neo_api.actron"):
+                started = await api.start_push(connection_details=details)
+        finally:
+            actron_module.MQTTRTClient = original_mqtt  # type: ignore[assignment]
+
+        assert started is True
+        assert isinstance(api._rt_client, FakeMQTTClient)
+        assert api._rt_client.user_email == ""
+        assert "Could not resolve account email for MQTT username" in caplog.text
 
     @pytest.mark.asyncio
     async def test_start_push_selects_signalr_for_que(self) -> None:
@@ -1045,6 +1131,9 @@ class TestActronAirAPIRealtimeIntegration:
         api = ActronAirAPI(platform="que")
         api.oauth2_auth.ensure_token_valid = AsyncMock(return_value=None)
         api.oauth2_auth.access_token = "token"
+        api.oauth2_auth.get_user_info = AsyncMock(
+            side_effect=AssertionError("should not be called")
+        )
         api.systems = [ActronAirSystemInfo(serial="xyz789")]
 
         async def _discover(_: str) -> RealtimeConnectionDetails:
@@ -1487,7 +1576,9 @@ class TestActronAirAPIRealtimeIntegration:
         """start_push should honor provided serial_numbers and ignore blanks."""
 
         class FakeMQTTClient:
-            def __init__(self, details: RealtimeConnectionDetails, token: str) -> None:
+            def __init__(
+                self, details: RealtimeConnectionDetails, user_email: str, token: str
+            ) -> None:
                 self.subscribed: list[str] = []
 
             def register_callback(self, callback: Any) -> None:
@@ -1508,6 +1599,9 @@ class TestActronAirAPIRealtimeIntegration:
         api = ActronAirAPI(platform="neo")
         api.oauth2_auth.ensure_token_valid = AsyncMock(return_value=None)
         api.oauth2_auth.access_token = "token"
+        api.oauth2_auth.get_user_info = AsyncMock(
+            return_value=ActronAirUserInfo(email="user@example.test")
+        )
 
         details = RealtimeConnectionDetails(
             endpoint="mqtt.example.test",
@@ -1591,7 +1685,9 @@ class TestActronAirAPIRealtimeIntegration:
         class FakeMQTTClient:
             instances: list["FakeMQTTClient"] = []
 
-            def __init__(self, details: RealtimeConnectionDetails, token: str) -> None:
+            def __init__(
+                self, details: RealtimeConnectionDetails, user_email: str, token: str
+            ) -> None:
                 self.disconnect = AsyncMock(return_value=None)
                 FakeMQTTClient.instances.append(self)
 
@@ -1610,6 +1706,9 @@ class TestActronAirAPIRealtimeIntegration:
         api = ActronAirAPI(platform="neo")
         api.oauth2_auth.ensure_token_valid = AsyncMock(return_value=None)
         api.oauth2_auth.access_token = "token"
+        api.oauth2_auth.get_user_info = AsyncMock(
+            return_value=ActronAirUserInfo(email="user@example.test")
+        )
         api.systems = [ActronAirSystemInfo(serial="abc123")]
 
         details = RealtimeConnectionDetails(
@@ -1641,7 +1740,9 @@ class TestActronAirAPIRealtimeIntegration:
         """A broker failure is an expected fallback: debug level, no traceback."""
 
         class FakeMQTTClient:
-            def __init__(self, details: RealtimeConnectionDetails, token: str) -> None:
+            def __init__(
+                self, details: RealtimeConnectionDetails, user_email: str, token: str
+            ) -> None:
                 self.disconnect = AsyncMock(return_value=None)
 
             def register_callback(self, callback: Any) -> None:
@@ -1656,6 +1757,9 @@ class TestActronAirAPIRealtimeIntegration:
         api = ActronAirAPI(platform="neo")
         api.oauth2_auth.ensure_token_valid = AsyncMock(return_value=None)
         api.oauth2_auth.access_token = "token"
+        api.oauth2_auth.get_user_info = AsyncMock(
+            return_value=ActronAirUserInfo(email="user@example.test")
+        )
         api.systems = [ActronAirSystemInfo(serial="abc123")]
 
         details = RealtimeConnectionDetails(
@@ -1691,7 +1795,9 @@ class TestActronAirAPIRealtimeIntegration:
         """Registered transport callback should schedule event handling task."""
 
         class FakeMQTTClient:
-            def __init__(self, details: RealtimeConnectionDetails, token: str) -> None:
+            def __init__(
+                self, details: RealtimeConnectionDetails, user_email: str, token: str
+            ) -> None:
                 self.callback: Any = None
 
             def register_callback(self, callback: Any) -> None:
@@ -1722,6 +1828,9 @@ class TestActronAirAPIRealtimeIntegration:
         api = ActronAirAPI(platform="neo")
         api.oauth2_auth.ensure_token_valid = AsyncMock(return_value=None)
         api.oauth2_auth.access_token = "token"
+        api.oauth2_auth.get_user_info = AsyncMock(
+            return_value=ActronAirUserInfo(email="user@example.test")
+        )
         api.systems = [ActronAirSystemInfo(serial="abc123")]
 
         details = RealtimeConnectionDetails(

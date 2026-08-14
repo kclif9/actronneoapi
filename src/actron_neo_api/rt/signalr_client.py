@@ -17,6 +17,7 @@ import asyncio
 import json
 import logging
 from typing import Any, AsyncIterator, Callable, Optional
+from urllib.parse import quote
 
 import aiohttp
 
@@ -277,8 +278,10 @@ class SignalRRTClient(RealtimeClient):
     async def _negotiate(self) -> str:
         """Call the SignalR negotiate endpoint and return an SSE connect URL.
 
-        The negotiate response varies; prefer an explicit `url` when present,
-        otherwise build a serverSentEvents URL using a connectionId/token.
+        The Actron cloud speaks classic ASP.NET SignalR (not SignalR Core):
+        negotiate responses use PascalCase fields, and the SSE transport is
+        reached via a `/connect` endpoint carrying the URL-encoded connection
+        token and client protocol version, not the bare hub URL.
         """
         session = self._session
         if session is None:
@@ -291,21 +294,20 @@ class SignalRRTClient(RealtimeClient):
                 raise RuntimeError(f"negotiate failed: {resp.status}")
             data = await resp.json()
 
-        # If server returned a connect URL, use it directly.
-        if isinstance(data, dict) and "url" in data:
-            return str(data["url"])
+        if not isinstance(data, dict):
+            return str(self._connection_details.endpoint)
 
-        # Otherwise try to construct a serverSentEvents URL.
-        connection_id = data.get("connectionId") if isinstance(data, dict) else None
-        token = data.get("connectionToken") if isinstance(data, dict) else None
+        token = data.get("ConnectionToken") or data.get("connectionToken")
+        if not token:
+            return str(self._connection_details.endpoint)
+
+        protocol = data.get("ProtocolVersion") or data.get("protocolVersion") or "1.2"
         base = self._connection_details.endpoint.rstrip("/")
-        if connection_id:
-            # SignalR-compatible query for serverSentEvents transport
-            return f"{base}/?id={connection_id}&transport=serverSentEvents"
-        if token:
-            return f"{base}/?transport=serverSentEvents&connectionToken={token}"
-        # Fallback to the base endpoint
-        return str(self._connection_details.endpoint)
+        return (
+            f"{base}/connect?transport=serverSentEvents"
+            f"&connectionToken={quote(token, safe='')}"
+            f"&clientProtocol={protocol}"
+        )
 
     async def _restore_subscriptions(self) -> None:
         """Resend subscribe commands for current subscriptions after reconnect."""
