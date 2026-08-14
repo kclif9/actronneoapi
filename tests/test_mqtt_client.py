@@ -152,6 +152,47 @@ class TestMQTTRTClient:
         assert client.last_error is None
 
     @pytest.mark.parametrize(
+        ("user_email", "expected"),
+        [
+            ("test@example.com", "test@example.com"),
+            ("  test@example.com  ", "test@example.com"),
+            ("", "unknown"),
+            ("   ", "unknown"),
+        ],
+    )
+    def test_username_is_normalized(self, user_email: str, expected: str) -> None:
+        """A blank username would defeat the point of identifying connections."""
+        client = MQTTRTClient(
+            RealtimeConnectionDetails(
+                endpoint="mqtt.example.com",
+                port=8883,
+                protocol="ssl",
+                user_id="user-1",
+            ),
+            user_email=user_email,
+            access_token="token-123",
+        )
+
+        assert client._user_email == expected  # noqa: SLF001 - broker username regression check
+
+    def test_generated_client_id_is_prefixed(self) -> None:
+        """Generated identifiers should be recognisable as Home Assistant clients."""
+        details = RealtimeConnectionDetails(
+            endpoint="mqtt.example.com",
+            port=8883,
+            protocol="ssl",
+            user_id="user-1",
+        )
+
+        generated = MQTTRTClient(details, user_email="a@b.test", access_token="token-123")
+        explicit = MQTTRTClient(
+            details, user_email="a@b.test", access_token="token-123", client_id="my-client"
+        )
+
+        assert generated._client_id.startswith("HA_")  # noqa: SLF001 - broker identity check
+        assert explicit._client_id == "my-client"  # noqa: SLF001 - explicit id wins
+
+    @pytest.mark.parametrize(
         (
             "access_token",
             "keepalive",

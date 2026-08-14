@@ -575,9 +575,7 @@ class ActronAirAPI:
             if self.platform == PLATFORM_QUE:
                 rt_client = SignalRRTClient(details, token)
             else:
-                user_info = await self.oauth2_auth.get_user_info()
-                user_email = user_info.email.strip() if user_info else ""
-                rt_client = MQTTRTClient(details, user_email or "unknown", token)
+                rt_client = MQTTRTClient(details, await self._resolve_mqtt_username(), token)
 
             if rt_client is None:
                 raise ActronAirAPIError("Failed to create realtime transport client")
@@ -615,6 +613,21 @@ class ActronAirAPI:
             _LOGGER.exception("Unexpected error starting realtime push; falling back to polling")
             await self._cleanup_failed_push(rt_client)
             return False
+
+    async def _resolve_mqtt_username(self) -> str:
+        """Return the account email used to identify MQTT broker connections.
+
+        The username only makes a broker connection attributable to an account;
+        it is not used for authentication (the access token is the password).
+        A lookup failure must therefore never prevent push from starting, so
+        every error is swallowed in favour of an empty username.
+        """
+        try:
+            user_info = await self.oauth2_auth.get_user_info()
+        except Exception as err:
+            _LOGGER.debug("Could not resolve account email for MQTT username: %s", err)
+            return ""
+        return user_info.email.strip() if user_info else ""
 
     async def _cleanup_failed_push(
         self,

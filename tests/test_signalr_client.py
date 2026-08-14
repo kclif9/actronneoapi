@@ -574,9 +574,10 @@ def test_constructor_validation(
             id="url_encodes_special_characters",
         ),
         pytest.param({"other": "value"}, "https://example.test/signalr", id="no_token"),
+        pytest.param(["unexpected"], "https://example.test/signalr", id="non_dict_response"),
     ],
 )
-async def test_negotiate_url_variants(payload: dict[str, str], expected: str) -> None:
+async def test_negotiate_url_variants(payload: Any, expected: str) -> None:
     session = _Session(post_responses=[_Response(status=200, json_data=payload)])
     client = SignalRRTClient(_details(), access_token="secret", session=session)
 

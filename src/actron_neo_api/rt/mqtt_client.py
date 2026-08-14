@@ -42,6 +42,8 @@ _MQTT_TOPIC_STATUS_CHANGE = "mwc/status-change"
 _MQTT_DEFAULT_KEEPALIVE = 60
 _MQTT_DEFAULT_RECONNECT_DELAY = 0.5
 _MQTT_MAX_RECONNECT_DELAY = 60.0
+_MQTT_CLIENT_ID_PREFIX = "HA_"
+_MQTT_UNKNOWN_USERNAME = "unknown"
 
 
 @dataclass(frozen=True, slots=True)
@@ -64,9 +66,11 @@ class MQTTRTClient:
     Args:
         connection_details: Realtime connection information from the backend.
         user_email: Account email, sent as the MQTT username so connections
-            are identifiable on the broker.
+            are identifiable on the broker. Blank or whitespace-only values
+            fall back to "unknown".
         access_token: OAuth access token used as the MQTT password.
-        client_id: Optional MQTT client identifier.
+        client_id: Optional MQTT client identifier. Generated identifiers are
+            prefixed with "HA_" so Home Assistant connections are recognisable.
         ssl_context: Optional custom TLS context.
         keepalive: MQTT keepalive interval in seconds.
         connect_timeout: Time to wait for the first successful connection.
@@ -103,8 +107,10 @@ class MQTTRTClient:
 
         self._details = connection_details
         self._access_token = access_token
-        self._user_email = user_email
-        self._client_id = client_id or "HA_" + uuid.uuid4().hex
+        # The broker only uses the username to attribute a connection, so an
+        # unusable value is normalized rather than rejected.
+        self._user_email = user_email.strip() or _MQTT_UNKNOWN_USERNAME
+        self._client_id = client_id or f"{_MQTT_CLIENT_ID_PREFIX}{uuid.uuid4().hex}"
         self._ssl_context = ssl_context
         self._keepalive = keepalive
         self._connect_timeout = connect_timeout
