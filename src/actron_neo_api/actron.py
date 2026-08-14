@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import logging
+import re
 from collections.abc import AsyncIterator, Awaitable, Callable
 from copy import deepcopy
 from typing import Any, Literal
@@ -44,6 +45,9 @@ from .rt import (
 from .state import StateManager
 
 _LOGGER = logging.getLogger(__name__)
+
+# Segments of a flat broadcast key: a name, or a bracketed list index.
+_FLAT_KEY_SEGMENT_RE = re.compile(r"([^.\[\]]+)|\[(\d+)\]")
 
 
 class _PendingBatch:
@@ -904,6 +908,47 @@ class ActronAirAPI:
         if self._is_mqtt_status_change_topic(event.topic):
             return await self._merge_mqtt_status_change(serial, event.payload)
 
+        if self._is_mqtt_full_status_topic(event.topic):
+            # The transport builds domain_model from the raw payload, which
+            # silently validates a broadcast wrapper into an all-defaults
+            # status, so the broadcast shape has to win where it applies.
+            broadcast = self._parse_full_status_broadcast(serial, event.payload)
+            if broadcast is not None:
+                return broadcast
+
+        return status
+
+    @staticmethod
+    def _parse_full_status_broadcast(
+        serial: str,
+        payload: dict[str, Any],
+    ) -> ActronAirStatus | None:
+        """Parse a Neo full-status-broadcast payload into a status model.
+
+        The broker wraps the complete state in ``payload["event"]`` rather than
+        the ``{"lastKnownState": {...}}`` shape used by the HTTP API.
+
+        Returns:
+            The parsed status, or None if the payload is not a full-status
+            broadcast or cannot be validated.
+        """
+        event = payload.get("event")
+        if not isinstance(event, dict) or event.get("type") != "full-status-broadcast":
+            return None
+
+        last_known_state = {key: value for key, value in event.items() if key != "type"}
+        if not last_known_state:
+            return None
+
+        try:
+            status = ActronAirStatus.model_validate(
+                {"isOnline": True, "lastKnownState": last_known_state}
+            )
+        except Exception as exc:
+            _LOGGER.warning("Failed to parse full-status broadcast for %s: %s", serial, exc)
+            return None
+
+        status.serial_number = serial
         return status
 
     async def _merge_mqtt_status_change(
@@ -926,8 +971,11 @@ class ActronAirAPI:
             "lastKnownState": deepcopy(existing_status.last_known_state),
         }
 
+        broadcast = self._status_change_broadcast(payload)
         delta_state = payload.get("lastKnownState")
-        if isinstance(delta_state, dict):
+        if broadcast is not None:
+            self._apply_broadcast_delta(merged_status_data["lastKnownState"], broadcast, serial)
+        elif isinstance(delta_state, dict):
             self._deep_merge_dicts(merged_status_data["lastKnownState"], delta_state)
         else:
             state_updates = {
@@ -984,6 +1032,139 @@ class ActronAirAPI:
         return self.state_manager.get_status(serial)
 
     @staticmethod
+    def _status_change_broadcast(payload: dict[str, Any]) -> dict[str, Any] | None:
+        """Return the state-bearing body of a status-change-broadcast payload.
+
+        Neo wraps realtime deltas in ``payload["event"]`` with a ``type``
+        marker; every other key in that dict is a state delta.
+        """
+        event = payload.get("event")
+        if not isinstance(event, dict) or event.get("type") != "status-change-broadcast":
+            return None
+        body = {key: value for key, value in event.items() if key != "type"}
+        return body or None
+
+    @classmethod
+    def _apply_broadcast_delta(
+        cls,
+        last_known_state: dict[str, Any],
+        broadcast: dict[str, Any],
+        serial: str,
+    ) -> None:
+        """Apply flat-notation broadcast deltas onto a lastKnownState snapshot."""
+        for key, value in broadcast.items():
+            path = cls._parse_flat_key_path(key)
+            if not cls._apply_flat_path_to_dict(last_known_state, path, value):
+                _LOGGER.debug("Skipped unmappable status-change key %r for %s", key, serial)
+
+    @staticmethod
+    def _parse_flat_key_path(key: str) -> list[str | int]:
+        """Parse a flat broadcast key into a path of dict keys and list indices.
+
+        Examples:
+            ``UserAirconSettings.EnabledZones[6]`` -> ``["UserAirconSettings",
+            "EnabledZones", 6]``; ``RemoteZoneInfo[1].ZonePosition`` ->
+            ``["RemoteZoneInfo", 1, "ZonePosition"]``.
+
+        Peripheral identifiers are wrapped in angle brackets and contain dots
+        that belong to the identifier, so they stay a single literal segment.
+        """
+        if key.startswith("<") and key.endswith(">"):
+            return [key]
+
+        path: list[str | int] = []
+        for name, index in _FLAT_KEY_SEGMENT_RE.findall(key):
+            path.append(name if name else int(index))
+        return path
+
+    @classmethod
+    def _apply_flat_path_to_dict(
+        cls,
+        last_known_state: dict[str, Any],
+        path: list[str | int],
+        value: Any,
+    ) -> bool:
+        """Write value into a nested structure, creating containers as needed.
+
+        Each container is coerced to the type the next path segment requires,
+        so a broadcast that disagrees with the cached shape replaces the stale
+        container instead of raising.
+
+        Returns:
+            True if the value was written, False if the path was unusable.
+        """
+        if not path:
+            return False
+
+        current: Any = last_known_state
+        for depth, segment in enumerate(path[:-1]):
+            wanted: type = list if isinstance(path[depth + 1], int) else dict
+            current = cls._descend_flat_path(current, segment, wanted)
+            if current is None:
+                return False
+
+        return cls._set_flat_path_leaf(current, path[-1], value)
+
+    @classmethod
+    def _descend_flat_path(
+        cls,
+        container: Any,
+        segment: str | int,
+        wanted: type,
+    ) -> Any:
+        """Return the child container at segment, creating it when needed.
+
+        A returned container always matches *wanted*, so the next segment is
+        guaranteed a container it can address.
+        """
+        if isinstance(segment, int):
+            if not isinstance(container, list):
+                return None
+            while len(container) <= segment:
+                container.append(None)
+            if not cls._replaceable_child(container[segment], wanted):
+                return container[segment] if isinstance(container[segment], wanted) else None
+            container[segment] = wanted()
+            return container[segment]
+
+        existing = container.get(segment)
+        if not cls._replaceable_child(existing, wanted):
+            return existing if isinstance(existing, wanted) else None
+        container[segment] = wanted()
+        return container[segment]
+
+    @staticmethod
+    def _replaceable_child(existing: Any, wanted: type) -> bool:
+        """Return whether an existing child may be replaced with a fresh container.
+
+        A missing or scalar child is safe to replace, as is an empty container
+        of the wrong type. A populated container of the wrong type is left
+        alone: a malformed key must not discard cached state.
+        """
+        if isinstance(existing, wanted):
+            return False
+        if isinstance(existing, (dict, list)):
+            return not existing
+        return True
+
+    @staticmethod
+    def _set_flat_path_leaf(container: Any, segment: str | int, value: Any) -> bool:
+        """Assign value at the final path segment, if the container allows it.
+
+        Only an indexed segment can mismatch here: a named segment always
+        lands on a dict, either the lastKnownState root or a container that
+        :meth:`_descend_flat_path` created as one.
+        """
+        if isinstance(segment, int):
+            if not isinstance(container, list):
+                return False
+            while len(container) <= segment:
+                container.append(None)
+
+        container[segment] = value
+        return True
+
+    @staticmethod
     def _deep_merge_dicts(base: dict[str, Any], updates: dict[str, Any]) -> None:
         """Recursively merge updates into base in place."""
         for key, value in updates.items():
@@ -997,6 +1178,8 @@ class ActronAirAPI:
         """Return whether a Neo status-change payload contains state-bearing fields."""
         metadata_only_keys = ActronAirAPI._mqtt_status_change_metadata_keys()
         if isinstance(payload.get("lastKnownState"), dict):
+            return True
+        if ActronAirAPI._status_change_broadcast(payload) is not None:
             return True
         return any(key not in metadata_only_keys for key in payload)
 
@@ -1019,6 +1202,11 @@ class ActronAirAPI:
     def _is_mqtt_status_change_topic(topic: str) -> bool:
         """Return whether a realtime topic is the Neo status-change channel."""
         return topic.endswith("/mwc/status-change")
+
+    @staticmethod
+    def _is_mqtt_full_status_topic(topic: str) -> bool:
+        """Return whether a realtime topic is the Neo full-status channel."""
+        return topic.endswith("/mwc/full-status")
 
     @staticmethod
     def _extract_realtime_serial(
