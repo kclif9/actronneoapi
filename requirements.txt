@@ -1,5 +1,5 @@
 aiohttp
-aiomqtt
+aiomqtt>=2.0.0
 mypy
 pydantic
 pytest

@@ -6,7 +6,7 @@ Realtime push support is now available in the library for both supported Actron 
 
 - Neo systems use the MQTT realtime transport.
 - Que (NX-Gen) systems use the SignalR/SSE realtime transport.
-- The public API exposes `start_push()`, `stop_push()`, `subscribe_system_updates()`, and `stream_system_updates()`.
+- The public API exposes `start_push()`, `stop_push()`, `subscribe_system_updates()`, `subscribe_connection_state()`, and `stream_system_updates()`.
 - Realtime updates are converted into the same `ActronAirStatus` model used by the polling API.
 
 This means consumer code can work with one status model regardless of whether updates arrive through polling or push.
@@ -18,7 +18,8 @@ This means consumer code can work with one status model regardless of whether up
 3. Call `start_push()` for one or more serial numbers.
 4. If `start_push()` returns `True`, consume updates with either callbacks or the async stream API.
 5. If `start_push()` returns `False`, continue using your normal polling flow.
-6. Call `stop_push()` when you no longer want realtime updates.
+6. If `start_push()` raises `ActronAirAuthError`, re-authenticate; polling would fail the same way.
+7. Call `stop_push()` when you no longer want realtime updates.
 
 ## Example
 
@@ -41,16 +42,39 @@ async def main() -> None:
     def on_update(status) -> None:
         print(f"Update received for {status.serial_number}")
 
-    api.subscribe_system_updates(serial, on_update)
+    unsubscribe = api.subscribe_system_updates(serial, on_update)
 
     async for status in api.stream_system_updates(serial):
         print(status.user_aircon_settings.mode)
         break
 
+    unsubscribe()
     await api.stop_push()
 
 
 asyncio.run(main())
+```
+
+## Subscriptions
+
+`subscribe_system_updates()` and `subscribe_connection_state()` both return a
+zero-argument callable that removes the subscription. Calling it more than once
+is safe, which matches the remove-listener idiom used by Home Assistant
+(`CALLBACK_TYPE`).
+
+`subscribe_connection_state()` reports transport connection transitions as
+`RealtimeConnectionEvent` values (`connecting`, `connected`, `reconnecting`,
+`disconnected`, `error`). Connection state belongs to the transport rather than
+to a single system, so one callback covers every subscribed serial. Callbacks
+may be sync or async, and an exception raised inside one is logged without
+disrupting the transport.
+
+```python
+def on_connection(event) -> None:
+    print(event.state.value, event.previous_state, event.reason)
+
+
+unsubscribe_connection = api.subscribe_connection_state(on_connection)
 ```
 
 ## Platform Behavior
@@ -66,6 +90,8 @@ Push is optional.
 
 - If `start_push()` succeeds, updates can be consumed through callbacks or `stream_system_updates()`.
 - If `start_push()` returns `False`, push was not started and the caller should continue using polling.
+- Expected failures (broker unreachable, connection details missing, network errors) are logged at debug level, since falling back to polling is normal operation.
+- Authentication failures are not treated as a fallback: `start_push()` re-raises `ActronAirAuthError` so the caller can start a reauth flow.
 - The library does not automatically begin polling when push startup fails.
 
 ## Home Assistant Impact
