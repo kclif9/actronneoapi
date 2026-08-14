@@ -2297,3 +2297,322 @@ class TestActronAirAPIRealtimeIntegration:
             domain_model=status,
         )
         assert ActronAirAPI._extract_realtime_serial(msg_none, status) is None
+
+
+class TestNeoBroadcastPayloads:
+    """Test Neo status-change-broadcast and full-status-broadcast handling."""
+
+    @pytest.mark.parametrize(
+        ("key", "expected"),
+        [
+            ("UserAirconSettings.EnabledZones[6]", ["UserAirconSettings", "EnabledZones", 6]),
+            ("RemoteZoneInfo[1].ZonePosition", ["RemoteZoneInfo", 1, "ZonePosition"]),
+            ("MasterInfo.LiveTemp_oC", ["MasterInfo", "LiveTemp_oC"]),
+            ("isOn", ["isOn"]),
+            # Peripheral identifiers carry dots that belong to the identifier.
+            ("<28.8f.4d.a4.e2.6a>", ["<28.8f.4d.a4.e2.6a>"]),
+            ("", []),
+        ],
+    )
+    def test_parse_flat_key_path(self, key: str, expected: list[str | int]) -> None:
+        """Flat broadcast keys should parse into dict keys and list indices."""
+        assert ActronAirAPI._parse_flat_key_path(key) == expected
+
+    @pytest.mark.parametrize(
+        ("state", "key", "value", "applied", "expected"),
+        [
+            pytest.param(
+                {"UserAirconSettings": {"EnabledZones": [False, False]}},
+                "UserAirconSettings.EnabledZones[1]",
+                True,
+                True,
+                {"UserAirconSettings": {"EnabledZones": [False, True]}},
+                id="zone_toggle",
+            ),
+            pytest.param(
+                {},
+                "RemoteZoneInfo[1].ZonePosition",
+                42,
+                True,
+                {"RemoteZoneInfo": [None, {"ZonePosition": 42}]},
+                id="creates_missing_containers",
+            ),
+            pytest.param(
+                {"RemoteZoneInfo": {}},
+                "RemoteZoneInfo[0].ZonePosition",
+                5,
+                True,
+                {"RemoteZoneInfo": [{"ZonePosition": 5}]},
+                id="empty_container_is_coerced",
+            ),
+            pytest.param(
+                {"RemoteZoneInfo": [{"ZonePosition": 1}]},
+                "RemoteZoneInfo.Bogus",
+                9,
+                False,
+                {"RemoteZoneInfo": [{"ZonePosition": 1}]},
+                id="populated_list_is_never_discarded",
+            ),
+            pytest.param(
+                {"UserAirconSettings": {"Mode": "COOL"}},
+                "UserAirconSettings[0]",
+                9,
+                False,
+                {"UserAirconSettings": {"Mode": "COOL"}},
+                id="populated_dict_is_never_discarded",
+            ),
+            pytest.param(
+                {"MasterInfo": {"LiveTemp_oC": 1.0}},
+                "MasterInfo.LiveTemp_oC",
+                23.5,
+                True,
+                {"MasterInfo": {"LiveTemp_oC": 23.5}},
+                id="scalar_leaf",
+            ),
+            pytest.param(
+                {"MasterInfo": 5},
+                "MasterInfo.LiveTemp_oC",
+                23.5,
+                True,
+                {"MasterInfo": {"LiveTemp_oC": 23.5}},
+                id="scalar_container_is_replaced",
+            ),
+            pytest.param(
+                {"UserAirconSettings": {"EnabledZones": [False, False]}},
+                "UserAirconSettings.EnabledZones[3]",
+                True,
+                True,
+                {"UserAirconSettings": {"EnabledZones": [False, False, None, True]}},
+                id="leaf_index_past_end_is_padded",
+            ),
+            pytest.param({}, "", 1, False, {}, id="empty_path"),
+        ],
+    )
+    def test_apply_flat_path_to_dict(
+        self,
+        state: dict[str, Any],
+        key: str,
+        value: Any,
+        applied: bool,
+        expected: dict[str, Any],
+    ) -> None:
+        """Broadcast deltas should write into state without discarding it."""
+        path = ActronAirAPI._parse_flat_key_path(key)
+
+        assert ActronAirAPI._apply_flat_path_to_dict(state, path, value) is applied
+        assert state == expected
+
+    def test_apply_flat_path_rejects_index_into_dict_root(self) -> None:
+        """An indexed first segment cannot address the lastKnownState dict."""
+        state: dict[str, Any] = {}
+
+        assert ActronAirAPI._apply_flat_path_to_dict(state, [0, "Nested"], 1) is False
+        assert ActronAirAPI._apply_flat_path_to_dict(state, [0], 1) is False
+        assert state == {}
+
+    @pytest.mark.parametrize(
+        ("payload", "expected"),
+        [
+            pytest.param({}, None, id="no_event"),
+            pytest.param({"event": "text"}, None, id="event_not_a_dict"),
+            pytest.param(
+                {"event": {"type": "full-status-broadcast"}}, None, id="wrong_broadcast_type"
+            ),
+            pytest.param({"event": {"type": "status-change-broadcast"}}, None, id="type_only_body"),
+            pytest.param(
+                {"event": {"type": "status-change-broadcast", "isOn": True}},
+                {"isOn": True},
+                id="state_bearing",
+            ),
+        ],
+    )
+    def test_status_change_broadcast_detection(
+        self, payload: dict[str, Any], expected: dict[str, Any] | None
+    ) -> None:
+        """Only state-bearing status-change broadcasts should be recognised."""
+        assert ActronAirAPI._status_change_broadcast(payload) == expected
+
+    def test_broadcast_payload_counts_as_state(self) -> None:
+        """A broadcast must not be treated as metadata-only.
+
+        "event" is a metadata key, so without this the whole delta falls
+        through to an HTTP refresh of the stale cloud snapshot.
+        """
+        payload = {
+            "event": {
+                "type": "status-change-broadcast",
+                "UserAirconSettings.EnabledZones[6]": True,
+            },
+            "serial": "abc123",
+            "isOnline": True,
+        }
+
+        assert ActronAirAPI._mqtt_status_change_contains_state(payload) is True
+
+    @pytest.mark.asyncio
+    async def test_status_change_broadcast_merges_without_http_refresh(
+        self, sample_status_full: dict[str, Any]
+    ) -> None:
+        """Zone deltas from the device should be applied to the cached state."""
+        api = ActronAirAPI(platform="neo")
+        api._push_running = True
+        api.state_manager.process_status_update("abc123", sample_status_full)
+        api.update_status = AsyncMock(side_effect=AssertionError("must not refresh over HTTP"))
+
+        event = RealtimeMessage(
+            transport=RealtimeTransportType.MQTT,
+            kind=RealtimeEventKind.MESSAGE,
+            topic="actron-cloud/u/neo/abc123/mwc/status-change",
+            payload={
+                "event": {
+                    "type": "status-change-broadcast",
+                    "UserAirconSettings.EnabledZones[1]": True,
+                    "RemoteZoneInfo[0].ZonePosition": 50.0,
+                    "MasterInfo.LiveTemp_oC": 26.5,
+                },
+                "serial": "abc123",
+            },
+            domain_model=None,
+        )
+
+        await api._handle_realtime_event(event)
+
+        status = api.state_manager.get_status("abc123")
+        assert status is not None
+        assert status.user_aircon_settings.enabled_zones[1] is True
+        assert status.remote_zone_info[0].zone_position == 50.0
+        assert status.master_info.live_temp_c == 26.5
+        # Untouched fields must survive the delta.
+        assert status.user_aircon_settings.mode == "COOL"
+
+    @pytest.mark.asyncio
+    async def test_status_change_broadcast_logs_unmappable_keys(
+        self,
+        sample_status_full: dict[str, Any],
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """A key that cannot be mapped is skipped rather than corrupting state."""
+        api = ActronAirAPI(platform="neo")
+        api._push_running = True
+        api.state_manager.process_status_update("abc123", sample_status_full)
+
+        event = RealtimeMessage(
+            transport=RealtimeTransportType.MQTT,
+            kind=RealtimeEventKind.MESSAGE,
+            topic="actron-cloud/u/neo/abc123/mwc/status-change",
+            payload={
+                "event": {
+                    "type": "status-change-broadcast",
+                    "RemoteZoneInfo.Bogus": 1,
+                }
+            },
+            domain_model=None,
+        )
+
+        with caplog.at_level(logging.DEBUG, logger="actron_neo_api.actron"):
+            await api._handle_realtime_event(event)
+
+        assert "Skipped unmappable status-change key" in caplog.text
+        status = api.state_manager.get_status("abc123")
+        assert status is not None
+        assert status.remote_zone_info[0].zone_position == 100.0
+
+    @pytest.mark.asyncio
+    async def test_full_status_broadcast_replaces_zeroed_domain_model(
+        self, sample_status_full: dict[str, Any]
+    ) -> None:
+        """A broadcast wrapper must win over the transport's all-defaults model.
+
+        ActronAirStatus validates the wrapper successfully but with every field
+        defaulted, so without this the push would overwrite good state with
+        zeroes.
+        """
+        api = ActronAirAPI(platform="neo")
+        api._push_running = True
+
+        zeroed = ActronAirStatus.model_validate(
+            {"event": {"type": "full-status-broadcast", **sample_status_full["lastKnownState"]}}
+        )
+        assert zeroed.user_aircon_settings.mode == ""
+
+        event = RealtimeMessage(
+            transport=RealtimeTransportType.MQTT,
+            kind=RealtimeEventKind.MESSAGE,
+            topic="actron-cloud/u/neo/abc123/mwc/full-status",
+            payload={
+                "event": {
+                    "type": "full-status-broadcast",
+                    **sample_status_full["lastKnownState"],
+                }
+            },
+            domain_model=zeroed,
+        )
+
+        await api._handle_realtime_event(event)
+
+        status = api.state_manager.get_status("abc123")
+        assert status is not None
+        assert status.user_aircon_settings.mode == "COOL"
+        assert status.master_info.live_temp_c == 22.5
+        assert status.is_online is True
+
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            pytest.param({}, id="no_event"),
+            pytest.param({"event": ["not", "a", "dict"]}, id="event_not_a_dict"),
+            pytest.param({"event": {"type": "status-change-broadcast"}}, id="wrong_type"),
+            pytest.param({"event": {"type": "full-status-broadcast"}}, id="empty_body"),
+        ],
+    )
+    def test_parse_full_status_broadcast_rejects(self, payload: dict[str, Any]) -> None:
+        """Payloads that are not full-status broadcasts should not be parsed."""
+        assert ActronAirAPI._parse_full_status_broadcast("abc123", payload) is None
+
+    def test_parse_full_status_broadcast_handles_invalid_state(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """A body that cannot be validated should warn instead of raising."""
+
+        def _raise_validate(_: Any) -> ActronAirStatus:
+            raise ValueError("broadcast boom")
+
+        monkeypatch.setattr(
+            ActronAirStatus,
+            "model_validate",
+            classmethod(lambda cls, payload: _raise_validate(payload)),
+        )
+
+        payload = {"event": {"type": "full-status-broadcast", "UserAirconSettings": {}}}
+
+        with caplog.at_level(logging.WARNING, logger="actron_neo_api.actron"):
+            result = ActronAirAPI._parse_full_status_broadcast("abc123", payload)
+
+        assert result is None
+        assert "Failed to parse full-status broadcast for abc123" in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_non_broadcast_full_status_still_uses_domain_model(
+        self, sample_status_full: dict[str, Any]
+    ) -> None:
+        """The original full-status shape must keep working."""
+        api = ActronAirAPI(platform="neo")
+        api._push_running = True
+        status = ActronAirStatus.model_validate(sample_status_full)
+
+        event = RealtimeMessage(
+            transport=RealtimeTransportType.MQTT,
+            kind=RealtimeEventKind.MESSAGE,
+            topic="actron-cloud/u/neo/abc123/mwc/full-status",
+            payload=sample_status_full,
+            domain_model=status,
+        )
+
+        assert await api._coerce_realtime_status(event) is status
+
+    def test_is_mqtt_full_status_topic(self) -> None:
+        """Only the full-status channel should match."""
+        assert ActronAirAPI._is_mqtt_full_status_topic("a/b/mwc/full-status") is True
+        assert ActronAirAPI._is_mqtt_full_status_topic("a/b/mwc/status-change") is False
