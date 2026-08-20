@@ -1116,9 +1116,16 @@ class TestActronAirAPIRealtimeIntegration:
         """Que platform should use the SignalR transport."""
 
         class FakeSignalRClient:
-            def __init__(self, details: RealtimeConnectionDetails, token: str) -> None:
+            def __init__(
+                self,
+                details: RealtimeConnectionDetails,
+                token: str,
+                *,
+                session: Any = None,
+            ) -> None:
                 self.details = details
                 self.token = token
+                self.session = session
                 self.subscribed: list[str] = []
 
             def register_callback(self, callback: Any) -> None:
@@ -2747,3 +2754,60 @@ class TestActronAirAPIConnectionStateWiring:
 
         assert isinstance(api._rt_client, FakeMQTTClient)
         assert api._rt_client.client_id == "config-entry-1"
+
+
+class TestActronAirAPISessionInjection:
+    """The realtime transport must reuse the API's aiohttp session."""
+
+    @pytest.mark.asyncio
+    async def test_start_push_passes_injected_session_to_signalr(self) -> None:
+        """An injected session must cover the Que transport, not just HTTP calls.
+
+        Home Assistant injects its shared session; a transport that builds its
+        own would leave the inject-websession rule unsatisfied.
+        """
+        from actron_neo_api import actron as actron_module
+
+        class FakeSignalRClient:
+            def __init__(
+                self,
+                details: RealtimeConnectionDetails,
+                token: str,
+                *,
+                session: Any = None,
+            ) -> None:
+                self.session = session
+
+            def register_callback(self, callback: Any) -> None:
+                return None
+
+            async def connect(self) -> None:
+                return None
+
+            async def subscribe(self, serial: str) -> None:
+                return None
+
+            async def disconnect(self) -> None:
+                return None
+
+        injected = MagicMock()
+        injected.closed = False
+
+        api = ActronAirAPI(platform="que", session=injected)
+        api.oauth2_auth.ensure_token_valid = AsyncMock(return_value=None)
+        api.oauth2_auth.access_token = "token"
+        api.systems = [ActronAirSystemInfo(serial="abc123")]
+
+        details = RealtimeConnectionDetails(
+            endpoint="https://example.test/signalr", port=443, protocol="https", user_id="u"
+        )
+
+        original_signalr = actron_module.SignalRRTClient
+        try:
+            actron_module.SignalRRTClient = FakeSignalRClient  # type: ignore[assignment]
+            assert await api.start_push(connection_details=details) is True
+        finally:
+            actron_module.SignalRRTClient = original_signalr  # type: ignore[assignment]
+
+        assert isinstance(api._rt_client, FakeSignalRClient)
+        assert api._rt_client.session is injected

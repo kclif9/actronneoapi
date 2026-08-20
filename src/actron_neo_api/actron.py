@@ -582,7 +582,11 @@ class ActronAirAPI:
                 raise ActronAirAuthError("No OAuth access token available for realtime transport")
 
             if self.platform == PLATFORM_QUE:
-                rt_client = SignalRRTClient(details, token)
+                # Reuse the API session so an injected one covers the realtime
+                # transport too. The transport only closes a session it created
+                # itself, and every request it makes carries its own timeout,
+                # so the session default never applies to the event stream.
+                rt_client = SignalRRTClient(details, token, session=await self._get_session())
             else:
                 rt_client = MQTTRTClient(
                     details,
