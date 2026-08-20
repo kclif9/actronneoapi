@@ -17,6 +17,7 @@ from actron_neo_api.rt import (
     RealtimeConnectionDetails,
     RealtimeConnectionEvent,
     RealtimeConnectionState,
+    RealtimeEvent,
     RealtimeEventKind,
     RealtimeMessage,
 )
@@ -1139,3 +1140,107 @@ class TestMQTTRTClient:
         assert client.last_error is not None
         assert isinstance(client.last_error, OSError)
         assert client.connection_state == RealtimeConnectionState.DISCONNECTED
+
+
+class TestMQTTRealtimeDispatch:
+    """Callback dispatch, queue retention and session identity."""
+
+    @staticmethod
+    def _client(**kwargs: object) -> MQTTRTClient:
+        return MQTTRTClient(
+            RealtimeConnectionDetails(
+                endpoint="mqtt.example.com",
+                port=8883,
+                protocol="ssl",
+                user_id="user-1",
+            ),
+            user_email="test@example.com",
+            access_token="token-123",
+            **kwargs,  # type: ignore[arg-type]
+        )
+
+    @pytest.mark.asyncio
+    async def test_set_state_notifies_callbacks(self) -> None:
+        """Connection transitions must reach callback subscribers, not just the queue."""
+        client = self._client()
+        seen: list[RealtimeConnectionEvent] = []
+        client.register_callback(seen.append)  # type: ignore[arg-type]
+
+        await client._set_state(RealtimeConnectionState.RECONNECTING)  # noqa: SLF001
+        await client._set_state(RealtimeConnectionState.CONNECTED)  # noqa: SLF001
+
+        assert [event.state for event in seen] == [
+            RealtimeConnectionState.RECONNECTING,
+            RealtimeConnectionState.CONNECTED,
+        ]
+        assert seen[1].previous_state == RealtimeConnectionState.RECONNECTING
+        assert client._event_queue.qsize() == 2  # noqa: SLF001
+
+    @pytest.mark.asyncio
+    async def test_set_state_survives_failing_callback(self) -> None:
+        """A raising subscriber must not propagate into the supervisor loop."""
+        client = self._client()
+
+        def _bad(_: RealtimeEvent) -> None:
+            raise ValueError("boom")
+
+        client.register_callback(_bad)
+
+        await client._set_state(RealtimeConnectionState.CONNECTED)  # noqa: SLF001
+
+    @pytest.mark.asyncio
+    async def test_event_queue_is_bounded_without_a_consumer(self) -> None:
+        """Events must not accumulate for the life of the process."""
+        client = self._client(event_queue_maxsize=4)
+
+        for index in range(50):
+            await client._handle_message(  # noqa: SLF001
+                "actron-cloud/user-1/neo/abc/mwc/heart-beat",
+                json.dumps({"n": index}).encode(),
+            )
+
+        assert client._event_queue.qsize() == 4  # noqa: SLF001
+        retained = client._event_queue.get_nowait()  # noqa: SLF001
+        assert retained.payload == {"n": 46}  # type: ignore[union-attr]
+
+    def test_event_queue_maxsize_is_validated(self) -> None:
+        """A non-positive queue size is rejected."""
+        with pytest.raises(ValueError, match="event_queue_maxsize"):
+            self._client(event_queue_maxsize=0)
+
+    def test_generated_identifier_uses_a_clean_session(self) -> None:
+        """A random identifier must not claim a persistent broker session."""
+        client = self._client()
+
+        assert client._client_id.startswith("HA_")  # noqa: SLF001
+        assert client._clean_session is True  # noqa: SLF001
+
+    def test_supplied_identifier_keeps_a_persistent_session(self) -> None:
+        """A caller-supplied identifier is assumed stable across restarts."""
+        client = self._client(client_id="config-entry-1")
+
+        assert client._client_id == "config-entry-1"  # noqa: SLF001
+        assert client._clean_session is False  # noqa: SLF001
+
+    def test_blank_identifier_falls_back_to_a_generated_one(self) -> None:
+        """A blank identifier is treated as if none was supplied."""
+        client = self._client(client_id="   ")
+
+        assert client._client_id.startswith("HA_")  # noqa: SLF001
+        assert client._clean_session is True  # noqa: SLF001
+
+    def test_clean_session_flag_reaches_the_broker_client(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The session mode chosen from the identifier is what gets connected."""
+        captured: list[dict[str, object]] = []
+        monkeypatch.setattr(
+            mqtt_module, "Client", lambda **kwargs: captured.append(kwargs) or object()
+        )
+
+        self._client()._build_client()  # noqa: SLF001
+        self._client(client_id="config-entry-1")._build_client()  # noqa: SLF001
+
+        assert captured[0]["clean_session"] is True
+        assert captured[1]["clean_session"] is False
+        assert captured[1]["identifier"] == "config-entry-1"
