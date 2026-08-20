@@ -334,7 +334,6 @@ class ActronAirAPI:
         # Realtime push integration (issue #77)
         self._rt_client: MQTTRTClient | SignalRRTClient | None = None
         self._push_running = False
-        self._push_status_queue: asyncio.Queue[tuple[str, ActronAirStatus | None]] = asyncio.Queue()
         self._push_stream_queues: list[
             tuple[str | None, asyncio.Queue[ActronAirStatus | None]]
         ] = []
@@ -527,6 +526,7 @@ class ActronAirAPI:
         serial_numbers: list[str] | None = None,
         *,
         connection_details: RealtimeConnectionDetails | None = None,
+        client_id: str | None = None,
     ) -> bool:
         """Start realtime push updates for one or more systems.
 
@@ -535,6 +535,11 @@ class ActronAirAPI:
                 If omitted, subscribes all known systems (fetching systems if needed).
             connection_details: Optional pre-resolved realtime connection details.
                 If omitted, the client attempts to discover details from API links.
+            client_id: Optional MQTT client identifier for the Neo transport.
+                Supplying one that is stable across restarts (a Home Assistant
+                config entry id, for example) opts the connection into a
+                persistent broker session. Ignored on the Que platform, which
+                does not use MQTT.
 
         Returns:
             True if realtime push started successfully, False if realtime is
@@ -579,7 +584,12 @@ class ActronAirAPI:
             if self.platform == PLATFORM_QUE:
                 rt_client = SignalRRTClient(details, token)
             else:
-                rt_client = MQTTRTClient(details, await self._resolve_mqtt_username(), token)
+                rt_client = MQTTRTClient(
+                    details,
+                    await self._resolve_mqtt_username(),
+                    token,
+                    client_id=client_id,
+                )
 
             if rt_client is None:
                 raise ActronAirAPIError("Failed to create realtime transport client")
@@ -651,7 +661,6 @@ class ActronAirAPI:
         """Stop realtime push updates and disconnect active transport."""
         self._push_running = False
         # Wake blocked stream consumers so they can exit cleanly.
-        self._push_status_queue.put_nowait(("", None))
         for _, stream_queue in list(self._push_stream_queues):
             stream_queue.put_nowait(None)
         if self._rt_client is None:
@@ -881,7 +890,6 @@ class ActronAirAPI:
         current_status = self.state_manager.get_status(serial)
         if current_status is not status:
             self.state_manager.process_status_update(serial, status)
-        await self._push_status_queue.put((serial, status))
         for stream_filter, stream_queue in list(self._push_stream_queues):
             if stream_filter is None or stream_filter == serial:
                 stream_queue.put_nowait(status)

@@ -84,6 +84,34 @@ unsubscribe_connection = api.subscribe_connection_state(on_connection)
 - Que systems are connected through SignalR/SSE.
 - Consumer code does not need to manage the transport directly.
 
+## MQTT Client Identifier (Neo)
+
+`start_push()` accepts an optional `client_id` used as the MQTT client
+identifier. Supplying one that is stable across restarts — a Home Assistant
+config entry id, for example — opts the connection into a persistent broker
+session, so messages published while the client was away are delivered on
+reconnect.
+
+```python
+await api.start_push([serial], client_id=entry.entry_id)
+```
+
+When `client_id` is omitted, a random `HA_`-prefixed identifier is generated and
+a clean session is used instead. A persistent session keyed to an identifier
+that changes every restart would strand a session on the broker each time
+without ever resuming one, so the two settings are chosen together.
+
+Use an identifier that is unique per installation. Two clients connecting with
+the same identifier will repeatedly disconnect each other.
+
+## Event Buffering
+
+Each transport keeps a bounded buffer of recent events for `iter_events()`
+consumers; once it is full the oldest event is dropped rather than retained.
+Callback subscribers (`subscribe_system_updates()`,
+`subscribe_connection_state()`) are delivered to directly and are unaffected by
+the buffer.
+
 ## Fallback Behavior
 
 Push is optional.

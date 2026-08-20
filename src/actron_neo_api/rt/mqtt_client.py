@@ -22,6 +22,7 @@ from aiomqtt import Client, MqttError
 
 from ..models import ActronAirStatus
 from .base import (
+    DEFAULT_EVENT_QUEUE_MAXSIZE,
     RealtimeConnectionDetails,
     RealtimeConnectionEvent,
     RealtimeConnectionState,
@@ -29,6 +30,8 @@ from .base import (
     RealtimeEventKind,
     RealtimeMessage,
     RealtimeTransportType,
+    new_event_queue,
+    put_event_dropping_oldest,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -69,13 +72,19 @@ class MQTTRTClient:
             are identifiable on the broker. Blank or whitespace-only values
             fall back to "unknown".
         access_token: OAuth access token used as the MQTT password.
-        client_id: Optional MQTT client identifier. Generated identifiers are
-            prefixed with "HA_" so Home Assistant connections are recognisable.
+        client_id: Optional MQTT client identifier. Supplying one that is
+            stable across restarts (a Home Assistant config entry id, for
+            example) opts the connection into a persistent broker session.
+            When omitted, a random identifier prefixed with "HA_" is generated
+            and a clean session is used instead, so restarts do not strand
+            per-process sessions on the broker.
         ssl_context: Optional custom TLS context.
         keepalive: MQTT keepalive interval in seconds.
         connect_timeout: Time to wait for the first successful connection.
         reconnect_initial_delay: Initial reconnect delay in seconds.
         reconnect_max_delay: Maximum reconnect delay in seconds.
+        event_queue_maxsize: Number of events retained for ``iter_events``
+            consumers before the oldest is dropped.
 
     """
 
@@ -92,6 +101,7 @@ class MQTTRTClient:
         connect_timeout: float = 15.0,
         reconnect_initial_delay: float = _MQTT_DEFAULT_RECONNECT_DELAY,
         reconnect_max_delay: float = _MQTT_MAX_RECONNECT_DELAY,
+        event_queue_maxsize: int = DEFAULT_EVENT_QUEUE_MAXSIZE,
     ) -> None:
         """Initialize the MQTT realtime client."""
         if not access_token.strip():
@@ -104,13 +114,21 @@ class MQTTRTClient:
             raise ValueError("reconnect_initial_delay must be greater than zero")
         if reconnect_max_delay < reconnect_initial_delay:
             raise ValueError("reconnect_max_delay must be greater than or equal to initial delay")
+        if event_queue_maxsize <= 0:
+            raise ValueError("event_queue_maxsize must be greater than zero")
 
         self._details = connection_details
         self._access_token = access_token
         # The broker only uses the username to attribute a connection, so an
         # unusable value is normalized rather than rejected.
         self._user_email = user_email.strip() or _MQTT_UNKNOWN_USERNAME
-        self._client_id = client_id or f"{_MQTT_CLIENT_ID_PREFIX}{uuid.uuid4().hex}"
+        # A persistent broker session is only meaningful with an identifier
+        # that survives a restart. A caller-supplied id is assumed to be stable
+        # and gets one; a generated id would strand a fresh session on the
+        # broker at every restart, so it uses a clean session instead.
+        supplied_client_id = (client_id or "").strip()
+        self._client_id = supplied_client_id or f"{_MQTT_CLIENT_ID_PREFIX}{uuid.uuid4().hex}"
+        self._clean_session = not supplied_client_id
         self._ssl_context = ssl_context
         self._keepalive = keepalive
         self._connect_timeout = connect_timeout
@@ -124,7 +142,7 @@ class MQTTRTClient:
         self._connection_state = RealtimeConnectionState.DISCONNECTED
         self._subscriptions: set[str] = set()
         self._callbacks: list[Callable[[RealtimeEvent], Awaitable[None] | None]] = []
-        self._event_queue: asyncio.Queue[RealtimeEvent] = asyncio.Queue()
+        self._event_queue: asyncio.Queue[RealtimeEvent] = new_event_queue(event_queue_maxsize)
         self._last_error: Exception | None = None
 
     @property
@@ -333,7 +351,7 @@ class MQTTRTClient:
             "username": self._user_email,
             "password": self._access_token,
             "keepalive": self._keepalive,
-            "clean_session": False,
+            "clean_session": self._clean_session,
             "identifier": self._client_id,
         }
         if tls_context is not None:
@@ -407,7 +425,7 @@ class MQTTRTClient:
 
     async def _emit_event(self, event: RealtimeEvent) -> None:
         """Queue an event and notify registered callbacks."""
-        await self._event_queue.put(event)
+        put_event_dropping_oldest(self._event_queue, event)
         for callback in list(self._callbacks):
             try:
                 result = callback(event)
@@ -433,7 +451,9 @@ class MQTTRTClient:
             previous_state=previous_state,
             reason=reason,
         )
-        await self._event_queue.put(event)
+        # Connection events take the same path as messages so callback
+        # subscribers see state transitions, not just queue consumers.
+        await self._emit_event(event)
 
 
 __all__ = ["MQTTRTClient", "NeoMQTTTopicSet"]

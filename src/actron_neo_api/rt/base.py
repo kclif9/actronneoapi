@@ -7,9 +7,15 @@ surface.
 
 from __future__ import annotations
 
+import asyncio
+import logging
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Protocol, runtime_checkable
+
+_LOGGER = logging.getLogger(__name__)
+
+DEFAULT_EVENT_QUEUE_MAXSIZE = 256
 
 
 class RealtimeTransportType(str, Enum):
@@ -97,6 +103,40 @@ class RealtimeConnectionDetails:
     def scheme(self) -> str:
         """Return the transport URI scheme."""
         return "ssl" if self.uses_tls else "tcp"
+
+
+def new_event_queue(
+    maxsize: int = DEFAULT_EVENT_QUEUE_MAXSIZE,
+) -> asyncio.Queue[RealtimeEvent]:
+    """Create the bounded queue a transport uses to buffer realtime events."""
+    return asyncio.Queue(maxsize=maxsize)
+
+
+def put_event_dropping_oldest(
+    queue: asyncio.Queue[RealtimeEvent],
+    event: RealtimeEvent,
+) -> None:
+    """Queue an event without blocking, discarding the oldest entry when full.
+
+    Transports emit events whether or not anything consumes ``iter_events``,
+    and the Neo heartbeat topic produces them continuously. Bounding the queue
+    keeps recent events available to a late consumer without retaining every
+    event for the life of the process, and dropping rather than blocking keeps
+    a stalled consumer from stalling the transport.
+    """
+    while True:
+        try:
+            queue.put_nowait(event)
+            return
+        except asyncio.QueueFull:
+            try:
+                dropped = queue.get_nowait()
+            except asyncio.QueueEmpty:  # pragma: no cover - drained concurrently
+                continue
+            _LOGGER.debug(
+                "Realtime event queue is full; dropped the oldest %s",
+                type(dropped).__name__,
+            )
 
 
 @runtime_checkable

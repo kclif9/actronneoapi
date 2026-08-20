@@ -8,7 +8,12 @@ from typing import Any
 import aiohttp
 import pytest
 
-from actron_neo_api.rt import RealtimeConnectionDetails, SignalRRTClient, signalr_client
+from actron_neo_api.rt import (
+    RealtimeConnectionDetails,
+    RealtimeConnectionState,
+    SignalRRTClient,
+    signalr_client,
+)
 from actron_neo_api.rt.base import (
     RealtimeEvent,
     RealtimeEventKind,
@@ -810,7 +815,7 @@ async def test_connect_and_listen_disables_total_timeout() -> None:
 
     timeout = session.get_calls[0]["timeout"]
     assert timeout.total is None
-    assert timeout.sock_read == 180.0
+    assert timeout.sock_read == 600.0
     assert timeout.sock_connect == 15.0
 
 
@@ -871,3 +876,108 @@ async def test_run_supervisor_resets_backoff_after_healthy_connection(
     await client._run_supervisor()
 
     assert slept == [0.25, 0.25]
+
+
+@pytest.mark.asyncio
+async def test_stream_read_timeout_is_configurable() -> None:
+    client = SignalRRTClient(_details(), access_token="secret", stream_read_timeout=None)
+    session = _Session(
+        post_responses=[_Response(status=200, json_data={"url": "https://example.test/sse"})],
+        get_responses=[_Response(status=200, content_items=[])],
+    )
+    client._session = session  # type: ignore[assignment]
+    client._running = True
+
+    await client._connect_and_listen()
+
+    assert session.get_calls[0]["timeout"].sock_read is None
+
+    with pytest.raises(ValueError, match="stream_read_timeout"):
+        SignalRRTClient(_details(), access_token="secret", stream_read_timeout=0)
+
+
+@pytest.mark.asyncio
+async def test_connect_and_listen_ignores_sse_keepalive_comments() -> None:
+    client = SignalRRTClient(_details(), access_token="secret")
+    session = _Session(
+        post_responses=[_Response(status=200, json_data={"url": "https://example.test/sse"})],
+        get_responses=[
+            _Response(
+                status=200,
+                content_items=[
+                    b": ping\n",
+                    b'data: {"a": 1}\n',
+                    b"\n",
+                ],
+            )
+        ],
+    )
+    client._session = session  # type: ignore[assignment]
+    client._running = True
+    seen: list[RealtimeEvent] = []
+    client.register_callback(seen.append)
+
+    await client._connect_and_listen()
+    await asyncio.sleep(0)
+
+    # The keepalive is discarded rather than corrupting the buffered payload.
+    assert [ev.payload for ev in seen if isinstance(ev, RealtimeMessage)] == [{"a": 1}]
+
+
+@pytest.mark.asyncio
+async def test_set_state_notifies_callbacks() -> None:
+    client = SignalRRTClient(_details(), access_token="secret")
+    seen: list[RealtimeEvent] = []
+    client.register_callback(seen.append)
+
+    await client._set_state(RealtimeConnectionState.RECONNECTING)
+    await client._set_state(RealtimeConnectionState.CONNECTED)
+
+    assert [ev.state for ev in seen] == [  # type: ignore[union-attr]
+        RealtimeConnectionState.RECONNECTING,
+        RealtimeConnectionState.CONNECTED,
+    ]
+    assert client._events.qsize() == 2
+
+
+@pytest.mark.asyncio
+async def test_emit_event_awaits_async_callbacks() -> None:
+    client = SignalRRTClient(_details(), access_token="secret")
+    seen: list[RealtimeEvent] = []
+
+    async def _async_cb(ev: RealtimeEvent) -> None:
+        seen.append(ev)
+
+    client.register_callback(_async_cb)
+
+    await client._set_state(RealtimeConnectionState.CONNECTED)
+
+    assert len(seen) == 1
+
+
+@pytest.mark.asyncio
+async def test_set_state_survives_failing_callback() -> None:
+    client = SignalRRTClient(_details(), access_token="secret")
+
+    def _bad(_: RealtimeEvent) -> None:
+        raise ValueError("boom")
+
+    client.register_callback(_bad)
+
+    # A failing subscriber must not propagate into the supervisor loop.
+    await client._set_state(RealtimeConnectionState.CONNECTED)
+
+
+@pytest.mark.asyncio
+async def test_event_queue_is_bounded_without_a_consumer() -> None:
+    client = SignalRRTClient(_details(), access_token="secret", event_queue_maxsize=4)
+
+    for index in range(50):
+        await client._emit_event(_message({"n": index}))
+
+    assert client._events.qsize() == 4
+    # The most recent events are the ones retained.
+    assert client._events.get_nowait().payload == {"n": 46}
+
+    with pytest.raises(ValueError, match="event_queue_maxsize"):
+        SignalRRTClient(_details(), access_token="secret", event_queue_maxsize=0)

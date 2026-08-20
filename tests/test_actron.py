@@ -991,7 +991,11 @@ class TestActronAirAPIRealtimeIntegration:
 
         class FakeMQTTClient:
             def __init__(
-                self, details: RealtimeConnectionDetails, user_email: str, token: str
+                self,
+                details: RealtimeConnectionDetails,
+                user_email: str,
+                token: str,
+                client_id: str | None = None,
             ) -> None:
                 self.details = details
                 self.user_email = user_email
@@ -1057,7 +1061,11 @@ class TestActronAirAPIRealtimeIntegration:
 
         class FakeMQTTClient:
             def __init__(
-                self, details: RealtimeConnectionDetails, user_email: str, token: str
+                self,
+                details: RealtimeConnectionDetails,
+                user_email: str,
+                token: str,
+                client_id: str | None = None,
             ) -> None:
                 self.user_email = user_email
 
@@ -1577,7 +1585,11 @@ class TestActronAirAPIRealtimeIntegration:
 
         class FakeMQTTClient:
             def __init__(
-                self, details: RealtimeConnectionDetails, user_email: str, token: str
+                self,
+                details: RealtimeConnectionDetails,
+                user_email: str,
+                token: str,
+                client_id: str | None = None,
             ) -> None:
                 self.subscribed: list[str] = []
 
@@ -1686,7 +1698,11 @@ class TestActronAirAPIRealtimeIntegration:
             instances: list["FakeMQTTClient"] = []
 
             def __init__(
-                self, details: RealtimeConnectionDetails, user_email: str, token: str
+                self,
+                details: RealtimeConnectionDetails,
+                user_email: str,
+                token: str,
+                client_id: str | None = None,
             ) -> None:
                 self.disconnect = AsyncMock(return_value=None)
                 FakeMQTTClient.instances.append(self)
@@ -1741,7 +1757,11 @@ class TestActronAirAPIRealtimeIntegration:
 
         class FakeMQTTClient:
             def __init__(
-                self, details: RealtimeConnectionDetails, user_email: str, token: str
+                self,
+                details: RealtimeConnectionDetails,
+                user_email: str,
+                token: str,
+                client_id: str | None = None,
             ) -> None:
                 self.disconnect = AsyncMock(return_value=None)
 
@@ -1796,7 +1816,11 @@ class TestActronAirAPIRealtimeIntegration:
 
         class FakeMQTTClient:
             def __init__(
-                self, details: RealtimeConnectionDetails, user_email: str, token: str
+                self,
+                details: RealtimeConnectionDetails,
+                user_email: str,
+                token: str,
+                client_id: str | None = None,
             ) -> None:
                 self.callback: Any = None
 
@@ -2616,3 +2640,110 @@ class TestNeoBroadcastPayloads:
         """Only the full-status channel should match."""
         assert ActronAirAPI._is_mqtt_full_status_topic("a/b/mwc/full-status") is True
         assert ActronAirAPI._is_mqtt_full_status_topic("a/b/mwc/status-change") is False
+
+
+class TestActronAirAPIConnectionStateWiring:
+    """End-to-end coverage of the transport-to-subscriber dispatch chain."""
+
+    @pytest.mark.asyncio
+    async def test_transport_state_change_reaches_subscribers(self) -> None:
+        """A real transport's state change must reach subscribe_connection_state.
+
+        The chain under test is the one Home Assistant relies on:
+        transport._set_state -> transport callbacks -> _handle_realtime_event
+        -> _dispatch_connection_event -> connection-state subscribers. Faking
+        the transport here would skip the hop that was broken.
+        """
+        from actron_neo_api import actron as actron_module
+        from actron_neo_api.rt.mqtt_client import MQTTRTClient
+
+        class _StubbedTransport(MQTTRTClient):
+            """A real transport with only the broker interaction stubbed out."""
+
+            async def connect(self) -> None:
+                return None
+
+            async def disconnect(self) -> None:
+                return None
+
+            async def subscribe_system(
+                self,
+                device_serial: str,
+                machine_id: str | None = None,
+            ) -> Any:
+                return None
+
+        api = ActronAirAPI(platform="neo")
+        api.oauth2_auth.ensure_token_valid = AsyncMock(return_value=None)
+        api.oauth2_auth.access_token = "token"
+        api.oauth2_auth.get_user_info = AsyncMock(return_value=None)
+        api.systems = [ActronAirSystemInfo(serial="abc123")]
+
+        seen: list[RealtimeConnectionEvent] = []
+        api.subscribe_connection_state(seen.append)
+
+        details = RealtimeConnectionDetails(
+            endpoint="mqtt.example.test", port=8883, protocol="ssl", user_id="u"
+        )
+
+        original_mqtt = actron_module.MQTTRTClient
+        try:
+            actron_module.MQTTRTClient = _StubbedTransport  # type: ignore[assignment]
+            assert await api.start_push(connection_details=details) is True
+            transport = api._rt_client
+            assert isinstance(transport, _StubbedTransport)
+            await transport._set_state(RealtimeConnectionState.CONNECTED)
+            # _on_event dispatches on a task, so let it run.
+            await asyncio.sleep(0)
+            await asyncio.sleep(0)
+        finally:
+            actron_module.MQTTRTClient = original_mqtt  # type: ignore[assignment]
+
+        assert [event.state for event in seen] == [RealtimeConnectionState.CONNECTED]
+
+    @pytest.mark.asyncio
+    async def test_start_push_forwards_client_id_to_the_transport(self) -> None:
+        """A caller-supplied MQTT identifier must reach the transport."""
+        from actron_neo_api import actron as actron_module
+
+        class FakeMQTTClient:
+            def __init__(
+                self,
+                details: RealtimeConnectionDetails,
+                user_email: str,
+                token: str,
+                client_id: str | None = None,
+            ) -> None:
+                self.client_id = client_id
+
+            def register_callback(self, callback: Any) -> None:
+                return None
+
+            async def connect(self) -> None:
+                return None
+
+            async def subscribe_system(self, serial: str) -> None:
+                return None
+
+            async def disconnect(self) -> None:
+                return None
+
+        api = ActronAirAPI(platform="neo")
+        api.oauth2_auth.ensure_token_valid = AsyncMock(return_value=None)
+        api.oauth2_auth.access_token = "token"
+        api.oauth2_auth.get_user_info = AsyncMock(return_value=None)
+        api.systems = [ActronAirSystemInfo(serial="abc123")]
+
+        details = RealtimeConnectionDetails(
+            endpoint="mqtt.example.test", port=8883, protocol="ssl", user_id="u"
+        )
+
+        original_mqtt = actron_module.MQTTRTClient
+        try:
+            actron_module.MQTTRTClient = FakeMQTTClient  # type: ignore[assignment]
+            await api.start_push(connection_details=details, client_id="config-entry-1")
+        finally:
+            actron_module.MQTTRTClient = original_mqtt  # type: ignore[assignment]
+
+        assert isinstance(api._rt_client, FakeMQTTClient)
+        assert api._rt_client.client_id == "config-entry-1"

@@ -16,12 +16,13 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from typing import Any, AsyncIterator, Callable, Optional
+from typing import Any, AsyncIterator, Awaitable, Callable, Optional
 from urllib.parse import quote
 
 import aiohttp
 
 from .base import (
+    DEFAULT_EVENT_QUEUE_MAXSIZE,
     RealtimeClient,
     RealtimeConnectionDetails,
     RealtimeConnectionEvent,
@@ -30,12 +31,14 @@ from .base import (
     RealtimeEventKind,
     RealtimeMessage,
     RealtimeTransportType,
+    new_event_queue,
+    put_event_dropping_oldest,
 )
 
 _LOGGER = logging.getLogger(__name__)
 _SIGNALR_SUBSCRIBE_REFRESH_SECONDS = 300.0
 _SSE_CONNECT_TIMEOUT_SECONDS = 15.0
-_SSE_READ_TIMEOUT_SECONDS = 180.0
+_SSE_DEFAULT_READ_TIMEOUT_SECONDS = 600.0
 _HEALTHY_CONNECTION_SECONDS = 60.0
 
 
@@ -60,6 +63,8 @@ class SignalRRTClient(RealtimeClient):
         session: Optional[aiohttp.ClientSession] = None,
         reconnect_initial_delay: float = 1.0,
         reconnect_max_delay: float = 30.0,
+        stream_read_timeout: float | None = _SSE_DEFAULT_READ_TIMEOUT_SECONDS,
+        event_queue_maxsize: int = DEFAULT_EVENT_QUEUE_MAXSIZE,
     ) -> None:
         """Initialize the SignalRRTClient.
 
@@ -69,6 +74,13 @@ class SignalRRTClient(RealtimeClient):
             session: Optional aiohttp session (for testing/mocking).
             reconnect_initial_delay: Initial reconnect backoff (seconds).
             reconnect_max_delay: Max reconnect backoff (seconds).
+            stream_read_timeout: Seconds of complete silence on the event
+                stream before it is treated as dead and reconnected. This is a
+                socket read timeout, so it resets on every byte received,
+                including SSE keepalive comments. Pass None to disable the
+                check, at the cost of never noticing a half-open connection.
+            event_queue_maxsize: Number of events retained for ``iter_events``
+                consumers before the oldest is dropped.
 
         Raises:
             ValueError: If arguments are invalid.
@@ -79,6 +91,10 @@ class SignalRRTClient(RealtimeClient):
             raise ValueError("reconnect_initial_delay must be greater than zero")
         if reconnect_max_delay < reconnect_initial_delay:
             raise ValueError("reconnect_max_delay must be greater than or equal to initial delay")
+        if stream_read_timeout is not None and stream_read_timeout <= 0:
+            raise ValueError("stream_read_timeout must be greater than zero or None")
+        if event_queue_maxsize <= 0:
+            raise ValueError("event_queue_maxsize must be greater than zero")
 
         self._connection_details = connection_details
         self._access_token = access_token
@@ -86,18 +102,22 @@ class SignalRRTClient(RealtimeClient):
         self._external_session = session is not None
         self._reconnect_initial_delay = reconnect_initial_delay
         self._reconnect_max_delay = reconnect_max_delay
+        self._stream_read_timeout = stream_read_timeout
 
         self._subscriptions: set[str] = set()
-        self._callbacks: list[Callable[[RealtimeEvent], None]] = []
-        self._events: asyncio.Queue[RealtimeEvent] = asyncio.Queue()
+        self._callbacks: list[Callable[[RealtimeEvent], Awaitable[None] | None]] = []
+        self._events: asyncio.Queue[RealtimeEvent] = new_event_queue(event_queue_maxsize)
 
         self._supervisor_task: Optional[asyncio.Task[None]] = None
         self._resubscribe_task: Optional[asyncio.Task[None]] = None
         self._connection_state = RealtimeConnectionState.DISCONNECTED
         self._running = False
 
-    def register_callback(self, callback: Callable[[RealtimeEvent], None]) -> None:
-        """Register a callback to receive realtime events."""
+    def register_callback(
+        self,
+        callback: Callable[[RealtimeEvent], Awaitable[None] | None],
+    ) -> None:
+        """Register a callback that is invoked for every emitted realtime event."""
         self._callbacks.append(callback)
 
     async def connect(self) -> None:
@@ -218,6 +238,10 @@ class SignalRRTClient(RealtimeClient):
                 # without logging a traceback for it.
                 reason = "stream timeout"
                 _LOGGER.debug("SignalR stream timed out; reconnecting in %s", backoff)
+            except (aiohttp.ClientError, OSError) as exc:
+                # Transport drops are expected; the supervisor reconnects.
+                reason = str(exc) or type(exc).__name__
+                _LOGGER.debug("SignalR reconnecting after error: %s", exc, exc_info=True)
             except Exception:  # pragma: no cover - reconnect/backoff loop
                 reason = "transport error"
                 _LOGGER.exception("SignalR supervisor error; reconnecting in %s", backoff)
@@ -254,7 +278,7 @@ class SignalRRTClient(RealtimeClient):
             total=None,
             connect=_SSE_CONNECT_TIMEOUT_SECONDS,
             sock_connect=_SSE_CONNECT_TIMEOUT_SECONDS,
-            sock_read=_SSE_READ_TIMEOUT_SECONDS,
+            sock_read=self._stream_read_timeout,
         )
         async with self._session.get(url, headers=headers, timeout=timeout) as resp:
             if resp.status != 200:
@@ -272,6 +296,13 @@ class SignalRRTClient(RealtimeClient):
                     try:
                         line = raw.decode()
                     except Exception:
+                        continue
+                    if line.startswith(":"):
+                        # An SSE comment is a keepalive and carries no data.
+                        # Logging it makes the server's idle interval
+                        # observable, which is what `stream_read_timeout`
+                        # has to be chosen against.
+                        _LOGGER.debug("sse keepalive: %s", line.strip())
                         continue
                     if line.startswith("data:"):
                         buffer += line[len("data:") :].strip()
@@ -374,12 +405,15 @@ class SignalRRTClient(RealtimeClient):
             _LOGGER.exception("failed to handle incoming signalr payload")
 
     async def _emit_event(self, ev: RealtimeEvent) -> None:
+        """Queue an event and notify registered callbacks."""
+        put_event_dropping_oldest(self._events, ev)
         for cb in list(self._callbacks):
             try:
-                cb(ev)
-            except Exception:
-                _LOGGER.exception("event callback failed")
-        await self._events.put(ev)
+                result = cb(ev)
+                if asyncio.iscoroutine(result):
+                    await result
+            except Exception:  # pragma: no cover - callback failures must not break transport
+                _LOGGER.warning("Realtime event callback failed", exc_info=True)
 
     async def _set_state(
         self,
@@ -397,4 +431,6 @@ class SignalRRTClient(RealtimeClient):
             previous_state=previous_state,
             reason=reason,
         )
-        await self._events.put(event)
+        # Connection events take the same path as messages so callback
+        # subscribers see state transitions, not just queue consumers.
+        await self._emit_event(event)
