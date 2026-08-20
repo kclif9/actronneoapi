@@ -34,6 +34,9 @@ from .base import (
 
 _LOGGER = logging.getLogger(__name__)
 _SIGNALR_SUBSCRIBE_REFRESH_SECONDS = 300.0
+_SSE_CONNECT_TIMEOUT_SECONDS = 15.0
+_SSE_READ_TIMEOUT_SECONDS = 180.0
+_HEALTHY_CONNECTION_SECONDS = 60.0
 
 
 class SignalRRTClient(RealtimeClient):
@@ -200,28 +203,34 @@ class SignalRRTClient(RealtimeClient):
             _LOGGER.debug("unsubscribe POST failed", exc_info=True)
 
     async def _run_supervisor(self) -> None:
+        loop = asyncio.get_running_loop()
         backoff = self._reconnect_initial_delay
         while self._running:
+            started = loop.time()
+            reason = "event stream ended"
             try:
                 await self._set_state(RealtimeConnectionState.CONNECTING)
                 await self._connect_and_listen()
-                if self._running:
-                    await self._set_state(
-                        RealtimeConnectionState.RECONNECTING,
-                        reason="event stream ended",
-                    )
-                    await asyncio.sleep(backoff)
-                    backoff = min(self._reconnect_max_delay, backoff * 2)
-                else:
-                    backoff = self._reconnect_initial_delay
             except asyncio.CancelledError:
                 break
+            except asyncio.TimeoutError:
+                # An idle event stream timing out is routine, so reconnect
+                # without logging a traceback for it.
+                reason = "stream timeout"
+                _LOGGER.debug("SignalR stream timed out; reconnecting in %s", backoff)
             except Exception:  # pragma: no cover - reconnect/backoff loop
+                reason = "transport error"
                 _LOGGER.exception("SignalR supervisor error; reconnecting in %s", backoff)
-                await self._set_state(
-                    RealtimeConnectionState.RECONNECTING, reason="transport error"
-                )
-                await asyncio.sleep(backoff)
+            if not self._running:
+                break
+            connected_for = loop.time() - started
+            await self._set_state(RealtimeConnectionState.RECONNECTING, reason=reason)
+            await asyncio.sleep(backoff)
+            if connected_for >= _HEALTHY_CONNECTION_SECONDS:
+                # The connection was healthy for a while, so treat this as a
+                # fresh failure instead of continuing to grow the backoff.
+                backoff = self._reconnect_initial_delay
+            else:
                 backoff = min(self._reconnect_max_delay, backoff * 2)
         await self._set_state(RealtimeConnectionState.DISCONNECTED)
 
@@ -237,7 +246,17 @@ class SignalRRTClient(RealtimeClient):
             sse_url = self._connection_details.endpoint
 
         url = sse_url
-        async with self._session.get(url, headers=headers) as resp:
+        # The event stream is long-lived, so no total timeout may be applied:
+        # aiohttp's default (5 minutes) tears down an otherwise healthy
+        # connection. `sock_read` still detects a stalled stream and resets on
+        # every byte received.
+        timeout = aiohttp.ClientTimeout(
+            total=None,
+            connect=_SSE_CONNECT_TIMEOUT_SECONDS,
+            sock_connect=_SSE_CONNECT_TIMEOUT_SECONDS,
+            sock_read=_SSE_READ_TIMEOUT_SECONDS,
+        )
+        async with self._session.get(url, headers=headers, timeout=timeout) as resp:
             if resp.status != 200:
                 raise RuntimeError(f"sse connect failed: {resp.status}")
             # restore subscriptions immediately after a successful connection
