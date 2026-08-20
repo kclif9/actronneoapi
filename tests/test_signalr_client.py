@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import Any
 
 import aiohttp
@@ -981,3 +982,47 @@ async def test_event_queue_is_bounded_without_a_consumer() -> None:
 
     with pytest.raises(ValueError, match="event_queue_maxsize"):
         SignalRRTClient(_details(), access_token="secret", event_queue_maxsize=0)
+
+
+@pytest.mark.parametrize(
+    ("error", "expected_reason"),
+    [
+        (aiohttp.ClientError("connection reset"), "connection reset"),
+        (OSError(), "OSError"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_run_supervisor_reports_transport_errors_without_traceback(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    error: Exception,
+    expected_reason: str,
+) -> None:
+    client = SignalRRTClient(
+        _details(),
+        access_token="secret",
+        reconnect_initial_delay=0.25,
+        reconnect_max_delay=1.0,
+    )
+    client._running = True
+
+    async def _connect_and_listen() -> None:
+        raise error
+
+    async def _sleep(delay: float) -> None:
+        client._running = False
+
+    client._connect_and_listen = _connect_and_listen  # type: ignore[method-assign]
+    monkeypatch.setattr(asyncio, "sleep", _sleep)
+
+    with caplog.at_level(logging.DEBUG, logger="actron_neo_api.rt.signalr_client"):
+        await client._run_supervisor()
+
+    reasons = [
+        client._events.get_nowait().reason  # type: ignore[union-attr]
+        for _ in range(client._events.qsize())
+    ]
+    assert expected_reason in reasons
+    # Routine drops are debug-level; ERROR is reserved for the unexpected.
+    assert "SignalR reconnecting after error" in caplog.text
+    assert not [record for record in caplog.records if record.levelno >= logging.ERROR]
