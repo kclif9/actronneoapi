@@ -555,6 +555,114 @@ class TestZoneTempLimitsHeatMode:
         assert zone.min_temp == 22.0
 
 
+class TestZoneVarianceFromNVLimits:
+    """Test min_temp/max_temp use NV_Limits' asymmetric Variance*Master* fields.
+
+    Regression test for the bug where zone min_temp/max_temp both collapsed
+    to the current setpoint because the code only read the flat
+    ZoneTemperatureSetpointVariance_oC field instead of the real,
+    direction-specific NV_Limits.UserSetpoint_oC.Variance{Above,Below}Master{Heat,Cool}
+    fields. Note these fields carry a signed delta as reported by the
+    device (negative for Below, positive for Above) and no _oC suffix.
+    """
+
+    @staticmethod
+    def _make_zone_with_state(last_known_state: dict[str, Any]) -> ActronAirZone:
+        """Create a zone with the given last_known_state."""
+        status = ActronAirStatus(
+            isOnline=True,
+            lastKnownState=last_known_state,
+        )
+        return status.remote_zone_info[0]
+
+    def test_heat_mode_uses_asymmetric_nv_limits_variance(self) -> None:
+        """HEAT mode: max uses VarianceAboveMasterHeat, min uses VarianceBelowMasterHeat."""
+        zone = self._make_zone_with_state(
+            {
+                "NV_Limits": {
+                    "UserSetpoint_oC": {
+                        "setHeat_Min": 10.0,
+                        "setHeat_Max": 30.0,
+                        "VarianceAboveMasterHeat": 7,
+                        "VarianceBelowMasterHeat": -3,
+                    }
+                },
+                "UserAirconSettings": {
+                    "isOn": True,
+                    "Mode": "HEAT",
+                    "EnabledZones": [True],
+                    "TemperatureSetpoint_Heat_oC": 20.0,
+                },
+                "RemoteZoneInfo": [
+                    {"ZoneNumber": 0, "LiveTemp_oC": 20.0, "EnabledZone": True, "CanOperate": True}
+                ],
+            }
+        )
+        # target=20: max = 20 + 7 = 27, min = 20 + (-3) = 17
+        assert zone.max_temp == 27.0
+        assert zone.min_temp == 17.0
+        assert zone.max_temp != zone.min_temp
+        assert zone.max_temp != zone.parent_status.user_aircon_settings.current_setpoint
+        assert zone.min_temp != zone.parent_status.user_aircon_settings.current_setpoint
+        # Asymmetric: the above/below offsets are not mirror images of each other
+        assert (zone.max_temp - 20.0) != (20.0 - zone.min_temp)
+
+    def test_cool_mode_uses_asymmetric_nv_limits_variance(self) -> None:
+        """COOL mode: max uses VarianceAboveMasterCool, min uses VarianceBelowMasterCool."""
+        zone = self._make_zone_with_state(
+            {
+                "NV_Limits": {
+                    "UserSetpoint_oC": {
+                        "setCool_Min": 10.0,
+                        "setCool_Max": 32.0,
+                        "VarianceAboveMasterCool": 3,
+                        "VarianceBelowMasterCool": -3,
+                    }
+                },
+                "UserAirconSettings": {
+                    "isOn": True,
+                    "Mode": "COOL",
+                    "EnabledZones": [True],
+                    "TemperatureSetpoint_Cool_oC": 24.0,
+                },
+                "RemoteZoneInfo": [
+                    {"ZoneNumber": 0, "LiveTemp_oC": 24.0, "EnabledZone": True, "CanOperate": True}
+                ],
+            }
+        )
+        # target=24: max = 24 + 3 = 27, min = 24 + (-3) = 21
+        assert zone.max_temp == 27.0
+        assert zone.min_temp == 21.0
+        assert zone.max_temp != zone.min_temp
+        assert zone.max_temp != zone.parent_status.user_aircon_settings.current_setpoint
+        assert zone.min_temp != zone.parent_status.user_aircon_settings.current_setpoint
+
+    def test_falls_back_to_flat_variance_when_nv_limits_fields_missing(self) -> None:
+        """When NV_Limits omits the Variance*Master* fields, fall back to the flat field."""
+        zone = self._make_zone_with_state(
+            {
+                "NV_Limits": {
+                    "UserSetpoint_oC": {
+                        "setHeat_Min": 10.0,
+                        "setHeat_Max": 30.0,
+                    }
+                },
+                "UserAirconSettings": {
+                    "isOn": True,
+                    "Mode": "HEAT",
+                    "EnabledZones": [True],
+                    "TemperatureSetpoint_Heat_oC": 20.0,
+                    "ZoneTemperatureSetpointVariance_oC": 2.0,
+                },
+                "RemoteZoneInfo": [
+                    {"ZoneNumber": 0, "LiveTemp_oC": 20.0, "EnabledZone": True, "CanOperate": True}
+                ],
+            }
+        )
+        assert zone.max_temp == 22.0
+        assert zone.min_temp == 18.0
+
+
 class TestZoneCurrentSetpoint:
     """Test current_setpoint property returns mode-aware setpoint."""
 

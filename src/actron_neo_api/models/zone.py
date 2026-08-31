@@ -247,26 +247,37 @@ class ActronAirZone(BaseModel):
         """Return the maximum temperature that can be set.
 
         Mode-aware: uses heat limits/setpoint when in HEAT mode,
-        cool limits/setpoint otherwise (COOL, AUTO, FAN).
+        cool limits/setpoint otherwise (COOL, AUTO, FAN). The offset comes
+        from NV_Limits.UserSetpoint_oC's directional Above field (a signed
+        delta added directly to the setpoint), falling back to the flat
+        zone_temperature_setpoint_variance when NV_Limits does not report it.
         """
         settings = self.parent_status.user_aircon_settings
         limit = self.parent_status.max_temp
         target = settings.current_setpoint
-        variance = settings.zone_temperature_setpoint_variance
-        return min(limit, target + variance)
+        variance_above = self.parent_status.zone_variance_above_c
+        if variance_above is not None:
+            return min(limit, target + variance_above)
+        return min(limit, target + settings.zone_temperature_setpoint_variance)
 
     @property
     def min_temp(self) -> float:
         """Return the minimum temperature that can be set.
 
         Mode-aware: uses heat limits/setpoint when in HEAT mode,
-        cool limits/setpoint otherwise (COOL, AUTO, FAN).
+        cool limits/setpoint otherwise (COOL, AUTO, FAN). The offset comes
+        from NV_Limits.UserSetpoint_oC's directional Below field (a signed,
+        negative delta added directly to the setpoint), falling back to the
+        flat zone_temperature_setpoint_variance when NV_Limits does not
+        report it.
         """
         settings = self.parent_status.user_aircon_settings
         limit = self.parent_status.min_temp
         target = settings.current_setpoint
-        variance = settings.zone_temperature_setpoint_variance
-        return max(limit, target - variance)
+        variance_below = self.parent_status.zone_variance_below_c
+        if variance_below is not None:
+            return max(limit, target + variance_below)
+        return max(limit, target - settings.zone_temperature_setpoint_variance)
 
     # Command generation methods
     def _set_temperature_command(self, temperature: float) -> dict[str, Any]:

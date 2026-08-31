@@ -308,6 +308,40 @@ class ActronAirStatus(BaseModel):
         except (KeyError, TypeError, ValueError):
             return DEFAULT_MAX_SETPOINT
 
+    @property
+    def zone_variance_above_c(self) -> float | None:
+        """Return the signed offset above the master setpoint a zone may be set.
+
+        Mode-aware: uses VarianceAboveMasterHeat in HEAT mode,
+        VarianceAboveMasterCool otherwise. The device reports this as a
+        positive delta to add directly to the master setpoint. Returns None
+        if the field is absent from NV_Limits, so callers can fall back to
+        another source.
+        """
+        is_heat = self._get_current_mode() == AC_MODE_HEAT
+        variance_key = "VarianceAboveMasterHeat" if is_heat else "VarianceAboveMasterCool"
+        try:
+            return float(self.last_known_state["NV_Limits"]["UserSetpoint_oC"][variance_key])
+        except (KeyError, TypeError, ValueError):
+            return None
+
+    @property
+    def zone_variance_below_c(self) -> float | None:
+        """Return the signed offset below the master setpoint a zone may be set.
+
+        Mode-aware: uses VarianceBelowMasterHeat in HEAT mode,
+        VarianceBelowMasterCool otherwise. The device reports this as a
+        negative delta to add directly to the master setpoint. Returns None
+        if the field is absent from NV_Limits, so callers can fall back to
+        another source.
+        """
+        is_heat = self._get_current_mode() == AC_MODE_HEAT
+        variance_key = "VarianceBelowMasterHeat" if is_heat else "VarianceBelowMasterCool"
+        try:
+            return float(self.last_known_state["NV_Limits"]["UserSetpoint_oC"][variance_key])
+        except (KeyError, TypeError, ValueError):
+            return None
+
     def _process_peripherals(self) -> None:
         """Process peripheral devices from the last_known_state and extract their sensor data.
 
