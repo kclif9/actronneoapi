@@ -151,6 +151,10 @@ class ActronAirZone(BaseModel):
     exists: bool = Field(False, alias="NV_Exists")
     temperature_setpoint_cool_c: float = Field(0.0, alias="TemperatureSetpoint_Cool_oC")
     temperature_setpoint_heat_c: float = Field(0.0, alias="TemperatureSetpoint_Heat_oC")
+    min_cool_setpoint: float | None = Field(None, alias="MinCoolSetpoint")
+    max_cool_setpoint: float | None = Field(None, alias="MaxCoolSetpoint")
+    min_heat_setpoint: float | None = Field(None, alias="MinHeatSetpoint")
+    max_heat_setpoint: float | None = Field(None, alias="MaxHeatSetpoint")
     sensors: dict[str, ActronAirZoneSensor] = Field(default_factory=dict, alias="Sensors")
     variable_air_volume: bool = Field(False, alias="NV_VAV")
     individual_temperature_control: bool = Field(False, alias="NV_ITC")
@@ -242,17 +246,63 @@ class ActronAirZone(BaseModel):
             return self.temperature_setpoint_heat_c
         return self.temperature_setpoint_cool_c
 
+    def _is_heat_mode(self) -> bool:
+        """Return True when the parent system is in HEAT mode."""
+        return self.parent_status.user_aircon_settings.mode.upper() == AC_MODE_HEAT
+
+    def _system_variance(self, key: str) -> float | None:
+        """Read a zone variance limit from ``NV_Limits.UserSetpoint_oC``.
+
+        Some controllers publish the allowed zone offset from the master
+        setpoint as ``VarianceAboveMasterHeat`` / ``VarianceBelowMasterCool``
+        (and their counterparts) instead of
+        ``UserAirconSettings.ZoneTemperatureSetpointVariance_oC``.
+
+        Returns:
+            The absolute variance in degrees, or None when not published.
+
+        """
+        state = self.parent_status.last_known_state
+        if not isinstance(state, dict):
+            return None
+        limits = state.get("NV_Limits")
+        user_setpoint = limits.get("UserSetpoint_oC") if isinstance(limits, dict) else None
+        if not isinstance(user_setpoint, dict) or key not in user_setpoint:
+            return None
+        try:
+            return abs(float(user_setpoint[key]))
+        except (TypeError, ValueError):
+            return None
+
     @property
     def max_temp(self) -> float:
         """Return the maximum temperature that can be set.
 
         Mode-aware: uses heat limits/setpoint when in HEAT mode,
         cool limits/setpoint otherwise (COOL, AUTO, FAN).
+
+        Resolution order:
+
+        1. The zone's own ``MaxHeatSetpoint`` / ``MaxCoolSetpoint``.
+        2. Master setpoint plus ``NV_Limits.UserSetpoint_oC.VarianceAboveMaster*``.
+        3. Master setpoint plus ``UserAirconSettings.ZoneTemperatureSetpointVariance_oC``.
+
+        The result is always clamped to the system-wide limit.
         """
         settings = self.parent_status.user_aircon_settings
         limit = self.parent_status.max_temp
         target = settings.current_setpoint
-        variance = settings.zone_temperature_setpoint_variance
+        is_heat = self._is_heat_mode()
+
+        zone_limit = self.max_heat_setpoint if is_heat else self.max_cool_setpoint
+        if zone_limit is not None:
+            return min(limit, zone_limit)
+
+        variance = self._system_variance(
+            "VarianceAboveMasterHeat" if is_heat else "VarianceAboveMasterCool"
+        )
+        if variance is None:
+            variance = settings.zone_temperature_setpoint_variance
         return min(limit, target + variance)
 
     @property
@@ -261,11 +311,24 @@ class ActronAirZone(BaseModel):
 
         Mode-aware: uses heat limits/setpoint when in HEAT mode,
         cool limits/setpoint otherwise (COOL, AUTO, FAN).
+
+        Resolution order mirrors :attr:`max_temp` using the ``Min*`` /
+        ``VarianceBelowMaster*`` counterparts.
         """
         settings = self.parent_status.user_aircon_settings
         limit = self.parent_status.min_temp
         target = settings.current_setpoint
-        variance = settings.zone_temperature_setpoint_variance
+        is_heat = self._is_heat_mode()
+
+        zone_limit = self.min_heat_setpoint if is_heat else self.min_cool_setpoint
+        if zone_limit is not None:
+            return max(limit, zone_limit)
+
+        variance = self._system_variance(
+            "VarianceBelowMasterHeat" if is_heat else "VarianceBelowMasterCool"
+        )
+        if variance is None:
+            variance = settings.zone_temperature_setpoint_variance
         return max(limit, target - variance)
 
     # Command generation methods

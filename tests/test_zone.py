@@ -695,3 +695,123 @@ class TestZoneCapabilityFields:
         assert zone.variable_air_volume is False
         assert zone.individual_temperature_control is False
         assert zone.integrated_humidity_tracking is True
+
+
+class TestZoneTempLimitsFromControllerLimits:
+    """Controller-published zone limits take precedence over the legacy variance field.
+
+    Some systems never send ``UserAirconSettings.ZoneTemperatureSetpointVariance_oC``.
+    They publish per-zone ``Min/Max{Heat,Cool}Setpoint`` values and system-wide
+    ``NV_Limits.UserSetpoint_oC.Variance{Above,Below}Master{Heat,Cool}`` instead.
+    Without these the zone range collapsed to the master setpoint.
+    """
+
+    @staticmethod
+    def _make_zone_with_state(last_known_state: dict[str, Any]) -> ActronAirZone:
+        status = ActronAirStatus(isOnline=True, lastKnownState=last_known_state)
+        return status.remote_zone_info[0]
+
+    @staticmethod
+    def _base_state(mode: str, zone_extra: dict[str, Any] | None = None) -> dict[str, Any]:
+        zone: dict[str, Any] = {"ZoneNumber": 0, "LiveTemp_oC": 20.0, "CanOperate": True}
+        zone.update(zone_extra or {})
+        return {
+            "NV_Limits": {
+                "UserSetpoint_oC": {
+                    "setCool_Min": 18.0,
+                    "setCool_Max": 32.0,
+                    "setHeat_Min": 10.0,
+                    "setHeat_Max": 26.0,
+                    "VarianceAboveMasterCool": 2,
+                    "VarianceAboveMasterHeat": 2,
+                    "VarianceBelowMasterCool": -2,
+                    "VarianceBelowMasterHeat": -2,
+                }
+            },
+            "UserAirconSettings": {
+                "isOn": True,
+                "Mode": mode,
+                "EnabledZones": [True],
+                "TemperatureSetpoint_Heat_oC": 21.5,
+                "TemperatureSetpoint_Cool_oC": 26.0,
+            },
+            "RemoteZoneInfo": [zone],
+        }
+
+    def test_zone_heat_limits_used_in_heat_mode(self) -> None:
+        zone = self._make_zone_with_state(
+            self._base_state(
+                "HEAT",
+                {
+                    "MinHeatSetpoint": 19.5,
+                    "MaxHeatSetpoint": 23.5,
+                    "MinCoolSetpoint": 24.0,
+                    "MaxCoolSetpoint": 28.0,
+                },
+            )
+        )
+        assert zone.min_temp == 19.5
+        assert zone.max_temp == 23.5
+
+    def test_zone_cool_limits_used_in_cool_mode(self) -> None:
+        zone = self._make_zone_with_state(
+            self._base_state(
+                "COOL",
+                {
+                    "MinHeatSetpoint": 19.5,
+                    "MaxHeatSetpoint": 23.5,
+                    "MinCoolSetpoint": 24.0,
+                    "MaxCoolSetpoint": 28.0,
+                },
+            )
+        )
+        assert zone.min_temp == 24.0
+        assert zone.max_temp == 28.0
+
+    def test_zone_limits_are_clamped_to_system_limits(self) -> None:
+        zone = self._make_zone_with_state(
+            self._base_state("HEAT", {"MinHeatSetpoint": 5.0, "MaxHeatSetpoint": 40.0})
+        )
+        assert zone.min_temp == 10.0
+        assert zone.max_temp == 26.0
+
+    def test_nv_limits_variance_used_when_zone_limits_missing_heat(self) -> None:
+        zone = self._make_zone_with_state(self._base_state("HEAT"))
+        # master heat 21.5, VarianceBelowMasterHeat=-2 / VarianceAboveMasterHeat=2
+        assert zone.min_temp == 19.5
+        assert zone.max_temp == 23.5
+
+    def test_nv_limits_variance_used_when_zone_limits_missing_cool(self) -> None:
+        zone = self._make_zone_with_state(self._base_state("COOL"))
+        assert zone.min_temp == 24.0
+        assert zone.max_temp == 28.0
+
+    def test_nv_limits_variance_clamped_to_system_limits(self) -> None:
+        state = self._base_state("HEAT")
+        state["UserAirconSettings"]["TemperatureSetpoint_Heat_oC"] = 25.0
+        zone = self._make_zone_with_state(state)
+        assert zone.max_temp == 26.0
+        assert zone.min_temp == 23.0
+
+    def test_legacy_variance_field_still_used_as_last_resort(self) -> None:
+        state = self._base_state("HEAT")
+        for key in (
+            "VarianceAboveMasterCool",
+            "VarianceAboveMasterHeat",
+            "VarianceBelowMasterCool",
+            "VarianceBelowMasterHeat",
+        ):
+            del state["NV_Limits"]["UserSetpoint_oC"][key]
+        state["UserAirconSettings"]["ZoneTemperatureSetpointVariance_oC"] = 3.0
+        zone = self._make_zone_with_state(state)
+        assert zone.min_temp == 18.5
+        assert zone.max_temp == 24.5
+
+    def test_invalid_nv_limits_variance_falls_back_to_legacy_field(self) -> None:
+        state = self._base_state("HEAT")
+        state["NV_Limits"]["UserSetpoint_oC"]["VarianceAboveMasterHeat"] = "bad"
+        state["NV_Limits"]["UserSetpoint_oC"]["VarianceBelowMasterHeat"] = None
+        state["UserAirconSettings"]["ZoneTemperatureSetpointVariance_oC"] = 1.0
+        zone = self._make_zone_with_state(state)
+        assert zone.min_temp == 20.5
+        assert zone.max_temp == 22.5
