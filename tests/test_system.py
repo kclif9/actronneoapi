@@ -174,6 +174,30 @@ class TestOutdoorUnitAliasParsing:
         unit = ActronAirOutdoorUnit.model_validate({"SoftwareVersion": None})
         assert unit.software_version == ""
 
+    def test_model_number_coerces_integer_value(self) -> None:
+        """model_number accepts integer payloads (seen in the wild as 561)."""
+        unit = ActronAirOutdoorUnit.model_validate({"ModelNumber": 561})
+        assert unit.model_number == "561"
+
+    def test_serial_number_coerces_integer_value(self) -> None:
+        """serial_number accepts integer payloads and normalizes to string."""
+        unit = ActronAirOutdoorUnit.model_validate({"SerialNumber": 12345})
+        assert unit.serial_number == "12345"
+
+    def test_family_coerces_integer_value(self) -> None:
+        """family accepts integer payloads and normalizes to string."""
+        unit = ActronAirOutdoorUnit.model_validate({"Family": 7})
+        assert unit.family == "7"
+
+    def test_identification_fields_handle_none_value(self) -> None:
+        """Identification fields normalize explicit None payloads to empty string."""
+        unit = ActronAirOutdoorUnit.model_validate(
+            {"ModelNumber": None, "SerialNumber": None, "Family": None}
+        )
+        assert unit.model_number == ""
+        assert unit.serial_number == ""
+        assert unit.family == ""
+
     def test_defaults_to_empty_when_missing(self) -> None:
         """Fields default to empty values when not in data."""
         unit = ActronAirOutdoorUnit.model_validate({})
