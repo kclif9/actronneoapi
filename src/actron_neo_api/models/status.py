@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from ..const import AC_MODE_HEAT, DEFAULT_MAX_SETPOINT, DEFAULT_MIN_SETPOINT
 from .settings import ActronAirUserAirconSettings
@@ -44,6 +44,18 @@ class ActronAirStatus(BaseModel):
     peripherals: list[ActronAirPeripheral] = Field(default_factory=list)
     _api: Any | None = None
     serial_number: str | None = None
+
+    @field_validator("last_known_state", mode="before")
+    @classmethod
+    def normalize_last_known_state(cls, value: Any) -> Any:
+        """Treat a null last known state as empty.
+
+        The API returns ``lastKnownState: null`` for systems that no longer
+        report, such as a replaced controller still linked to the account.
+        """
+        if value is None:
+            return {}
+        return value
 
     def model_post_init(self, __context: Any) -> None:
         """Post-initialization hook to parse nested components."""

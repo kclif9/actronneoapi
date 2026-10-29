@@ -456,6 +456,14 @@ class TestStatusPeripheralMethods:
 class TestStatusParseNestedComponents:
     """Test parse_nested_components method."""
 
+    def test_null_last_known_state(self):
+        """Test a system that reports a null last known state."""
+        status = ActronAirStatus(serial_number="TEST123", isOnline=False, lastKnownState=None)
+
+        assert status.last_known_state == {}
+        assert status.remote_zone_info == []
+        assert status.peripherals == []
+
     def test_parse_all_components(self, full_status_data):
         """Test parsing all nested components."""
         status = ActronAirStatus.model_validate(full_status_data)
