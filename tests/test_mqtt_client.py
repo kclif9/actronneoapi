@@ -1444,3 +1444,88 @@ class TestNeoGetAllOnConnect:
             "actron-cloud/user-1/neo/abc123/app/cmd",
             "actron-cloud/user-1/neo/def456/app/cmd",
         ]
+
+
+class TestPlatformSegment:
+    """Topic paths carry the platform segment of the system being subscribed."""
+
+    def test_build_topic_set_with_que_segment(self) -> None:
+        topics = MQTTRTClient.build_topic_set("user-1", "21J07604", platform_segment="QUE")
+        assert topics.full_status == "actron-cloud/user-1/QUE/21j07604/mwc/full-status"
+        assert topics.status_change == "actron-cloud/user-1/QUE/21j07604/mwc/status-change"
+        assert MQTTRTClient.build_command_topic("user-1", "21J07604", platform_segment="QUE") == (
+            "actron-cloud/user-1/QUE/21j07604/app/cmd"
+        )
+        assert MQTTRTClient.build_system_wildcard_topic("user-1", "21J07604", "QUE") == (
+            "actron-cloud/user-1/QUE/21j07604/#"
+        )
+        assert MQTTRTClient.is_que_segment("QUE")
+        assert MQTTRTClient.is_que_segment("que")
+        assert not MQTTRTClient.is_que_segment("neo")
+
+    def test_default_segment_is_neo(self) -> None:
+        topics = MQTTRTClient.build_topic_set("user-1", "ABC123")
+        assert topics.full_status == "actron-cloud/user-1/neo/abc123/mwc/full-status"
+
+    def test_empty_segment_rejected(self) -> None:
+        with pytest.raises(ValueError):
+            MQTTRTClient.build_topic_set("user-1", "ABC123", platform_segment=" ")
+
+
+class TestQueSubscriptions:
+    """Que systems are covered by one per-device wildcard subscription."""
+
+    @staticmethod
+    def _client() -> MQTTRTClient:
+        return MQTTRTClient(
+            RealtimeConnectionDetails(
+                endpoint="4.237.217.248", port=8883, protocol="TLS", user_id="user-1"
+            ),
+            user_email="test@example.com",
+            access_token="token-123",
+            platform_segment="QUE",
+        )
+
+    @pytest.mark.asyncio
+    async def test_subscribe_and_unsubscribe_system_use_wildcard(self) -> None:
+        client = self._client()
+        broker = _FakeMQTTClient()
+        client._client = broker  # noqa: SLF001
+
+        await client.subscribe_system("21J07604")
+        await client.unsubscribe_system("21J07604")
+
+        wildcard = "actron-cloud/user-1/QUE/21j07604/#"
+        assert broker.subscriptions == [wildcard]
+        assert broker.unsubscriptions == [wildcard]
+        assert [topic for topic, _ in broker.published] == [
+            "actron-cloud/user-1/QUE/21j07604/app/cmd"
+        ]
+
+    @pytest.mark.asyncio
+    async def test_status_change_broadcast_topic_is_forwarded(self) -> None:
+        client = self._client()
+        await client._handle_message(  # noqa: SLF001
+            "actron-cloud/user-1/QUE/21j07604/mwc/status-change-broadcast",
+            b'{"RemoteZoneInfo[6].LiveTemp_oC":20.8,"type":"status-change-broadcast","wcFirmware":"1.456.1.598"}',
+        )
+        event = client._event_queue.get_nowait()  # noqa: SLF001
+        assert isinstance(event, RealtimeMessage)
+        assert event.topic.endswith("/mwc/status-change-broadcast")
+        assert event.payload["RemoteZoneInfo[6].LiveTemp_oC"] == 20.8
+
+    @pytest.mark.asyncio
+    async def test_full_status_broadcast_is_forwarded_without_model(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """A bare Que snapshot is passed through untouched and without warnings."""
+        client = self._client()
+        await client._handle_message(  # noqa: SLF001
+            "actron-cloud/user-1/QUE/21j03262/mwc/full-status-broadcast",
+            b'{"<21J03262>":{"Cloud":{}},"RemoteZoneInfo":[{"CanOperate":true}]}',
+        )
+        event = client._event_queue.get_nowait()  # noqa: SLF001
+        assert isinstance(event, RealtimeMessage)
+        assert event.domain_model is None
+        assert event.payload["RemoteZoneInfo"][0]["CanOperate"] is True
+        assert "Failed to parse" not in caplog.text

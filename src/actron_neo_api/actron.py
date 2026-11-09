@@ -46,6 +46,16 @@ from .state import StateManager
 
 _LOGGER = logging.getLogger(__name__)
 
+# Top-level sections of a lastKnownState block; their presence identifies a
+# bare state snapshot published without any wrapper.
+_STATE_SECTION_KEYS = (
+    "AirconSystem",
+    "UserAirconSettings",
+    "RemoteZoneInfo",
+    "LiveAircon",
+    "MasterInfo",
+)
+
 # Segments of a flat broadcast key: a name, or a bracketed list index.
 _FLAT_KEY_SEGMENT_RE = re.compile(r"([^.\[\]]+)|\[(\d+)\]")
 
@@ -581,7 +591,7 @@ class ActronAirAPI:
             if not token:
                 raise ActronAirAuthError("No OAuth access token available for realtime transport")
 
-            if self.platform == PLATFORM_QUE:
+            if self._realtime_details_use_signalr(details):
                 # Reuse the API session so an injected one covers the realtime
                 # transport too. The transport only closes a session it created
                 # itself, and every request it makes carries its own timeout,
@@ -593,6 +603,7 @@ class ActronAirAPI:
                     await self._resolve_mqtt_username(),
                     token,
                     client_id=client_id,
+                    platform_segment=self._mqtt_platform_segment(),
                 )
 
             if rt_client is None:
@@ -631,6 +642,27 @@ class ActronAirAPI:
             _LOGGER.exception("Unexpected error starting realtime push; falling back to polling")
             await self._cleanup_failed_push(rt_client)
             return False
+
+    def _mqtt_platform_segment(self) -> str:
+        """Return the platform element of this account's MQTT topic paths.
+
+        Neo devices publish under ``neo``; Que devices publish under ``QUE``
+        (the broker treats topic names as case-sensitive).
+        """
+        return "QUE" if self.platform == PLATFORM_QUE else "neo"
+
+    @staticmethod
+    def _realtime_details_use_signalr(details: RealtimeConnectionDetails) -> bool:
+        """Return whether connection details describe a SignalR (HTTP) endpoint.
+
+        The transport is chosen from the details themselves rather than the
+        platform: both Neo and Que clouds publish an MQTT broker through
+        ``api/v0/messaging/connection/details``, and only the documented Que
+        SignalR path is an HTTP endpoint.
+        """
+        protocol = details.protocol.strip().lower()
+        endpoint = details.endpoint.strip().lower()
+        return protocol in {"http", "https"} or endpoint.startswith(("http://", "https://"))
 
     async def _resolve_mqtt_username(self) -> str:
         """Return the account email used to identify MQTT broker connections.
@@ -804,20 +836,21 @@ class ActronAirAPI:
                     _LOGGER.debug("Realtime details link %s lookup failed", rel, exc_info=True)
 
         # APK evidence (Retrofit base URL includes /api/v0/) resolves this to
-        # /api/v0/messaging/connection/details.
-        if self.platform == PLATFORM_NEO:
-            endpoint = "api/v0/messaging/connection/details"
-            try:
-                payload = await self._make_request("get", endpoint)
-                details = self._parse_realtime_details_payload(payload)
-                if details is not None:
-                    return details
-            except Exception:
-                _LOGGER.debug(
-                    "Realtime details endpoint lookup failed for %s",
-                    endpoint,
-                    exc_info=True,
-                )
+        # /api/v0/messaging/connection/details. The Que cloud serves the same
+        # endpoint with the same MQTT broker shape, so it is probed for both
+        # platforms before falling back to the Que SignalR path.
+        endpoint = "api/v0/messaging/connection/details"
+        try:
+            payload = await self._make_request("get", endpoint)
+            details = self._parse_realtime_details_payload(payload)
+            if details is not None:
+                return details
+        except Exception:
+            _LOGGER.debug(
+                "Realtime details endpoint lookup failed for %s",
+                endpoint,
+                exc_info=True,
+            )
 
         # Que fallback endpoint from documented SignalR path.
         if self.platform == PLATFORM_QUE:
@@ -961,10 +994,18 @@ class ActronAirAPI:
             broadcast or cannot be validated.
         """
         event = payload.get("event")
-        if not isinstance(event, dict) or event.get("type") != "full-status-broadcast":
+        metadata = ActronAirAPI._mqtt_status_change_metadata_keys()
+        if isinstance(event, dict) and event.get("type") == "full-status-broadcast":
+            last_known_state = {key: value for key, value in event.items() if key != "type"}
+        elif payload.get("type") == "full-status-broadcast" or any(
+            section in payload for section in _STATE_SECTION_KEYS
+        ):
+            # Que publishes the bare state block on the full-status channel:
+            # the well-known sections sit at the top level next to the marker.
+            last_known_state = {key: value for key, value in payload.items() if key not in metadata}
+        else:
             return None
 
-        last_known_state = {key: value for key, value in event.items() if key != "type"}
         if not last_known_state:
             return None
 
@@ -1064,13 +1105,20 @@ class ActronAirAPI:
         """Return the state-bearing body of a status-change-broadcast payload.
 
         Neo wraps realtime deltas in ``payload["event"]`` with a ``type``
-        marker; every other key in that dict is a state delta.
+        marker; every other key in that dict is a state delta. Que sends the
+        delta flat at the top level with the marker beside it.
         """
         event = payload.get("event")
-        if not isinstance(event, dict) or event.get("type") != "status-change-broadcast":
-            return None
-        body = {key: value for key, value in event.items() if key != "type"}
-        return body or None
+        if isinstance(event, dict) and event.get("type") == "status-change-broadcast":
+            body = {key: value for key, value in event.items() if key != "type"}
+            return body or None
+        # Que publishes the same flat delta at the top level, with the type
+        # marker and firmware version beside the state keys.
+        if payload.get("type") == "status-change-broadcast":
+            metadata = ActronAirAPI._mqtt_status_change_metadata_keys()
+            body = {key: value for key, value in payload.items() if key not in metadata}
+            return body or None
+        return None
 
     @classmethod
     def _apply_broadcast_delta(
@@ -1216,6 +1264,7 @@ class ActronAirAPI:
         """Return top-level status-change keys that are metadata, not state."""
         return {
             "event",
+            "type",
             "wcFirmware",
             "correlationId",
             "commandResponse",
@@ -1228,13 +1277,19 @@ class ActronAirAPI:
 
     @staticmethod
     def _is_mqtt_status_change_topic(topic: str) -> bool:
-        """Return whether a realtime topic is the Neo status-change channel."""
-        return topic.endswith("/mwc/status-change")
+        """Return whether a realtime topic is a status-change channel.
+
+        Neo uses ``mwc/status-change``; Que uses ``mwc/status-change-broadcast``.
+        """
+        return topic.endswith(("/mwc/status-change", "/mwc/status-change-broadcast"))
 
     @staticmethod
     def _is_mqtt_full_status_topic(topic: str) -> bool:
-        """Return whether a realtime topic is the Neo full-status channel."""
-        return topic.endswith("/mwc/full-status")
+        """Return whether a realtime topic is a full-status channel.
+
+        Neo uses ``mwc/full-status``; Que uses ``mwc/full-status-broadcast``.
+        """
+        return topic.endswith(("/mwc/full-status", "/mwc/full-status-broadcast"))
 
     @staticmethod
     def _extract_realtime_serial(

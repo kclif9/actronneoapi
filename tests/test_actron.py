@@ -996,7 +996,9 @@ class TestActronAirAPIRealtimeIntegration:
                 user_email: str,
                 token: str,
                 client_id: str | None = None,
+                platform_segment: str = "neo",
             ) -> None:
+                self.platform_segment = platform_segment
                 self.details = details
                 self.user_email = user_email
                 self.token = token
@@ -1066,7 +1068,9 @@ class TestActronAirAPIRealtimeIntegration:
                 user_email: str,
                 token: str,
                 client_id: str | None = None,
+                platform_segment: str = "neo",
             ) -> None:
+                self.platform_segment = platform_segment
                 self.user_email = user_email
 
             def register_callback(self, callback: Any) -> None:
@@ -1597,7 +1601,9 @@ class TestActronAirAPIRealtimeIntegration:
                 user_email: str,
                 token: str,
                 client_id: str | None = None,
+                platform_segment: str = "neo",
             ) -> None:
+                self.platform_segment = platform_segment
                 self.subscribed: list[str] = []
 
             def register_callback(self, callback: Any) -> None:
@@ -1710,7 +1716,9 @@ class TestActronAirAPIRealtimeIntegration:
                 user_email: str,
                 token: str,
                 client_id: str | None = None,
+                platform_segment: str = "neo",
             ) -> None:
+                self.platform_segment = platform_segment
                 self.disconnect = AsyncMock(return_value=None)
                 FakeMQTTClient.instances.append(self)
 
@@ -1769,7 +1777,9 @@ class TestActronAirAPIRealtimeIntegration:
                 user_email: str,
                 token: str,
                 client_id: str | None = None,
+                platform_segment: str = "neo",
             ) -> None:
+                self.platform_segment = platform_segment
                 self.disconnect = AsyncMock(return_value=None)
 
             def register_callback(self, callback: Any) -> None:
@@ -1828,7 +1838,9 @@ class TestActronAirAPIRealtimeIntegration:
                 user_email: str,
                 token: str,
                 client_id: str | None = None,
+                platform_segment: str = "neo",
             ) -> None:
+                self.platform_segment = platform_segment
                 self.callback: Any = None
 
             def register_callback(self, callback: Any) -> None:
@@ -2087,6 +2099,11 @@ class TestActronAirAPIRealtimeIntegration:
 
         api_q = ActronAirAPI(platform="que")
         api_q._get_system_link = lambda *_: None  # type: ignore[method-assign]
+
+        async def _no_details(_: str, __: str) -> dict[str, Any]:
+            raise RuntimeError("404")
+
+        api_q._make_request = _no_details  # type: ignore[method-assign]
         fallback = await api_q._discover_realtime_connection_details("xyz789")
         assert fallback is not None
         assert fallback.endpoint.endswith("/api/v0/messaging/app")
@@ -2720,7 +2737,9 @@ class TestActronAirAPIConnectionStateWiring:
                 user_email: str,
                 token: str,
                 client_id: str | None = None,
+                platform_segment: str = "neo",
             ) -> None:
+                self.platform_segment = platform_segment
                 self.client_id = client_id
 
             def register_callback(self, callback: Any) -> None:
@@ -2811,3 +2830,263 @@ class TestActronAirAPISessionInjection:
 
         assert isinstance(api._rt_client, FakeSignalRClient)
         assert api._rt_client.session is injected
+
+
+class TestQueRealtimeTransportSelection:
+    """Que systems use the MQTT broker the cloud publishes, not the SignalR guess."""
+
+    @pytest.mark.asyncio
+    async def test_que_discovery_probes_connection_details(self) -> None:
+        """The connection/details endpoint is probed for Que systems too."""
+        api = ActronAirAPI(platform="que")
+        api._get_system_link = lambda *_: None  # type: ignore[method-assign]
+        seen: list[str] = []
+
+        async def _req(_: str, endpoint: str) -> dict[str, Any]:
+            seen.append(endpoint)
+            return {
+                "Endpoint": "4.237.217.248",
+                "Port": "8883",
+                "Protocol": "TLS",
+                "UserId": "80df2de0-0899-4510-bc61-c48ab135c73c",
+            }
+
+        api._make_request = _req  # type: ignore[method-assign]
+        details = await api._discover_realtime_connection_details("21j07604")
+
+        assert seen == ["api/v0/messaging/connection/details"]
+        assert details is not None
+        assert details.endpoint == "4.237.217.248"
+        assert details.port == 8883
+        assert details.uses_tls
+        assert details.user_id == "80df2de0-0899-4510-bc61-c48ab135c73c"
+
+    def test_transport_choice_follows_details(self) -> None:
+        """HTTP endpoints mean SignalR; anything else is an MQTT broker."""
+        mqtt = RealtimeConnectionDetails(
+            endpoint="4.237.217.248", port=8883, protocol="TLS", user_id="u"
+        )
+        signalr = RealtimeConnectionDetails(
+            endpoint="https://que.actronair.com.au/api/v0/messaging/app",
+            port=443,
+            protocol="https",
+            user_id="unknown",
+        )
+        assert ActronAirAPI._realtime_details_use_signalr(mqtt) is False
+        assert ActronAirAPI._realtime_details_use_signalr(signalr) is True
+
+    @pytest.mark.asyncio
+    async def test_start_push_on_que_uses_mqtt_with_que_topics(self) -> None:
+        """A Que system with MQTT details starts the MQTT transport on que/ topics."""
+        api = ActronAirAPI(platform="que")
+        api.oauth2_auth.ensure_token_valid = AsyncMock(return_value=None)
+        api.oauth2_auth.access_token = "token"
+        api.oauth2_auth.get_user_info = AsyncMock(return_value=None)
+        api.systems = [ActronAirSystemInfo(serial="21J07604")]
+
+        async def _discover(_: str) -> RealtimeConnectionDetails:
+            return RealtimeConnectionDetails(
+                endpoint="4.237.217.248", port=8883, protocol="TLS", user_id="u"
+            )
+
+        api._discover_realtime_connection_details = _discover  # type: ignore[method-assign]
+
+        class _FakeMQTT:
+            def __init__(
+                self,
+                details: RealtimeConnectionDetails,
+                user_email: str,
+                token: str,
+                client_id: str | None = None,
+                platform_segment: str = "neo",
+            ) -> None:
+                self.platform_segment = platform_segment
+                self.subscribed: list[str] = []
+
+            def register_callback(self, callback: Any) -> None:
+                self.callback = callback
+
+            async def connect(self) -> None:
+                pass
+
+            async def subscribe_system(self, serial: str) -> None:
+                self.subscribed.append(serial)
+
+            async def disconnect(self) -> None:
+                pass
+
+        from actron_neo_api import actron as actron_module
+
+        original_mqtt = actron_module.MQTTRTClient
+        try:
+            actron_module.MQTTRTClient = _FakeMQTT  # type: ignore[assignment,misc]
+            started = await api.start_push()
+        finally:
+            actron_module.MQTTRTClient = original_mqtt  # type: ignore[assignment,misc]
+
+        assert started is True
+        assert isinstance(api._rt_client, _FakeMQTT)
+        assert api._rt_client.subscribed == ["21j07604"]
+        assert api._rt_client.platform_segment == "QUE"
+
+    @pytest.mark.asyncio
+    async def test_start_push_on_que_keeps_signalr_for_http_details(self) -> None:
+        """Without an MQTT broker the Que SignalR fallback is still used."""
+        api = ActronAirAPI(platform="que")
+        api.oauth2_auth.ensure_token_valid = AsyncMock(return_value=None)
+        api.oauth2_auth.access_token = "token"
+        api.systems = [ActronAirSystemInfo(serial="21J07604")]
+
+        async def _discover(_: str) -> RealtimeConnectionDetails:
+            return RealtimeConnectionDetails(
+                endpoint="https://que.actronair.com.au/api/v0/messaging/app",
+                port=443,
+                protocol="https",
+                user_id="unknown",
+            )
+
+        api._discover_realtime_connection_details = _discover  # type: ignore[method-assign]
+
+        class _FakeSignalR:
+            def __init__(self, details: Any, token: str, session: Any = None) -> None:
+                self.details = details
+                self.subscribed: list[str] = []
+
+            def register_callback(self, cb: Any) -> None:
+                pass
+
+            async def connect(self) -> None:
+                pass
+
+            async def subscribe(self, serial: str) -> None:
+                self.subscribed.append(serial)
+
+            async def disconnect(self) -> None:
+                pass
+
+        from actron_neo_api import actron as actron_module
+
+        original = actron_module.SignalRRTClient
+        try:
+            actron_module.SignalRRTClient = _FakeSignalR  # type: ignore[assignment,misc]
+            started = await api.start_push()
+        finally:
+            actron_module.SignalRRTClient = original  # type: ignore[assignment,misc]
+
+        assert started is True
+        assert isinstance(api._rt_client, _FakeSignalR)
+        assert api._rt_client.subscribed == ["21j07604"]
+
+
+class TestQueRealtimePayloads:
+    """Que broadcasts arrive flat, on -broadcast topics, under a QUE segment."""
+
+    QUE_TOPIC = (
+        "actron-cloud/80df2de0-0899-4510-bc61-c48ab135c73c/QUE/21j07604/mwc/status-change-broadcast"
+    )
+
+    def test_topic_predicates_accept_que_channels(self) -> None:
+        assert ActronAirAPI._is_mqtt_status_change_topic(self.QUE_TOPIC)
+        assert ActronAirAPI._is_mqtt_status_change_topic("x/neo/abc/mwc/status-change")
+        assert not ActronAirAPI._is_mqtt_status_change_topic("x/neo/abc/mwc/full-status")
+        assert ActronAirAPI._is_mqtt_full_status_topic(
+            "actron-cloud/u/QUE/21j07604/mwc/full-status-broadcast"
+        )
+        assert ActronAirAPI._is_mqtt_full_status_topic("x/neo/abc/mwc/full-status")
+
+    def test_flat_status_change_broadcast_body(self) -> None:
+        payload = {
+            "RemoteZoneInfo[6].LiveTemp_oC": 20.8,
+            "type": "status-change-broadcast",
+            "wcFirmware": "1.456.1.598",
+        }
+        assert ActronAirAPI._status_change_broadcast(payload) == {
+            "RemoteZoneInfo[6].LiveTemp_oC": 20.8
+        }
+        assert ActronAirAPI._mqtt_status_change_contains_state(payload)
+        # A marker-only message carries no state.
+        assert (
+            ActronAirAPI._status_change_broadcast(
+                {"type": "status-change-broadcast", "wcFirmware": "1.456.1.598"}
+            )
+            is None
+        )
+
+    def test_neo_wrapped_broadcast_still_recognised(self) -> None:
+        payload = {"event": {"type": "status-change-broadcast", "MasterInfo.LiveHumidity_pc": 64.2}}
+        assert ActronAirAPI._status_change_broadcast(payload) == {
+            "MasterInfo.LiveHumidity_pc": 64.2
+        }
+
+    @pytest.mark.asyncio
+    async def test_que_flat_delta_merges_into_cached_state(self) -> None:
+        api = ActronAirAPI(platform="que")
+        base = ActronAirStatus(
+            isOnline=True,
+            lastKnownState={
+                "MasterInfo": {"LiveHumidity_pc": 60.0, "LiveTemp_oC": 21.0},
+                "RemoteZoneInfo": [
+                    {"NV_Title": "Z0", "LiveTemp_oC": 20.0},
+                    {"NV_Title": "Z1", "LiveTemp_oC": 20.0},
+                ],
+                "UserAirconSettings": {"isOn": True, "Mode": "HEAT", "EnabledZones": [True, False]},
+            },
+        )
+        api.state_manager.process_status_update("21j07604", base)
+
+        merged = await api._merge_mqtt_status_change(
+            "21j07604",
+            {
+                "RemoteZoneInfo[1].LiveTemp_oC": 22.5,
+                "MasterInfo.LiveHumidity_pc": 64.2,
+                "type": "status-change-broadcast",
+                "wcFirmware": "1.456.1.598",
+            },
+        )
+        assert merged is not None
+        assert merged.last_known_state["RemoteZoneInfo"][1]["LiveTemp_oC"] == 22.5
+        assert merged.last_known_state["MasterInfo"]["LiveHumidity_pc"] == 64.2
+        assert merged.last_known_state["RemoteZoneInfo"][0]["LiveTemp_oC"] == 20.0
+        assert "type" not in merged.last_known_state
+        assert "wcFirmware" not in merged.last_known_state
+
+    def test_flat_full_status_broadcast_parsed(self) -> None:
+        status = ActronAirAPI._parse_full_status_broadcast(
+            "21j07604",
+            {
+                "type": "full-status-broadcast",
+                "wcFirmware": "1.456.1.598",
+                "UserAirconSettings": {"isOn": True, "Mode": "COOL"},
+                "RemoteZoneInfo": [],
+            },
+        )
+        assert status is not None
+        assert status.user_aircon_settings.mode == "COOL"
+        assert "type" not in status.last_known_state
+
+    def test_mqtt_platform_segment_by_platform(self) -> None:
+        assert ActronAirAPI(platform="que")._mqtt_platform_segment() == "QUE"
+        assert ActronAirAPI(platform="neo")._mqtt_platform_segment() == "neo"
+
+
+class TestQueFullStatusSnapshot:
+    """A bare state block on the full-status channel is a complete snapshot."""
+
+    def test_bare_state_block_without_marker_is_parsed(self) -> None:
+        status = ActronAirAPI._parse_full_status_broadcast(
+            "21j03262",
+            {
+                "<21J03262>": {"Cloud": {"ConnectionState": "Connected"}},
+                "AirconSystem": {"MasterSerial": "21J03262"},
+                "UserAirconSettings": {"isOn": True, "Mode": "HEAT", "EnabledZones": [True]},
+                "RemoteZoneInfo": [{"NV_Title": "Downstairs", "CanOperate": True}],
+            },
+        )
+        assert status is not None
+        assert status.serial_number == "21j03262"
+        assert status.user_aircon_settings.mode == "HEAT"
+        assert status.zones[0].title == "Downstairs"
+
+    def test_unrelated_payload_is_not_a_snapshot(self) -> None:
+        assert ActronAirAPI._parse_full_status_broadcast("x", {"foo": 1}) is None
+        assert ActronAirAPI._parse_full_status_broadcast("x", {"type": "other"}) is None
