@@ -7,7 +7,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field, ValidationError
 
-from ..const import AC_MODE_HEAT, DEFAULT_MAX_SETPOINT, DEFAULT_MIN_SETPOINT
+from ..const import AC_MODE_HEAT, DEFAULT_MAX_SETPOINT, DEFAULT_MIN_SETPOINT, PLATFORM_QUE
 from .settings import ActronAirUserAirconSettings
 from .system import ActronAirACSystem, ActronAirAlerts, ActronAirLiveAircon, ActronAirMasterInfo
 
@@ -309,36 +309,49 @@ class ActronAirStatus(BaseModel):
             return DEFAULT_MAX_SETPOINT
 
     @property
-    def zone_variance_above_c(self) -> float | None:
-        """Return the signed offset above the master setpoint a zone may be set.
+    def platform(self) -> str | None:
+        """Return the platform ('neo' or 'que') this status was fetched from.
 
-        Mode-aware: uses VarianceAboveMasterHeat in HEAT mode,
-        VarianceAboveMasterCool otherwise. The device reports this as a
-        positive delta to add directly to the master setpoint. Returns None
-        if the field is absent from NV_Limits, so callers can fall back to
-        another source.
+        Taken from the attached API reference; None when no API is attached
+        (for example a status built directly from a payload).
         """
-        is_heat = self._get_current_mode() == AC_MODE_HEAT
-        variance_key = "VarianceAboveMasterHeat" if is_heat else "VarianceAboveMasterCool"
-        try:
-            return float(self.last_known_state["NV_Limits"]["UserSetpoint_oC"][variance_key])
-        except (KeyError, TypeError, ValueError):
-            return None
+        platform = getattr(self._api, "platform", None)
+        return platform if isinstance(platform, str) else None
 
     @property
-    def zone_variance_below_c(self) -> float | None:
-        """Return the signed offset below the master setpoint a zone may be set.
+    def zone_setpoint_offsets(self) -> tuple[float, float]:
+        """Return the (below, above) offsets a zone may deviate from the master setpoint.
 
-        Mode-aware: uses VarianceBelowMasterHeat in HEAT mode,
-        VarianceBelowMasterCool otherwise. The device reports this as a
-        negative delta to add directly to the master setpoint. Returns None
-        if the field is absent from NV_Limits, so callers can fall back to
-        another source.
+        Both values are signed deltas added to the master setpoint, so
+        ``below`` is normally <= 0 and ``above`` >= 0.
+
+        The source depends on the platform, matching each official app:
+
+        - Que (NX Gen): mode-aware NV_Limits.UserSetpoint_oC
+          ``VarianceBelowMaster{Heat,Cool}`` / ``VarianceAboveMaster{Heat,Cool}``
+          (Heat in HEAT mode, Cool otherwise). Falls back to the flat
+          variance for a key the payload omits.
+        - Neo, or platform unknown: the symmetric
+          UserAirconSettings.ZoneTemperatureSetpointVariance_oC. Neo payloads
+          also carry the NV_Limits variance keys, but the Neo app ignores
+          them and they are reported as 0.
         """
-        is_heat = self._get_current_mode() == AC_MODE_HEAT
-        variance_key = "VarianceBelowMasterHeat" if is_heat else "VarianceBelowMasterCool"
+        flat = self.user_aircon_settings.zone_temperature_setpoint_variance
+        if self.platform != PLATFORM_QUE:
+            return -flat, flat
+
+        suffix = "Heat" if self._get_current_mode() == AC_MODE_HEAT else "Cool"
+        below = self._nv_user_setpoint_value(f"VarianceBelowMaster{suffix}")
+        above = self._nv_user_setpoint_value(f"VarianceAboveMaster{suffix}")
+        return (
+            below if below is not None else -flat,
+            above if above is not None else flat,
+        )
+
+    def _nv_user_setpoint_value(self, key: str) -> float | None:
+        """Return a numeric NV_Limits.UserSetpoint_oC value, or None if absent/invalid."""
         try:
-            return float(self.last_known_state["NV_Limits"]["UserSetpoint_oC"][variance_key])
+            return float(self.last_known_state["NV_Limits"]["UserSetpoint_oC"][key])
         except (KeyError, TypeError, ValueError):
             return None
 
