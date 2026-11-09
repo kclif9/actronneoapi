@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from ..const import AC_MODE_AUTO, AC_MODE_COOL, AC_MODE_DRY, AC_MODE_FAN, AC_MODE_HEAT, AC_MODE_OFF
+from ._validators import coerce_identifier_str
 
 if TYPE_CHECKING:
     from .status import ActronAirStatus
@@ -58,16 +59,14 @@ class ActronAirOutdoorUnit(BaseModel):
 
     @field_validator("model_number", "serial_number", "software_version", "family", mode="before")
     @classmethod
-    def normalize_string_fields(cls, value: Any) -> str:
+    def normalize_string_fields(cls, value: Any) -> Any:
         """Normalize identification fields that the cloud may send as numbers.
 
         Some outdoor units report values such as ``ModelNumber`` as integers
         (for example ``561``) rather than strings, which would otherwise fail
         validation and cause the whole system status to be discarded.
         """
-        if value is None:
-            return ""
-        return str(value)
+        return coerce_identifier_str(value)
 
 
 class ActronAirLiveAircon(BaseModel):
@@ -138,6 +137,14 @@ class ActronAirACSystem(BaseModel):
         alias="OutdoorUnit",
     )
     _parent_status: "ActronAirStatus | None" = None
+
+    @field_validator(
+        "master_wc_model", "master_serial", "master_wc_firmware_version", mode="before"
+    )
+    @classmethod
+    def normalize_string_fields(cls, value: Any) -> Any:
+        """Normalize wall controller identification fields that may arrive as numbers."""
+        return coerce_identifier_str(value)
 
     def set_parent_status(self, parent: "ActronAirStatus") -> None:
         """Set reference to parent ActronStatus object.

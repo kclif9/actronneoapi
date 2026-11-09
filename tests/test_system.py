@@ -3,6 +3,7 @@
 from typing import Any
 
 import pytest
+from pydantic import ValidationError
 
 from actron_neo_api.models import ActronAirStatus
 from actron_neo_api.models.system import ActronAirACSystem, ActronAirOutdoorUnit
@@ -198,8 +199,43 @@ class TestOutdoorUnitAliasParsing:
         assert unit.serial_number == ""
         assert unit.family == ""
 
+    def test_non_scalar_identification_value_still_rejected(self) -> None:
+        """Malformed non-numeric payloads are not silently stringified."""
+        with pytest.raises(ValidationError):
+            ActronAirOutdoorUnit.model_validate({"ModelNumber": [5, 6, 1]})
+
     def test_defaults_to_empty_when_missing(self) -> None:
         """Fields default to empty values when not in data."""
         unit = ActronAirOutdoorUnit.model_validate({})
         assert unit.model_number == ""
         assert unit.software_version == ""
+
+
+class TestACSystemIdentificationParsing:
+    """Test that ACSystem identification fields tolerate numeric payloads."""
+
+    def test_identification_fields_coerce_integer_values(self) -> None:
+        """Wall controller model, serial and firmware accept integer payloads."""
+        system = ActronAirACSystem.model_validate(
+            {"MasterWCModel": 561, "MasterSerial": 12345, "MasterWCFirmwareVersion": 23}
+        )
+        assert system.master_wc_model == "561"
+        assert system.master_serial == "12345"
+        assert system.master_wc_firmware_version == "23"
+
+    def test_identification_fields_handle_none_value(self) -> None:
+        """Explicit None payloads normalize to empty string."""
+        system = ActronAirACSystem.model_validate(
+            {"MasterWCModel": None, "MasterSerial": None, "MasterWCFirmwareVersion": None}
+        )
+        assert system.master_wc_model == ""
+        assert system.master_serial == ""
+        assert system.master_wc_firmware_version == ""
+
+    def test_string_values_unchanged(self) -> None:
+        """String payloads pass through unchanged."""
+        system = ActronAirACSystem.model_validate(
+            {"MasterWCModel": "NEO-W", "MasterSerial": "ABC1"}
+        )
+        assert system.master_wc_model == "NEO-W"
+        assert system.master_serial == "ABC1"

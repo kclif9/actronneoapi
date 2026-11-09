@@ -6,7 +6,7 @@ import pytest
 
 from actron_neo_api.exceptions import ActronAirAPIError
 from actron_neo_api.models import ActronAirStatus, ActronAirZone
-from actron_neo_api.models.zone import ActronAirZoneSensor
+from actron_neo_api.models.zone import ActronAirPeripheral, ActronAirZoneSensor
 
 
 @pytest.fixture
@@ -695,3 +695,19 @@ class TestZoneCapabilityFields:
         assert zone.variable_air_volume is False
         assert zone.individual_temperature_control is False
         assert zone.integrated_humidity_tracking is True
+
+
+class TestPeripheralIdentificationParsing:
+    """Test that Peripheral identification fields tolerate numeric payloads."""
+
+    def test_identification_fields_coerce_integer_values(self) -> None:
+        """serial_number and device_type accept integer payloads."""
+        peripheral = ActronAirPeripheral.model_validate({"SerialNumber": 98765, "DeviceType": 2})
+        assert peripheral.serial_number == "98765"
+        assert peripheral.device_type == "2"
+
+    def test_identification_fields_handle_none_value(self) -> None:
+        """Explicit None payloads normalize to empty string."""
+        peripheral = ActronAirPeripheral.model_validate({"SerialNumber": None, "DeviceType": None})
+        assert peripheral.serial_number == ""
+        assert peripheral.device_type == ""
