@@ -555,6 +555,192 @@ class TestZoneTempLimitsHeatMode:
         assert zone.min_temp == 22.0
 
 
+class TestZoneVarianceFromNVLimits:
+    """Test zone min_temp/max_temp take their offsets from the platform-specific source.
+
+    Que (NX Gen) uses the signed, direction-specific
+    NV_Limits.UserSetpoint_oC.Variance{Above,Below}Master{Heat,Cool} fields
+    (negative for Below, positive for Above). Neo uses the symmetric
+    UserAirconSettings.ZoneTemperatureSetpointVariance_oC; Neo payloads also
+    carry the NV_Limits variance keys but report them as 0, so reading them
+    there would collapse both bounds to the master setpoint.
+    """
+
+    @staticmethod
+    def _make_zone_with_state(
+        last_known_state: dict[str, Any], platform: str | None = "que"
+    ) -> ActronAirZone:
+        """Create a zone with the given last_known_state on the given platform."""
+        status = ActronAirStatus(
+            isOnline=True,
+            lastKnownState=last_known_state,
+        )
+        if platform is not None:
+
+            class MockAPI:
+                pass
+
+            api = MockAPI()
+            api.platform = platform  # type: ignore[attr-defined]
+            status.set_api(api)
+        return status.remote_zone_info[0]
+
+    def test_heat_mode_uses_asymmetric_nv_limits_variance(self) -> None:
+        """HEAT mode: max uses VarianceAboveMasterHeat, min uses VarianceBelowMasterHeat."""
+        zone = self._make_zone_with_state(
+            {
+                "NV_Limits": {
+                    "UserSetpoint_oC": {
+                        "setHeat_Min": 10.0,
+                        "setHeat_Max": 30.0,
+                        "VarianceAboveMasterHeat": 7,
+                        "VarianceBelowMasterHeat": -3,
+                    }
+                },
+                "UserAirconSettings": {
+                    "isOn": True,
+                    "Mode": "HEAT",
+                    "EnabledZones": [True],
+                    "TemperatureSetpoint_Heat_oC": 20.0,
+                },
+                "RemoteZoneInfo": [
+                    {"ZoneNumber": 0, "LiveTemp_oC": 20.0, "EnabledZone": True, "CanOperate": True}
+                ],
+            }
+        )
+        # target=20: max = 20 + 7 = 27, min = 20 + (-3) = 17
+        assert zone.max_temp == 27.0
+        assert zone.min_temp == 17.0
+        assert zone.max_temp != zone.min_temp
+        assert zone.max_temp != zone.parent_status.user_aircon_settings.current_setpoint
+        assert zone.min_temp != zone.parent_status.user_aircon_settings.current_setpoint
+        # Asymmetric: the above/below offsets are not mirror images of each other
+        assert (zone.max_temp - 20.0) != (20.0 - zone.min_temp)
+
+    def test_cool_mode_uses_asymmetric_nv_limits_variance(self) -> None:
+        """COOL mode: max uses VarianceAboveMasterCool, min uses VarianceBelowMasterCool."""
+        zone = self._make_zone_with_state(
+            {
+                "NV_Limits": {
+                    "UserSetpoint_oC": {
+                        "setCool_Min": 10.0,
+                        "setCool_Max": 32.0,
+                        "VarianceAboveMasterCool": 3,
+                        "VarianceBelowMasterCool": -3,
+                    }
+                },
+                "UserAirconSettings": {
+                    "isOn": True,
+                    "Mode": "COOL",
+                    "EnabledZones": [True],
+                    "TemperatureSetpoint_Cool_oC": 24.0,
+                },
+                "RemoteZoneInfo": [
+                    {"ZoneNumber": 0, "LiveTemp_oC": 24.0, "EnabledZone": True, "CanOperate": True}
+                ],
+            }
+        )
+        # target=24: max = 24 + 3 = 27, min = 24 + (-3) = 21
+        assert zone.max_temp == 27.0
+        assert zone.min_temp == 21.0
+        assert zone.max_temp != zone.min_temp
+        assert zone.max_temp != zone.parent_status.user_aircon_settings.current_setpoint
+        assert zone.min_temp != zone.parent_status.user_aircon_settings.current_setpoint
+
+    def test_falls_back_to_flat_variance_when_nv_limits_fields_missing(self) -> None:
+        """When NV_Limits omits the Variance*Master* fields, fall back to the flat field."""
+        zone = self._make_zone_with_state(
+            {
+                "NV_Limits": {
+                    "UserSetpoint_oC": {
+                        "setHeat_Min": 10.0,
+                        "setHeat_Max": 30.0,
+                    }
+                },
+                "UserAirconSettings": {
+                    "isOn": True,
+                    "Mode": "HEAT",
+                    "EnabledZones": [True],
+                    "TemperatureSetpoint_Heat_oC": 20.0,
+                    "ZoneTemperatureSetpointVariance_oC": 2.0,
+                },
+                "RemoteZoneInfo": [
+                    {"ZoneNumber": 0, "LiveTemp_oC": 20.0, "EnabledZone": True, "CanOperate": True}
+                ],
+            }
+        )
+        assert zone.max_temp == 22.0
+        assert zone.min_temp == 18.0
+
+    @staticmethod
+    def _neo_state() -> dict[str, Any]:
+        """Neo-shaped payload: NV_Limits variance keys present but 0, flat variance 2."""
+        return {
+            "NV_Limits": {
+                "UserSetpoint_oC": {
+                    "MinGap": 0,
+                    "VarianceAboveMasterCool": 0,
+                    "VarianceAboveMasterHeat": 0,
+                    "VarianceBelowMasterCool": 0,
+                    "VarianceBelowMasterHeat": 0,
+                    "setCool_Max": 28,
+                    "setCool_Min": 10,
+                    "setHeat_Max": 28,
+                    "setHeat_Min": 10,
+                }
+            },
+            "UserAirconSettings": {
+                "isOn": True,
+                "Mode": "COOL",
+                "EnabledZones": [True],
+                "TemperatureSetpoint_Cool_oC": 21.0,
+                "TemperatureSetpoint_Heat_oC": 21.0,
+                "ZoneTemperatureSetpointVariance_oC": 2.0,
+            },
+            "RemoteZoneInfo": [
+                {"ZoneNumber": 0, "LiveTemp_oC": 21.0, "EnabledZone": True, "CanOperate": True}
+            ],
+        }
+
+    def test_neo_uses_flat_variance_and_ignores_zero_nv_limits(self) -> None:
+        """Neo: symmetric flat variance is used even though NV_Limits keys are present."""
+        zone = self._make_zone_with_state(self._neo_state(), platform="neo")
+        assert zone.min_temp == 19.0
+        assert zone.max_temp == 23.0
+
+    def test_unknown_platform_defaults_to_flat_variance(self) -> None:
+        """Without an API reference the platform is unknown; use the Neo behaviour."""
+        zone = self._make_zone_with_state(self._neo_state(), platform=None)
+        assert zone.parent_status.platform is None
+        assert zone.min_temp == 19.0
+        assert zone.max_temp == 23.0
+
+    def test_que_prefers_nv_limits_over_flat_variance(self) -> None:
+        """Que: NV_Limits keys win even when the flat field is also present."""
+        state = self._neo_state()
+        limits = state["NV_Limits"]["UserSetpoint_oC"]
+        limits["VarianceAboveMasterCool"] = 3
+        limits["VarianceBelowMasterCool"] = -1
+        zone = self._make_zone_with_state(state, platform="que")
+        assert zone.min_temp == 20.0
+        assert zone.max_temp == 24.0
+
+    def test_que_auto_mode_uses_cool_variance(self) -> None:
+        """Que: AUTO mode uses the Cool variance keys against the cool setpoint."""
+        state = self._neo_state()
+        limits = state["NV_Limits"]["UserSetpoint_oC"]
+        limits.update(
+            VarianceAboveMasterCool=2,
+            VarianceBelowMasterCool=-2,
+            VarianceAboveMasterHeat=5,
+            VarianceBelowMasterHeat=-5,
+        )
+        state["UserAirconSettings"]["Mode"] = "AUTO"
+        zone = self._make_zone_with_state(state, platform="que")
+        assert zone.min_temp == 19.0
+        assert zone.max_temp == 23.0
+
+
 class TestZoneCurrentSetpoint:
     """Test current_setpoint property returns mode-aware setpoint."""
 

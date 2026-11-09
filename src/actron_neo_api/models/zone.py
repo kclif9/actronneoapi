@@ -254,26 +254,26 @@ class ActronAirZone(BaseModel):
         """Return the maximum temperature that can be set.
 
         Mode-aware: uses heat limits/setpoint when in HEAT mode,
-        cool limits/setpoint otherwise (COOL, AUTO, FAN).
+        cool limits/setpoint otherwise (COOL, AUTO, FAN). The offset is
+        platform-specific; see ActronAirStatus.zone_setpoint_offsets.
         """
-        settings = self.parent_status.user_aircon_settings
         limit = self.parent_status.max_temp
-        target = settings.current_setpoint
-        variance = settings.zone_temperature_setpoint_variance
-        return min(limit, target + variance)
+        target = self.parent_status.user_aircon_settings.current_setpoint
+        _, above = self.parent_status.zone_setpoint_offsets
+        return min(limit, target + above)
 
     @property
     def min_temp(self) -> float:
         """Return the minimum temperature that can be set.
 
         Mode-aware: uses heat limits/setpoint when in HEAT mode,
-        cool limits/setpoint otherwise (COOL, AUTO, FAN).
+        cool limits/setpoint otherwise (COOL, AUTO, FAN). The offset is
+        platform-specific; see ActronAirStatus.zone_setpoint_offsets.
         """
-        settings = self.parent_status.user_aircon_settings
         limit = self.parent_status.min_temp
-        target = settings.current_setpoint
-        variance = settings.zone_temperature_setpoint_variance
-        return max(limit, target - variance)
+        target = self.parent_status.user_aircon_settings.current_setpoint
+        below, _ = self.parent_status.zone_setpoint_offsets
+        return max(limit, target + below)
 
     # Command generation methods
     def _set_temperature_command(self, temperature: float) -> dict[str, Any]:

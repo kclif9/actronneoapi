@@ -7,7 +7,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
-from ..const import AC_MODE_HEAT, DEFAULT_MAX_SETPOINT, DEFAULT_MIN_SETPOINT
+from ..const import AC_MODE_HEAT, DEFAULT_MAX_SETPOINT, DEFAULT_MIN_SETPOINT, PLATFORM_QUE
 from .settings import ActronAirUserAirconSettings
 from .system import ActronAirACSystem, ActronAirAlerts, ActronAirLiveAircon, ActronAirMasterInfo
 
@@ -319,6 +319,53 @@ class ActronAirStatus(BaseModel):
             return float(self.last_known_state["NV_Limits"]["UserSetpoint_oC"][limit_key])
         except (KeyError, TypeError, ValueError):
             return DEFAULT_MAX_SETPOINT
+
+    @property
+    def platform(self) -> str | None:
+        """Return the platform this status was fetched from, 'neo' or 'que'.
+
+        Taken from the attached API reference; None when no API is attached
+        (for example a status built directly from a payload).
+        """
+        platform = getattr(self._api, "platform", None)
+        return platform if isinstance(platform, str) else None
+
+    @property
+    def zone_setpoint_offsets(self) -> tuple[float, float]:
+        """Return the (below, above) offsets a zone may deviate from the master setpoint.
+
+        Both values are signed deltas added to the master setpoint, so
+        ``below`` is normally <= 0 and ``above`` >= 0.
+
+        The source depends on the platform, matching each official app:
+
+        - Que (NX Gen): mode-aware NV_Limits.UserSetpoint_oC
+          ``VarianceBelowMaster{Heat,Cool}`` / ``VarianceAboveMaster{Heat,Cool}``
+          (Heat in HEAT mode, Cool otherwise). Falls back to the flat
+          variance for a key the payload omits.
+        - Neo, or platform unknown: the symmetric
+          UserAirconSettings.ZoneTemperatureSetpointVariance_oC. Neo payloads
+          also carry the NV_Limits variance keys, but the Neo app ignores
+          them and they are reported as 0.
+        """
+        flat = self.user_aircon_settings.zone_temperature_setpoint_variance
+        if self.platform != PLATFORM_QUE:
+            return -flat, flat
+
+        suffix = "Heat" if self._get_current_mode() == AC_MODE_HEAT else "Cool"
+        below = self._nv_user_setpoint_value(f"VarianceBelowMaster{suffix}")
+        above = self._nv_user_setpoint_value(f"VarianceAboveMaster{suffix}")
+        return (
+            below if below is not None else -flat,
+            above if above is not None else flat,
+        )
+
+    def _nv_user_setpoint_value(self, key: str) -> float | None:
+        """Return a numeric NV_Limits.UserSetpoint_oC value, or None if absent/invalid."""
+        try:
+            return float(self.last_known_state["NV_Limits"]["UserSetpoint_oC"][key])
+        except (KeyError, TypeError, ValueError):
+            return None
 
     def _process_peripherals(self) -> None:
         """Process peripheral devices from the last_known_state and extract their sensor data.
