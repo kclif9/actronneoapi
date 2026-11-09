@@ -17,6 +17,7 @@ from ..const import (
     TEMP_PHYSICAL_MAX,
     TEMP_PHYSICAL_MIN,
 )
+from ._validators import coerce_identifier_str
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -64,6 +65,12 @@ class ActronAirPeripheral(BaseModel):
     temperature: float | None = None
     humidity: float | None = None
     _parent_status: "ActronAirStatus | None" = None
+
+    @field_validator("device_type", "serial_number", mode="before")
+    @classmethod
+    def normalize_string_fields(cls, value: Any) -> Any:
+        """Normalize identification fields that may arrive as numbers."""
+        return coerce_identifier_str(value)
 
     @property
     def zones(self) -> list["ActronAirZone"]:
