@@ -310,7 +310,7 @@ class ActronAirStatus(BaseModel):
 
     @property
     def platform(self) -> str | None:
-        """Return the platform ('neo' or 'que') this status was fetched from.
+        """Return the platform this status was fetched from, 'neo' or 'que'.
 
         Taken from the attached API reference; None when no API is attached
         (for example a status built directly from a payload).
