@@ -7,7 +7,12 @@ from typing import TYPE_CHECKING, Any
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from ..const import AC_MODE_AUTO, AC_MODE_COOL, AC_MODE_DRY, AC_MODE_FAN, AC_MODE_HEAT, AC_MODE_OFF
-from ._validators import coerce_identifier_str
+from ._validators import (
+    coerce_identifier_str,
+    coerce_optional_bool,
+    coerce_optional_float,
+    coerce_optional_str,
+)
 
 if TYPE_CHECKING:
     from .status import ActronAirStatus
@@ -40,6 +45,33 @@ class ActronAirSystemInfo(BaseModel):
         return v.lower() if v else v
 
 
+class ActronAirEEV(BaseModel):
+    """Electronic expansion valve (EEV) readings from the outdoor unit.
+
+    Reported by inverter outdoor units under ``LiveAircon.OutdoorUnit.EEV``.
+    All values are optional diagnostics; a missing or non-numeric value is ``None``.
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    opening_pc: float | None = Field(None, alias="Opening_pc")
+    superheat: float | None = Field(None, alias="SuperHeat")
+    superheat_ref: float | None = Field(None, alias="SuperHeatRef")
+    valve_type: str | None = Field(None, alias="Type")
+
+    @field_validator("opening_pc", "superheat", "superheat_ref", mode="before")
+    @classmethod
+    def normalize_floats(cls, value: Any) -> float | None:
+        """Turn missing or non-numeric readings into ``None``."""
+        return coerce_optional_float(value)
+
+    @field_validator("valve_type", mode="before")
+    @classmethod
+    def normalize_str(cls, value: Any) -> str | None:
+        """Turn a non-scalar label into ``None``."""
+        return coerce_optional_str(value)
+
+
 class ActronAirOutdoorUnit(BaseModel):
     """Outdoor unit data for an Actron Air AC system.
 
@@ -56,6 +88,86 @@ class ActronAirOutdoorUnit(BaseModel):
     compressor_on: bool = Field(False, alias="CompressorOn")
     amb_temp: float = Field(0.0, alias="AmbTemp")
     family: str = Field("", alias="Family")
+
+    # Refrigerant-circuit and drive diagnostics. These are optional: which ones
+    # a unit reports depends on its family, and a missing or non-numeric value
+    # is None. The cloud does not document units; see the field notes in the
+    # README ("Outdoor Unit Diagnostics").
+    suction_pressure: float | None = Field(None, alias="SuctP0")
+    condensing_pressure: float | None = Field(None, alias="CondPc")
+    suction_temp: float | None = Field(None, alias="SuctTemp")
+    discharge_temp: float | None = Field(None, alias="DischargeTemp")
+    coil_temp: float | None = Field(None, alias="CoilTemp")
+    drive_temp: float | None = Field(None, alias="DriveTemp")
+    compressor_set_speed: float | None = Field(None, alias="CompressorSetSpeed")
+    fan_speed: float | None = Field(None, alias="FanSpeed")
+    defrost_mode: float | None = Field(None, alias="DefrostMode")
+    supply_voltage: float | None = Field(None, alias="SupplyVoltage_Vac")
+    supply_current: float | None = Field(None, alias="SupplyCurrentRMS_A")
+    supply_power: float | None = Field(None, alias="SupplyPowerRMS_W")
+    output_power: float | None = Field(None, alias="OutputPowerRMS_W")
+    eev: ActronAirEEV | None = Field(None, alias="EEV")
+    exv: bool | None = Field(None, alias="EXV")
+    oil_return: bool | None = Field(None, alias="OilReturn")
+    oil_return_enabled: bool | None = Field(None, alias="OilReturnEnable")
+    envelope_protection: bool | None = Field(None, alias="EnvelopeProtection")
+    overheat_protection: bool | None = Field(None, alias="OverheatProtection")
+    low_pressure_error: bool | None = Field(None, alias="LPErr")
+    high_pressure_error: bool | None = Field(None, alias="HPErr")
+    coil_sensor_error: bool | None = Field(None, alias="CoilSenseErr")
+    ambient_sensor_error: bool | None = Field(None, alias="AmbientSensErr")
+    reverse_valve_position: str | None = Field(None, alias="ReverseValvePosition")
+    drive_comms_status: str | None = Field(None, alias="VSDODUCommsStatus")
+
+    @field_validator(
+        "suction_pressure",
+        "condensing_pressure",
+        "suction_temp",
+        "discharge_temp",
+        "coil_temp",
+        "drive_temp",
+        "compressor_set_speed",
+        "fan_speed",
+        "defrost_mode",
+        "supply_voltage",
+        "supply_current",
+        "supply_power",
+        "output_power",
+        mode="before",
+    )
+    @classmethod
+    def normalize_optional_floats(cls, value: Any) -> float | None:
+        """Turn missing or non-numeric diagnostic readings into ``None``."""
+        return coerce_optional_float(value)
+
+    @field_validator(
+        "exv",
+        "oil_return",
+        "oil_return_enabled",
+        "envelope_protection",
+        "overheat_protection",
+        "low_pressure_error",
+        "high_pressure_error",
+        "coil_sensor_error",
+        "ambient_sensor_error",
+        mode="before",
+    )
+    @classmethod
+    def normalize_optional_bools(cls, value: Any) -> bool | None:
+        """Turn missing or non-flag values into ``None``."""
+        return coerce_optional_bool(value)
+
+    @field_validator("reverse_valve_position", "drive_comms_status", mode="before")
+    @classmethod
+    def normalize_optional_strs(cls, value: Any) -> str | None:
+        """Turn non-scalar labels into ``None``."""
+        return coerce_optional_str(value)
+
+    @field_validator("eev", mode="before")
+    @classmethod
+    def normalize_eev(cls, value: Any) -> Any:
+        """Keep an ``EEV`` object or model; ignore any other value."""
+        return value if isinstance(value, (dict, ActronAirEEV)) else None
 
     @field_validator("model_number", "serial_number", "software_version", "family", mode="before")
     @classmethod
@@ -85,10 +197,26 @@ class ActronAirLiveAircon(BaseModel):
     defrost: bool = Field(False, alias="Defrost")
     compressor_chasing_temperature: float = Field(0.0, alias="CompressorChasingTemperature")
     compressor_live_temperature: float = Field(0.0, alias="CompressorLiveTemperature")
+    # Indoor-side diagnostics (optional; None when missing or non-numeric).
+    coil_inlet_temp: float | None = Field(None, alias="CoilInlet")
+    fan_pwm: float | None = Field(None, alias="FanPWM")
+    am_running_fan: bool | None = Field(None, alias="AmRunningFan")
     outdoor_unit: ActronAirOutdoorUnit = Field(
         default_factory=lambda: ActronAirOutdoorUnit.model_validate({}),
         alias="OutdoorUnit",
     )
+
+    @field_validator("coil_inlet_temp", "fan_pwm", mode="before")
+    @classmethod
+    def normalize_optional_floats(cls, value: Any) -> float | None:
+        """Turn missing or non-numeric indoor readings into ``None``."""
+        return coerce_optional_float(value)
+
+    @field_validator("am_running_fan", mode="before")
+    @classmethod
+    def normalize_optional_bools(cls, value: Any) -> bool | None:
+        """Turn a missing or non-flag value into ``None``."""
+        return coerce_optional_bool(value)
 
 
 class ActronAirMasterInfo(BaseModel):

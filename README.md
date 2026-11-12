@@ -371,6 +371,44 @@ for i, zone in enumerate(zones):
 
 ---
 
+### Outdoor Unit Diagnostics
+
+Inverter outdoor units report refrigerant-circuit and drive diagnostics. They are
+optional fields: a unit that does not report one, or reports a non-numeric value,
+gives `None`, and an odd value never discards the rest of the status.
+
+```python
+live = status.live_aircon
+outdoor = live.outdoor_unit
+
+outdoor.suction_pressure      # SuctP0
+outdoor.condensing_pressure   # CondPc
+outdoor.suction_temp          # SuctTemp, °C
+outdoor.discharge_temp        # DischargeTemp, °C
+outdoor.coil_temp             # CoilTemp (outdoor coil), °C
+outdoor.eev.opening_pc        # EEV.Opening_pc
+outdoor.eev.superheat         # EEV.SuperHeat, K
+outdoor.eev.superheat_ref     # EEV.SuperHeatRef (target), K
+outdoor.oil_return            # OilReturn
+outdoor.envelope_protection   # EnvelopeProtection
+outdoor.low_pressure_error    # LPErr
+outdoor.high_pressure_error   # HPErr
+live.coil_inlet_temp          # CoilInlet (indoor coil), °C
+live.fan_pwm                  # FanPWM, %
+```
+
+The cloud does not document units. Observed on a three-phase Advance unit
+(CRV240T, R410A), compared with the NEO wall controller's Dashboards screen:
+
+- `SuctP0` and `CondPc` are pressures in bar (gauge): the controller shows the same
+  readings in kPa. Running, suction gas 9.9 °C minus superheat 9.5 K gives 0.4 °C
+  evaporating, which is R410A at about 7.1 bar gauge.
+- `EEV.Opening_pc` reads above 100 (125 at rest, 214 running) while the controller
+  shows about 47 %, so it is likely valve steps rather than a percentage.
+- `SupplyPowerRMS_W`, `SupplyVoltage_Vac` and `SupplyCurrentRMS_A` read 0 on this unit.
+- The plain status request can return an old snapshot; realtime push updates carry
+  the live values.
+
 ## Error Handling
 
 ```python
