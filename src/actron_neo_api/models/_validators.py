@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 
@@ -25,19 +26,17 @@ def coerce_optional_float(value: Any) -> float | None:
 
     Diagnostic readings (pressures, temperatures, power) are optional and their
     presence varies by unit family. A missing value, a boolean or anything that
-    is not a number becomes ``None`` instead of failing validation, so one odd
+    is not a finite number (including an integer too large for a float, ``inf``
+    and ``nan``) becomes ``None`` instead of failing validation, so one odd
     reading never discards the whole live status.
     """
-    if value is None or isinstance(value, bool):
+    if value is None or isinstance(value, bool) or not isinstance(value, (int, float, str)):
         return None
-    if isinstance(value, (int, float)):
-        return float(value)
-    if isinstance(value, str):
-        try:
-            return float(value)
-        except ValueError:
-            return None
-    return None
+    try:
+        result = float(value)
+    except (ValueError, OverflowError):
+        return None
+    return result if math.isfinite(result) else None
 
 
 def coerce_optional_bool(value: Any) -> bool | None:

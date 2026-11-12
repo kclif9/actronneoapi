@@ -166,8 +166,8 @@ class ActronAirOutdoorUnit(BaseModel):
     @field_validator("eev", mode="before")
     @classmethod
     def normalize_eev(cls, value: Any) -> Any:
-        """Ignore an ``EEV`` value that is not an object."""
-        return value if isinstance(value, dict) else None
+        """Keep an ``EEV`` object or model; ignore any other value."""
+        return value if isinstance(value, (dict, ActronAirEEV)) else None
 
     @field_validator("model_number", "serial_number", "software_version", "family", mode="before")
     @classmethod

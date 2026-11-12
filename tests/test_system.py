@@ -6,7 +6,7 @@ import pytest
 from pydantic import ValidationError
 
 from actron_neo_api.models import ActronAirStatus
-from actron_neo_api.models.system import ActronAirACSystem, ActronAirOutdoorUnit
+from actron_neo_api.models.system import ActronAirACSystem, ActronAirEEV, ActronAirOutdoorUnit
 
 
 @pytest.fixture
@@ -321,6 +321,20 @@ class TestOutdoorUnitDiagnostics:
         """A non-numeric pressure reading becomes None instead of failing."""
         unit = ActronAirOutdoorUnit.model_validate({"SuctP0": value})
         assert unit.suction_pressure is None
+
+    @pytest.mark.parametrize("value", [10**400, "1e400", float("inf"), float("nan"), "nan"])
+    def test_overflowing_or_non_finite_values_become_none(self, value: Any) -> None:
+        """A reading too large for a float, or not finite, becomes None."""
+        unit = ActronAirOutdoorUnit.model_validate({"SuctP0": value, "CondPc": 24.7})
+        assert unit.suction_pressure is None
+        assert unit.condensing_pressure == 24.7
+
+    def test_eev_model_instance_is_kept(self) -> None:
+        """An already built ActronAirEEV is kept, not discarded."""
+        unit = ActronAirOutdoorUnit(EEV=ActronAirEEV(Opening_pc=214, SuperHeat=9.5))
+        assert unit.eev is not None
+        assert unit.eev.opening_pc == 214.0
+        assert unit.eev.superheat == 9.5
 
     def test_numeric_strings_are_coerced(self) -> None:
         """A numeric string reading is parsed as a float."""
